@@ -1,10 +1,9 @@
 # Inca
 
-A free, open-source 3D modeling, animation and rendering application for the desktop, with the
-interface and workflow of Autodesk Maya 2020: menus and menu sets, shelves, Channel Box, Attribute
-Editor, Outliner, marking menus, hotbox, Graph Editor, Hypershade, Render View, MEL-style scripting
-and the same hotkeys.
+A free, open-source 3D modeling, animation and rendering application for the desktop
 
+
+![INCA](inca.png)
 See [FEATURES.md](FEATURES.md) for the full feature list.
 
 ## Run from source
