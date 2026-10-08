@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob: file:; img-src 'self' data: blob: file:; media-src 'self' blob: data: file:">
+<title>untitled* - Inca</title>
+<link rel="stylesheet" href="css/inca.css">
+<script>
+// Show start-up problems instead of a blank window
+(function () {
+  const show = (msg) => { if (document.getElementById('boot-error')) return; const d = document.createElement('pre'); d.id = 'boot-error';
+    d.style.cssText = 'position:fixed;inset:40px;z-index:99999;background:#2a2020;color:#ffb4b4;border:1px solid #844;padding:16px;white-space:pre-wrap;font:13px Consolas,monospace;overflow:auto';
+    d.textContent = 'Inca could not start.\n\n' + msg + '\n\nIf you are running from source: open a terminal in the inca folder and run\n    npm install\n    npm start\n(see README.md). Press Ctrl+Shift+F12 for developer tools.'; (document.body || document.documentElement).append(d); };
+  addEventListener('error', (e) => { if (!window.App) show((e.message || 'Error') + (e.filename ? '\n  at ' + e.filename + ':' + e.lineno : '') + (e.target && e.target.src ? '\nFailed to load ' + e.target.src : '')); }, true);
+  setTimeout(() => { if (!window.App || !window.App.scene) show('The interface did not finish loading within 15 seconds. A script file is probably missing (for example vendor/three-addons or node_modules).'); }, 15000);
+})();
+</script>
+<script type="importmap">
+{
+  "imports": {
+    "three": "../node_modules/three/build/three.module.js",
+    "three/addons/": "../vendor/three-addons/",
+    "three/examples/jsm/": "../vendor/three-addons/",
+    "three-mesh-bvh": "../node_modules/three-mesh-bvh/src/index.js",
+    "three-bvh-csg": "../node_modules/three-bvh-csg/src/index.js",
+    "three-gpu-pathtracer": "../node_modules/three-gpu-pathtracer/src/index.js"
+  }
+}
+</script>
+</head>
+<body>
+<div id="app">
+  <div id="menubar" class="bar">
+    <div id="menus"></div>
+    <div class="spacer"></div>
+    <div id="workspace-box"><span class="dim">Workspace :</span> <select id="workspace-select"></select></div>
+  </div>
+  <div id="statusline" class="bar"></div>
+  <div id="shelf">
+    <div id="shelf-tabs"></div>
+    <div id="shelf-body"><div id="shelf-menu-btn" title="Shelf menu"></div><div id="shelf-items"></div></div>
+  </div>
+  <div id="main">
+    <div id="toolbox"></div>
+    <div id="left-dock" class="dock hidden"><div class="dock-resize right"></div></div>
+    <div id="viewports"></div>
+    <div id="right-dock" class="dock"><div class="dock-resize left"></div><div id="right-dock-body"></div></div>
+    <div id="side-tabs"></div>
+  </div>
+  <div id="timeslider"></div>
+  <div id="rangeslider"></div>
+  <div id="cmdline" class="bar"></div>
+  <div id="helpline" class="bar"><span id="helpline-text">Select Tool: select an object</span><span class="spacer"></span><span id="helpline-right"></span></div>
+</div>
+<div id="overlay-root"></div>
+<script type="module" src="js/main.js"></script>
+</body>
+</html>

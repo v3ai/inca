@@ -1,0 +1,97 @@
+{
+  "name": "inca",
+  "productName": "Inca",
+  "version": "0.1.0",
+  "description": "Inca - a free 3D modeling, animation and rendering application",
+  "main": "main.js",
+  "author": "Inca contributors",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dist:win": "node scripts/vendor.js && electron-builder --win zip --x64 --publish never",
+    "dist:linux": "node scripts/vendor.js && electron-builder --linux AppImage --x64 --publish never",
+    "dist:mac": "node scripts/vendor.js && electron-builder --mac --publish never",
+    "test": "node test/mesh.test.mjs && node test/editors.test.mjs",
+    "postinstall": "node scripts/vendor.js",
+    "dist:win-installer": "node scripts/vendor.js && electron-builder --win nsis --x64 --publish never"
+  },
+  "dependencies": {
+    "three": "0.186.1",
+    "three-bvh-csg": "0.0.18",
+    "three-gpu-pathtracer": "0.0.26",
+    "three-mesh-bvh": "0.9.15"
+  },
+  "devDependencies": {
+    "electron": "38.8.6",
+    "electron-builder": "24.13.3"
+  },
+  "build": {
+    "appId": "org.inca3d.inca",
+    "productName": "Inca",
+    "files": [
+      "main.js",
+      "preload.js",
+      "src/**/*",
+      "build/icon.png",
+      "node_modules/three/build/**/*",
+      "node_modules/three-gpu-pathtracer/src/**/*",
+      "node_modules/three-mesh-bvh/src/**/*",
+      "node_modules/three-bvh-csg/src/**/*",
+      "!node_modules/**/*.d.ts",
+      "!node_modules/three-gpu-pathtracer/src/webgpu/**/*",
+      "build/icon256.png",
+      "vendor/**/*"
+    ],
+    "fileAssociations": [
+      {
+        "ext": "inca",
+        "name": "Inca Scene",
+        "role": "Editor"
+      }
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "zip"
+      ],
+      "icon": "build/icon.ico",
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Graphics",
+      "icon": "build/icon.png"
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.graphics-design",
+      "icon": "build/icon.png"
+    },
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+    "generateUpdatesFilesForAllChannels": false,
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "https://example.invalid/inca"
+      }
+    ]
+  },
+  "desktopName": "inca.desktop",
+  "engines": {
+    "node": ">=18"
+  }
+}

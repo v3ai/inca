@@ -1,0 +1,31 @@
+// Inca — preload bridge: exposes a small, safe native API to the renderer.
+const { contextBridge, ipcRenderer } = require('electron');
+
+contextBridge.exposeInMainWorld('incaNative', {
+  isDesktop: true,
+  platform: process.platform,
+  openDialog: (opts) => ipcRenderer.invoke('dialog:open', opts),
+  saveDialog: (opts) => ipcRenderer.invoke('dialog:save', opts),
+  confirm: (opts) => ipcRenderer.invoke('dialog:confirm', opts),
+  readText: (p) => ipcRenderer.invoke('fs:readText', p),
+  readBinary: (p) => ipcRenderer.invoke('fs:readBinary', p),
+  writeText: (p, d) => ipcRenderer.invoke('fs:writeText', p, d),
+  writeBinary: (p, d) => ipcRenderer.invoke('fs:writeBinary', p, d),
+  exists: (p) => ipcRenderer.invoke('fs:exists', p),
+  mkdir: (p) => ipcRenderer.invoke('fs:mkdir', p),
+  readdir: (p) => ipcRenderer.invoke('fs:readdir', p),
+  paths: () => ipcRenderer.invoke('app:paths'),
+  loadPrefs: () => ipcRenderer.invoke('prefs:load'),
+  savePrefs: (d) => ipcRenderer.invoke('prefs:save', d),
+  quit: () => ipcRenderer.invoke('app:quit'),
+  setTitle: (t) => ipcRenderer.invoke('app:setTitle', t),
+  openExternal: (u) => ipcRenderer.invoke('app:openExternal', u),
+  showItem: (p) => ipcRenderer.invoke('app:showItem', p),
+  pendingFile: () => ipcRenderer.invoke('app:pendingFile'),
+  onRequestClose: (cb) => ipcRenderer.on('app:request-close', cb),
+  testShot: (n) => ipcRenderer.invoke('test:shot', n),
+  testLog: (s) => ipcRenderer.invoke('test:log', String(s)),
+  testInput: (ev) => ipcRenderer.invoke('test:input', ev),
+  testDone: () => ipcRenderer.invoke('test:done'),
+  onOpenFile: (cb) => ipcRenderer.on('app:open-file', (_e, p) => cb(p)),
+});
