@@ -2,6 +2,11 @@
 
 A free, open-source 3D modeling, animation and rendering application for the desktop
 
+## Contributing
+
+Write an issue on the gh issues page
+
+
 ![INCA](inca.png)
 
 See [FEATURES.md](FEATURES.md) for the full feature list.
