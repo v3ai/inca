@@ -14,7 +14,8 @@
     "test": "node test/mesh.test.mjs && node test/editors.test.mjs",
     "postinstall": "node scripts/vendor.js",
     "dist:win-installer": "node scripts/vendor.js && electron-builder --win nsis --x64 --publish never",
-    "dist:win-portable": "node scripts/vendor.js && electron-builder --win portable --x64 --publish never -c.artifactName='${productName}-${version}-win-x64-portable.${ext}'"
+    "dist:win-portable": "node scripts/vendor.js && electron-builder --win portable --x64 --publish never -c.artifactName='${productName}-${version}-win-x64-portable.${ext}'",
+    "release": "npm version patch && git push --follow-tags"
   },
   "dependencies": {
     "three": "0.186.1",

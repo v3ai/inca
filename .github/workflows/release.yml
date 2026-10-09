@@ -1,0 +1,42 @@
+# Push a tag like v0.1.1 (or run `npm run release`) to build and publish a GitHub Release.
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            args: --linux AppImage
+          - os: windows-latest
+            args: --win zip portable
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - name: Build
+        shell: bash
+        run: >
+          npx electron-builder ${{ matrix.args }} --x64 --publish never
+          '-c.portable.artifactName=${productName}-${version}-win-x64-portable.${ext}'
+      - uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          generate_release_notes: true
+          files: |
+            dist/*.AppImage
+            dist/*.zip
+            dist/*-portable.exe
