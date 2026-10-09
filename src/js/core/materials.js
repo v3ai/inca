@@ -134,7 +134,8 @@ function applyAttrs(rec) {
   for (const [m, textured] of [[rec._m, true], [rec._mu, false]]) {
     const a = rec.attrs; const maps = rec.maps || {};
     const mapOf = (k) => (textured && maps[k]) ? getThreeTexture(maps[k]) : null;
-    m.side = THREE.FrontSide;
+    // Maya shows both sides of polygons unless Backface Culling is turned on
+    m.side = App.backfaceCulling ? THREE.FrontSide : THREE.DoubleSide;
     m.polygonOffset = true; m.polygonOffsetFactor = 1; m.polygonOffsetUnits = 1;
     let colorMap = null, opacity = 1;
     if (rec.type === 'standardSurface') {

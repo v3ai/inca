@@ -265,7 +265,7 @@ C('toggleXray', 'X-Ray', vpo((o) => { o.xray = !o.xray; }), { hk: 'Alt+A', icon:
 C('toggleWireOnShaded', 'Wireframe on Shaded', vpo((o) => { o.wireOnShaded = !o.wireOnShaded; }), { icon: 'wireOnShaded', noRepeat: true });
 C('toggleGrid', 'Grid', vpo((o) => { o.grid = !o.grid; o.show.grid = o.grid; }), { icon: 'grid', noRepeat: true });
 C('isolateSelect', 'Isolate Select', vpo((o, v) => v.toggleIsolate()), { hk: 'Ctrl+1', icon: 'isolate', noRepeat: true });
-C('toggleBackface', 'Backface Culling', () => { App.backfaceCulling = !App.backfaceCulling; for (const m of App.mats.values()) updateMaterial(m); App.requestRender(); }, { icon: 'backface', noRepeat: true });
+C('toggleBackface', 'Backface Culling', () => { App.backfaceCulling = !App.backfaceCulling; for (const m of App.mats.values()) updateMaterial(m); App.viewports.forEach(v => v.syncToolbar()); App.help('Backface Culling: ' + (App.backfaceCulling ? 'ON' : 'OFF')); App.requestRender(); }, { icon: 'backface', noRepeat: true });
 C('cycleBackground', 'Toggle Background Color', () => { App.prefs.bgMode = ((App.prefs.bgMode || 0) + 1) % 5; App.savePrefs(); App.requestRender(); }, { hk: 'Alt+B', noRepeat: true });
 C('frameSelected', 'Frame Selection', () => (App.hoverViewport || App.activeViewport)?.frameSelection(), { hk: 'F', icon: 'frameSel', noRepeat: true });
 C('frameAll', 'Frame All', () => (App.hoverViewport || App.activeViewport)?.frameAll(), { hk: 'A', icon: 'frameAll', noRepeat: true });

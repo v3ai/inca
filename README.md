@@ -2,10 +2,9 @@
 
 A free, open-source 3D modeling, animation and rendering application for the desktop
 
-
 ![INCA](inca.png)
-See [FEATURES.md](FEATURES.md) for the full feature list.
 
+See [FEATURES.md](FEATURES.md) for the full feature list.
 ## Run from source
 
 ### 1. Install Node.js (version 18 or newer)
@@ -61,6 +60,7 @@ electron-builder from an older copy of Inca: run `rm -rf node_modules package-lo
 ```
 npm run dist:linux          # dist/Inca-<ver>-linux-x86_64.AppImage
 npm run dist:win            # dist/Inca-<ver>-win-x64.zip (unzip on Windows, run Inca.exe)
+npm run dist:win-portable   # dist/Inca-<ver>-win-x64-portable.exe (single file, just double-click)
 npm run dist:win-installer  # NSIS setup .exe - build this on Windows, or on Linux with Wine installed
 npm run dist:mac            # run on macOS
 ```
