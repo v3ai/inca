@@ -10,6 +10,33 @@ Write an issue on the gh issues page
 ![INCA](inca.png)
 
 See [FEATURES.md](FEATURES.md) for the full feature list.
+
+## Download and run
+
+Go to the [Releases page](https://github.com/v3ai/inca/releases) and open the newest release. Under **Assets**, download the file for your computer.
+
+### Windows
+1. Download **`Inca-<version>-win-x64-portable.exe`**.
+2. Double-click it. You don't need to install anything.
+3. If Windows shows "Windows protected your PC", click **More info**, then **Run anyway**. Windows shows this for apps from small developers. It doesn't mean anything is wrong.
+
+You can also download the **`.zip`** instead. Unzip it, then double-click **`Inca.exe`** inside the folder.
+
+### Linux
+1. Download **`Inca-<version>-linux-x86_64.AppImage`**.
+2. Right-click the file, open **Properties → Permissions**, and tick **Allow executing file as program**.
+   In a terminal you can do the same with `chmod +x Inca-*.AppImage`.
+3. Double-click it to start Inca.
+
+If it doesn't open, start it from a terminal so you can see the error:
+```
+./Inca-*.AppImage --no-sandbox
+```
+On Ubuntu 22.04 or newer, if you get an error about **FUSE**, run `sudo apt install libfuse2` once. On Ubuntu 24.04 the package is called `libfuse2t64`.
+
+### macOS
+There's no ready-made Mac download yet. Follow **Run from source** below. It takes about five minutes.
+
 ## Run from source
 
 ### 1. Install Node.js (version 18 or newer)
