@@ -17,6 +17,21 @@ export const COLORS = {
 export const WIRE_MATS = {};
 for (const [k, c] of Object.entries(COLORS)) WIRE_MATS[k] = new THREE.LineBasicMaterial({ color: c, depthTest: true });
 WIRE_MATS.leadX = new THREE.LineBasicMaterial({ color: COLORS.lead, depthTest: false, transparent: true, opacity: 0.5 });
+// Backface Culling also hides wires / components that only belong to faces turned away from the camera.
+// Geometry carries up to two adjacent face normals (object space) in cullA / cullB; a zero normal is never culled.
+const CULL = { get value() { return !!App.backfaceCulling; } };
+export function cullable(mat) {
+  mat.defaultAttributeValues = { ...(mat.defaultAttributeValues || {}), cullA: [0, 0, 0], cullB: [0, 0, 0] };
+  mat.onBeforeCompile = (sh) => {
+    sh.uniforms.uCull = CULL;
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nattribute vec3 cullA;\nattribute vec3 cullB;\nuniform bool uCull;\nbool incaFacing(vec3 n, vec3 e) { return dot(normalMatrix * n, e) > 0.0; }')
+      .replace('#include <project_vertex>', '#include <project_vertex>\nif (uCull && dot(cullA, cullA) > 0.0) { vec3 e = isPerspectiveMatrix(projectionMatrix) ? -mvPosition.xyz : vec3(0.0, 0.0, 1.0); if (!incaFacing(cullA, e) && !incaFacing(cullB, e)) gl_Position = vec4(0.0, 0.0, 2.0, 1.0); }');
+  };
+  mat.customProgramCacheKey = () => 'incaCull';
+  return mat;
+}
+for (const m of Object.values(WIRE_MATS)) cullable(m);
 
 const D2R = Math.PI / 180, R2D = 180 / Math.PI;
 export const RO = { xyz: 'ZYX', yzx: 'XZY', zxy: 'YXZ', xzy: 'YZX', yxz: 'ZXY', zyx: 'XYZ' };
@@ -454,6 +469,7 @@ export function setAttr(rec, attr, value, opts = {}) {
   const m = attr.match(/^(.*)([RGB])$/);
   if (attr in bag) bag[attr] = Array.isArray(bag[attr]) ? value.slice() : value;
   else if (m && Array.isArray(bag[m[1]])) bag[m[1]][COLOR_SUFFIX[m[2]]] = +value;
+  else if (rec.kind === 'history' && OPS[rec.type]?.channels?.some(c => c.k === attr)) bag[attr] = value; // channel added after this node was saved
   else return false;
   if (rec.kind === 'history') { const o = historyOwner(rec); if (o) { const i = o.inca.history.indexOf(rec); evaluate(o, Math.max(0, i)); } }
   else App.emit('shadingAttr', rec);

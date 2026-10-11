@@ -226,13 +226,27 @@ export function buildGeometry(pm, matIndexOf = null) {
 }
 
 export function buildEdgeGeometry(pm, onlyDisplay = true) {
-  const pos = [];
-  const list = (onlyDisplay && pm.displayEdges) ? pm.displayEdges : pm.topo.edges;
-  for (const [a, b] of list) { const p = pm.v[a], q = pm.v[b]; if (!p || !q) continue; pos.push(p[0], p[1], p[2], q[0], q[1], q[2]); }
+  const pos = [], ca = [], cb = [];
+  const t = pm.topo; const fn = pm.f.map((_, fi) => norm(pm.faceNormal(fi)));
+  const list = (onlyDisplay && pm.displayEdges) ? pm.displayEdges : t.edges;
+  for (const [a, b] of list) {
+    const p = pm.v[a], q = pm.v[b]; if (!p || !q) continue;
+    pos.push(p[0], p[1], p[2], q[0], q[1], q[2]);
+    const [na, nb] = edgeCullNormals(pm, t, fn, a, b); ca.push(...na, ...na); cb.push(...nb, ...nb);
+  }
   const g = new THREE.BufferGeometry();
   g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('cullA', new THREE.Float32BufferAttribute(ca, 3)); g.setAttribute('cullB', new THREE.Float32BufferAttribute(cb, 3));
   g.computeBoundingSphere();
   return g;
+}
+// normals of the (up to two) faces sharing an edge, for backface culling of wires; zero = always drawn
+const ZERO3 = [0, 0, 0];
+export function edgeCullNormals(pm, t, fn, a, b) {
+  const ei = t.edgeMap.get(ekey(a, b)); const fs = ei === undefined ? [] : t.edgeFaces[ei];
+  if (fs.length === 1) return [fn[fs[0]], fn[fs[0]]];
+  if (fs.length === 2) return [fn[fs[0]], fn[fs[1]]];
+  return [ZERO3, ZERO3];
 }
 
 // ---------------------------------------------------------------------------
@@ -365,17 +379,31 @@ function extrudeRegion(pm, sel, thickness, offset, vuv) {
   pm.invalidate();
 }
 
-export function opExtrudeFaces(pm0, { faces, thickness = 0, offset = 0, divisions = 1, keepFacesTogether = true }) {
+export function opExtrudeFaces(pm0, { faces, thickness = 0, offset = 0, divisions = 1, keepFacesTogether = true, translateX = 0, translateY = 0, translateZ = 0, localTranslateZ = 0 }) {
   const pm = pm0.clone();
   const fs = faces.filter(f => f < pm.f.length);
   if (!fs.length) return { mesh: pm };
   const div = Math.max(1, Math.round(divisions));
+  // Maya's extrude manipulator: translate (object space) plus localTranslateZ along each region's average normal.
+  // Both are split evenly across the divisions, like thickness.
+  const groups = keepFacesTogether ? [fs] : fs.map(f => [f]);
+  const tr = [+translateX || 0, +translateY || 0, +translateZ || 0], ltz = +localTranslateZ || 0;
+  const steps = groups.map(g => {
+    const n = ltz ? norm(g.reduce((s, f) => add(s, pm.faceNormal(f)), [0, 0, 0])) : [0, 0, 0];
+    return mul(add(tr, mul(n, ltz)), 1 / div);
+  });
+  const moving = steps.some(d => d[0] || d[1] || d[2]);
   for (let d = 0; d < div; d++) {
     const vuv = null;
     const off = d === 0 ? offset : 0;
-    if (keepFacesTogether) extrudeRegion(pm, new Set(fs), thickness / div, off, vuv);
-    else for (const f of fs) extrudeRegion(pm, new Set([f]), thickness / div, off, vuv);
+    groups.forEach((g, gi) => {
+      extrudeRegion(pm, new Set(g), thickness / div, off, vuv);
+      if (!moving) return;
+      const vs = new Set(); for (const f of g) for (const v of pm.f[f]) vs.add(v);
+      for (const v of vs) pm.v[v] = add(pm.v[v], steps[gi]);
+    });
   }
+  if (moving) pm.invalidate();
   return { mesh: pm, select: { type: 'f', ids: fs } };
 }
 

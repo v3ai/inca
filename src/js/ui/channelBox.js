@@ -14,20 +14,33 @@ const LIGHT_CH = { intensity: 'Intensity', colorR: 'Color R', colorG: 'Color G',
 const CAM_CH = { focalLength: 'Focal Length', near: 'Near Clip Plane', far: 'Far Clip Plane', orthoWidth: 'Orthographic Width', coi: 'Center Of Interest' };
 const LAYER_COLORS = [null, [0, 0, 0], [0.25, 0.25, 0.25], [0.6, 0.6, 0.6], [0.6, 0, 0.16], [0, 0, 0.38], [0, 0, 1], [0, 0.27, 0.1], [0.15, 0, 0.26], [0.78, 0, 0.78], [0.54, 0.28, 0.2], [0.25, 0.14, 0.12], [0.6, 0.15, 0], [1, 0, 0], [0, 1, 0], [0, 0.25, 0.6], [1, 1, 1], [1, 1, 0], [0.39, 0.86, 1], [0.26, 1, 0.64], [1, 0.69, 0.69], [0.89, 0.67, 0.47], [1, 1, 0.39], [0, 0.6, 0.33]];
 
-const st = { selChannels: new Set(), openHistory: new Set(), sig: '', fields: [] };
+const st = { selChannels: new Set(), openHistory: new Set(), sig: '', fields: [], chanOpts: new Map() };
 App.channelSlider = {
   active: () => st.selChannels.size > 0 && (App.sel.length > 0),
   drag(e) { // MMB virtual slider in a viewport
-    const chans = [...st.selChannels]; const targets = targetsFor(chans);
+    const chans = [...st.selChannels];
+    const targets = []; for (const c of chans) { const o = st.chanOpts.get(c) || {}; if (o.type === 'enum' && o.values) continue; for (const [rec, a] of targetsFor([c])) targets.push([rec, a, a === 'visibility' ? { type: 'bool' } : o]); }
     if (!targets.length) return;
     Undo.checkpoint('channel drag');
-    const x0 = e.clientX; const start = targets.map(([rec, a]) => +S.getAttr(rec, a) || 0);
+    const x0 = e.clientX; const start = targets.map(([rec, a]) => +S.getAttr(rec, a) || 0); const last = start.slice();
     const step = App.prefs.opt.cbSliderStep || 0.1;
-    const mm = (ev) => { const d = (ev.clientX - x0) * step * (ev.ctrlKey ? 0.1 : ev.shiftKey ? 10 : 1); targets.forEach(([rec, a], i) => { S.setAttr(rec, a, start[i] + d, { silent: true }); }); App.dirty('channels'); placeProxy(); App.requestRender(); };
+    const mm = (ev) => {
+      const d = (ev.clientX - x0) * step * (ev.ctrlKey ? 0.1 : ev.shiftKey ? 10 : 1);
+      targets.forEach(([rec, a, o], i) => { const v = sliderValue(start[i] + d, o); if (v === last[i]) return; last[i] = v; S.setAttr(rec, a, o.type === 'bool' ? !!v : v, { silent: true }); });
+      App.dirty('channels'); placeProxy(); App.requestRender();
+    };
     const mu = () => { removeEventListener('mousemove', mm); removeEventListener('mouseup', mu); for (const [rec, a] of targets) if (rec.isObject3D) App.anim.autoKey(rec, [a]); App.dirty('channels', 'attr'); };
     addEventListener('mousemove', mm); addEventListener('mouseup', mu);
   },
 };
+// int / enum / bool channels step in whole numbers and respect min/max, like the text field and the In-View Editor
+function sliderValue(v, o) {
+  if (o.type === 'int' || o.type === 'enum' || o.type === 'bool') v = Math.round(v);
+  if (o.min !== undefined) v = Math.max(o.min, v); if (o.max !== undefined) v = Math.min(o.max, v);
+  if (o.type === 'enum' && o.options) v = Math.max(0, Math.min(o.options.length - 1, v));
+  if (o.type === 'bool') v = v > 0 ? 1 : 0;
+  return v;
+}
 // channel id format: "xf:translateX" | "shape:intensity" | "h:<historyId>:<param>"
 function targetsFor(chans) {
   const out = [];
@@ -101,7 +114,7 @@ function build(container) {
       const v = S.getAttr(rec, attr);
       if (inp.tagName === 'SELECT') { if (document.activeElement !== inp) { if (opts.type === 'enum') { const vals = opts.values; inp.selectedIndex = vals ? Math.max(0, vals.indexOf(v)) : (+v || 0); } else inp.selectedIndex = v ? 1 : 0; } }
       else if (document.activeElement !== inp) inp.value = fmt(+v || 0);
-      const keyed = rec.isObject3D && App.anim.isKeyed(rec, attr); const onKey = keyed && App.anim.onKey(rec, attr);
+      const keyed = !!(rec.isObject3D && App.anim.isKeyed(rec, attr)); const onKey = keyed && App.anim.onKey(rec, attr);
       const locked = S.isLocked(rec, attr);
       inp.classList.toggle('keyed', keyed && !onKey); inp.classList.toggle('onkey', onKey); inp.classList.toggle('locked', locked);
       r.classList.toggle('sel', st.selChannels.has(chanId));
@@ -122,7 +135,7 @@ function build(container) {
     name.addEventListener('contextmenu', (e) => { e.preventDefault(); if (!st.selChannels.has(chanId)) { st.selChannels = new Set([chanId]); refreshValues(); } channelMenu(e); });
     r._chan = chanId;
     r.append(name, inp);
-    st.fields.push(r); st.order.push(chanId);
+    st.fields.push(r); st.order.push(chanId); st.chanOpts.set(chanId, opts);
     return r;
   }
   function commit(chanId, rec, attr, value) {
@@ -150,7 +163,7 @@ function build(container) {
 
   function signature() { const o = App.sel.map(x => x.inca.id + ':' + (x.inca.history ? x.inca.history.map(hh => hh.id).join(',') : '') + ':' + Object.keys(x.inca.hiddenCh || {}).join(',') + ':' + Object.keys(x.inca.extraAttrs || {}).join(',')).join('|'); /* rigging: + extraAttrs */ return o + '#' + [...st.openHistory].join(',') + '#' + (App.prefs.opt.cbShapes !== false) + (App.prefs.opt.cbInputs !== false); }
   function rebuild() {
-    cbBody.innerHTML = ''; st.fields = []; st.order = [];
+    cbBody.innerHTML = ''; st.fields = []; st.order = []; st.chanOpts = new Map();
     const o = lead();
     if (!o) { cbBody.append(h('div', { class: 'cb-empty', text: '' })); return; }
     const head = h('div', { class: 'cb-head', text: o.inca.name + (App.sel.length > 1 ? '  ...' : ''), title: 'Double-click to rename' });

@@ -9,6 +9,16 @@ const cube = GENERATORS.polyCube({});
 report('extrude top', P.opExtrudeFaces(cube,{faces:[1],thickness:0.5}).mesh);
 report('extrude 2 sep', P.opExtrudeFaces(cube,{faces:[0,1],thickness:0.5,keepFacesTogether:false}).mesh);
 report('inset', P.opExtrudeFaces(cube,{faces:[1],thickness:0,offset:0.3}).mesh);
+{ // localTranslateZ moves the cap along the face normal and the divisions are spread over that distance (issue #3)
+  const n = cube.faceNormal(1); const l = Math.hypot(...n); const nz = n.map(x => x / l);
+  const r = P.opExtrudeFaces(cube,{faces:[1],thickness:0,divisions:3,localTranslateZ:1.5}).mesh; report('extrude ltz div3', r);
+  const c0 = cube.faceCenter(1), c1 = r.faceCenter(1); const moved = (c1[0]-c0[0])*nz[0]+(c1[1]-c0[1])*nz[1]+(c1[2]-c0[2])*nz[2];
+  if (Math.abs(moved - 1.5) > 1e-6) throw new Error('extrude localTranslateZ: cap moved ' + moved);
+  const levels = new Set(r.v.map(p => +((p[0]-c0[0])*nz[0]+(p[1]-c0[1])*nz[1]+(p[2]-c0[2])*nz[2]).toFixed(4)).filter(d => d > 1e-6));
+  if (![0.5, 1, 1.5].every(d => levels.has(d))) throw new Error('extrude divisions not spread: ' + [...levels]);
+  const t = P.opExtrudeFaces(cube,{faces:[1],translateX:1,divisions:2}).mesh; const ct = t.faceCenter(1);
+  if (Math.abs(ct[0] - c0[0] - 1) > 1e-6) throw new Error('extrude translateX');
+}
 const e = cube.topo.edges;
 report('bevel 1 edge', P.opBevel(cube,{edges:[e[0]]}).mesh);
 report('bevel all', P.opBevel(cube,{edges:e}).mesh);

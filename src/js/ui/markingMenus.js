@@ -159,13 +159,14 @@ App.on('inViewEditor', (rec) => {
   ivf.append(head);
   const rows = [];
   for (const ch of op.channels) {
+    if (ch.inView === false) continue;
     const isEnum = ch.type === 'enum', isBool = ch.type === 'bool';
     const n = h('span', { class: 'n', text: ch.label || niceName(ch.k) });
     let inp;
     if (isEnum) { inp = h('select', { style: { height: '16px', fontSize: '11px', width: '86px' } }, ch.options.map((o, i) => h('option', { value: i, text: o }))); inp.selectedIndex = ch.values ? Math.max(0, ch.values.indexOf(rec.params[ch.k])) : (+rec.params[ch.k] || 0); inp.addEventListener('change', () => { Undo.checkpoint('edit ' + rec.name); S.setAttr(rec, ch.k, ch.values ? ch.values[inp.selectedIndex] : inp.selectedIndex); }); }
     else if (isBool) { inp = h('input', { type: 'checkbox', checked: !!rec.params[ch.k] }); inp.addEventListener('change', () => { Undo.checkpoint('edit ' + rec.name); S.setAttr(rec, ch.k, inp.checked); }); }
     else {
-      inp = h('input', { value: fmt(+rec.params[ch.k]) });
+      inp = h('input', { value: fmt(+rec.params[ch.k] || 0) });
       inp.addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') inp.blur(); });
       inp.addEventListener('change', () => { let v = parseFloat(inp.value); if (isNaN(v)) return; if (ch.type === 'int') v = Math.round(v); if (ch.min !== undefined) v = Math.max(ch.min, v); if (ch.max !== undefined) v = Math.min(ch.max, v); Undo.checkpoint('edit ' + rec.name); S.setAttr(rec, ch.k, v); });
       // drag on the label = virtual slider (Maya: click the attribute name then MMB/LMB drag in the viewport)
@@ -178,7 +179,7 @@ App.on('inViewEditor', (rec) => {
       });
       n.style.cursor = 'ew-resize'; n.title = 'Drag left/right to change';
     }
-    const row = h('div', { class: 'ivf-row' }, n, inp); row._upd = () => { if (!isEnum && !isBool && document.activeElement !== inp) inp.value = fmt(+rec.params[ch.k]); }; rows.push(row);
+    const row = h('div', { class: 'ivf-row' }, n, inp); row._upd = () => { if (!isEnum && !isBool && document.activeElement !== inp) inp.value = fmt(+rec.params[ch.k] || 0); }; rows.push(row);
     ivf.append(row);
   }
   document.body.append(ivf);

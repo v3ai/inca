@@ -1,7 +1,7 @@
 // Inca — shared manipulator state: a proxy object that TransformControls drive in every viewport.
 import * as THREE from 'three';
 import { App } from './app.js';
-import { worldPivot, worldMatrix, setWorldMatrix, parentWorld, setMeshPositions, commitTweak, setPivotWorld, updateXform, rebuildShape, worldBBox, localMatrix } from './scene.js';
+import { worldPivot, worldMatrix, setWorldMatrix, parentWorld, setMeshPositions, commitTweak, setPivotWorld, updateXform, rebuildShape, worldBBox, localMatrix, evaluate } from './scene.js';
 import { Sel } from './selection.js';
 import { Undo } from './undo.js';
 
@@ -15,9 +15,11 @@ export const Manip = {
   dragging: false,
   snapGrid: false, snapPoint: false, snapCurve: false, stepRotate: false,
   _keyGrid: false, _keyPoint: false,
+  liveExtrude: null, // Set of polyExtrudeFace ids the move manipulator edits instead of adding a polyTweak
 };
 Manip.proxy.name = 'manipProxy';
 App.manip = Manip;
+App.on('selectionChanged', () => { Manip.liveExtrude = null; });
 
 const topSelected = () => App.sel.filter(o => { let p = o.parent; while (p && p.inca) { if (App.sel.includes(p)) return false; p = p.parent; } return true; }).filter(o => !o.inca.startup);
 
@@ -57,10 +59,12 @@ export function manipVisible() {
 export function beginDrag() {
   Manip.dragging = true;
   Undo.checkpoint(Manip.pivotMode ? 'pivot' : Manip.mode);
-  const st = { pos: Manip.proxy.position.clone(), quat: Manip.proxy.quaternion.clone(), scale: Manip.proxy.scale.clone(), objs: [], comps: [] };
+  const st = { pos: Manip.proxy.position.clone(), quat: Manip.proxy.quaternion.clone(), scale: Manip.proxy.scale.clone(), objs: [], comps: [], extrudes: [] };
   if (Manip.pivotMode) { st.pivotObj = Sel.lead(); }
   else if (App.compMode) {
     for (const o of App.hilite) {
+      const ex = liveExtrudeOf(o);
+      if (ex) { st.extrudes.push(ex); continue; }
       let verts = Sel.affectedVerts(o); if (!verts.length && !Manip.soft.on) continue;
       o.updateWorldMatrix(true, false);
       const pts = o.inca.kind === 'curve' ? o.inca.curve.cvs : o.inca.mesh.v;
@@ -77,6 +81,31 @@ export function beginDrag() {
   Manip.start = st;
 }
 
+// Right after Extrude, translating the new faces edits the polyExtrudeFace node (translate / localTranslateZ),
+// so its divisions are spread over the whole extruded distance, as with Maya's extrude manipulator.
+function liveExtrudeOf(o) {
+  if (!Manip.liveExtrude || App.compMode !== 'face' || Manip.mode !== 'translate' || Manip.soft.on || o.inca.kind !== 'mesh') return null;
+  const H = o.inca.history || []; const i = H.length - 1; const h = H[i];
+  if (!h || h.type !== 'polyExtrudeFace' || !Manip.liveExtrude.has(h.id)) return null;
+  const p = h.params; const src = i > 0 ? H[i - 1]._out : null;
+  // local Z = the average normal the op uses (only meaningful when the faces move as one region)
+  let n = null;
+  if (src && (p.keepFacesTogether !== false || p.faces.length === 1)) {
+    const v = new THREE.Vector3(); for (const f of p.faces) if (f < src.f.length) v.add(new THREE.Vector3(...src.faceNormal(f)));
+    if (v.lengthSq() > 1e-20) n = v.normalize();
+  }
+  o.updateWorldMatrix(true, false);
+  const inv = new THREE.Matrix4().copy(o.matrixWorld).invert().setPosition(0, 0, 0);
+  return { o, h, i, n, inv, t: [+p.translateX || 0, +p.translateY || 0, +p.translateZ || 0], ltz: +p.localTranslateZ || 0 };
+}
+function dragExtrude(ex, dpos) {
+  const d = dpos.clone().applyMatrix4(ex.inv); const p = ex.h.params;
+  let along = 0; if (ex.n) { along = d.dot(ex.n); d.addScaledVector(ex.n, -along); }
+  p.translateX = +(ex.t[0] + d.x).toFixed(6); p.translateY = +(ex.t[1] + d.y).toFixed(6); p.translateZ = +(ex.t[2] + d.z).toFixed(6);
+  p.localTranslateZ = +(ex.ltz + along).toFixed(6);
+  evaluate(ex.o, ex.i); ex.o.userData.compDirty = true;
+}
+
 const _v = new THREE.Vector3(), _q = new THREE.Quaternion(), _m = new THREE.Matrix4(), _m2 = new THREE.Matrix4();
 export function applyDrag() {
   const st = Manip.start; if (!st) return;
@@ -86,6 +115,8 @@ export function applyDrag() {
   const dq = p.quaternion.clone().multiply(st.quat.clone().invert());
   const sc = new THREE.Vector3(p.scale.x / st.scale.x, p.scale.y / st.scale.y, p.scale.z / st.scale.z);
   if (App.compMode) {
+    for (const ex of st.extrudes) dragExtrude(ex, dpos);
+    if (st.extrudes.length) App.dirty('channels');
     const qInv = st.quat.clone().invert();
     for (const c of st.comps) {
       const out = new Float32Array(c.verts.length * 3);
@@ -134,8 +165,9 @@ export function endDrag() {
       c.verts.forEach((vi, i) => { const a = c.orig[i], b = pm.v[vi]; deltas.push(b[0] - a[0], b[1] - a[1], b[2] - a[2]); });
       commitTweak(c.o, c.verts, deltas);
     }
+    for (const ex of st.extrudes) { const q = ex.h.params; App.emit('echo', `setAttr "${ex.h.name}.translate" -type double3 ${fx(q.translateX)} ${fx(q.translateY)} ${fx(q.translateZ)} ;`); App.emit('echo', `setAttr "${ex.h.name}.localTranslateZ" ${fx(q.localTranslateZ)};`); }
     const d = p.position.clone().sub(st.pos);
-    if (Manip.mode === 'translate') App.emit('echo', `move -r ${fx(d.x)} ${fx(d.y)} ${fx(d.z)} ;`);
+    if (Manip.mode === 'translate' && st.comps.length) App.emit('echo', `move -r ${fx(d.x)} ${fx(d.y)} ${fx(d.z)} ;`);
   } else if (!Manip.pivotMode) {
     const attrs = Manip.mode === 'translate' ? ['translateX', 'translateY', 'translateZ'] : Manip.mode === 'rotate' ? ['rotateX', 'rotateY', 'rotateZ'] : ['scaleX', 'scaleY', 'scaleZ'];
     for (const s of st.objs) App.anim.autoKey(s.o, attrs);

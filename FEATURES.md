@@ -19,7 +19,7 @@ Legend: ✅ built · 🟡 partial / simplified · ⏭ planned
 - ✅ Shelves: Curves/Surfaces, Poly Modeling, Sculpting, Rigging, Animation, Rendering, FX, Custom; Ctrl+Shift+click a menu item to add it; right-click/MMB-drag to edit; Shelf Editor; save/load shelves
 - ✅ Tool box (Select, Lasso, Paint, Move, Rotate, Scale, Last tool) + Quick Layout buttons
 - ✅ Workspaces (Maya Classic, Modeling Standard/Expert, Sculpting, Animation, Rigging, Rendering, UV Editing)
-- ✅ Channel Box / Layer Editor: channels, SHAPES, INPUTS (construction history), virtual sliders (MMB in viewport, Ctrl/MMB-drag in fields), expressions in fields (`+=2`), right-click Key/Lock/Hide/Break, keyed/locked colouring
+- ✅ Channel Box / Layer Editor: channels, SHAPES, INPUTS (construction history), virtual sliders (MMB in viewport, Ctrl/MMB-drag in fields; int/enum channels step in whole numbers and respect min/max), expressions in fields (`+=2`), right-click Key/Lock/Hide/Break, keyed/locked colouring
 - ✅ Display layers: create (empty/from selected), V / T / R, colour, select, rename, delete
 - ✅ Attribute Editor (Ctrl+A) with tabs for transform, shape, history nodes, material and textures; texture map buttons; Copy Tab; lock/focus
 - ✅ Outliner (dock), hierarchy, drag to parent/reorder/unparent, inline rename, search, shapes/sets/materials display
@@ -40,7 +40,7 @@ Legend: ✅ built · 🟡 partial / simplified · ⏭ planned
 ## 3. Viewports & navigation
 - ✅ Persp/Top/Front/Side, single/four/two/three layouts, tap Space to toggle
 - ✅ Alt+LMB tumble, Alt+MMB track, Alt+RMB/wheel dolly; F/A frame, Shift+F/A all views; bookmarks; default view
-- ✅ Shading 4/5/6/7, wireframe on shaded, X-ray, backface culling, shadows, flat/none lighting, exposure, background toggle (Alt+B)
+- ✅ Shading 4/5/6/7, wireframe on shaded, X-ray, backface culling (also hides wires/components of back faces and makes them unpickable), shadows, flat/none lighting, exposure, background toggle (Alt+B)
 - ✅ Smooth mesh preview 1/2/3; resolution & film gates; HUD (poly count, fps, frame, camera names, view axis)
 - ✅ Panel menus & toolbar, Isolate Select, Show filters, look through selected, new cameras
 - ✅ Face normals / border edge display
@@ -55,7 +55,7 @@ Legend: ✅ built · 🟡 partial / simplified · ⏭ planned
 ## 5. Polygon modeling
 - ✅ Primitives with construction history: Sphere, Cube, Cylinder, Cone, Plane, Torus, Pyramid, Prism, Pipe, Helix, Disc, Platonic solids
 - ✅ Component modes (F8–F12), grow/shrink, edge loop/ring/border, convert selection, pre-selection highlight
-- ✅ Extrude (faces/edges), Bevel, Bridge, Insert Edge Loop tool, Multi-Cut, Target Weld, Merge / Merge to Center / Collapse, Connect, Chamfer vertex, Poke, Delete Edge/Vertex, Extract, Duplicate faces, Fill Hole, Triangulate, Quadrangulate, Add Divisions, Reverse normals
+- ✅ Extrude (faces/edges; the move manipulator after a face extrude drives Translate / Local Translate Z, with divisions spread along it), Bevel, Bridge, Insert Edge Loop tool, Multi-Cut, Target Weld, Merge / Merge to Center / Collapse, Connect, Chamfer vertex, Poke, Delete Edge/Vertex, Extract, Duplicate faces, Fill Hole, Triangulate, Quadrangulate, Add Divisions, Reverse normals
 - ✅ Combine, Separate, Smooth, Mirror, Cleanup, Booleans (union/difference/intersection, with history), Create Polygon tool, Quad Draw (retopology)
 - ✅ Soften/Harden edges, Delete History, Modeling Toolkit panel
 - ✅ UV: planar/cylindrical/spherical/automatic projection; UV Editor (select/move/rotate/scale, flip, rotate 90, normalize, layout, unfold/relax)

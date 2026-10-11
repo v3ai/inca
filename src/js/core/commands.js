@@ -298,11 +298,12 @@ C('extrude', 'Extrude', (a) => {
   }
   if (App.compMode !== 'face') { if (!App.compMode && App.sel.some(o => o.inca.kind === 'curve')) return Cmds.run('extrudeCurve'); return warn('// Warning: Select faces or edges to extrude'); }
   const ts = compTargets('face'); if (!ts.length) return warn('// Warning: Select faces to extrude');
-  ck('extrude'); let lastH;
-  for (const o of ts) { const { h, select } = S.applyOp(o, 'polyExtrudeFace', { faces: [...o.inca.compSel.f], thickness: o0.thickness, offset: o0.offset, divisions: o0.divisions, keepFacesTogether: o0.keepFacesTogether }); afterOp(o, select); lastH = h; }
+  ck('extrude'); let lastH; const made = [];
+  for (const o of ts) { const { h, select } = S.applyOp(o, 'polyExtrudeFace', { faces: [...o.inca.compSel.f], translateX: 0, translateY: 0, translateZ: 0, localTranslateZ: 0, thickness: o0.thickness, offset: o0.offset, divisions: o0.divisions, keepFacesTogether: o0.keepFacesTogether }); afterOp(o, select); lastH = h; made.push(h.id); }
   echo(`polyExtrudeFacet -constructionHistory 1 -keepFacesTogether ${o0.keepFacesTogether ? 1 : 0} -divisions ${o0.divisions} -twist 0 -taper 1 -off ${o0.offset} -thickness ${o0.thickness} -smoothingAngle 30;`);
   result(lastH.name); showHistoryEditor(lastH);
   App.setTool('move'); placeProxy();
+  App.manip.liveExtrude = new Set(made); // the next move drags drive the extrude node (cleared on selection change)
 }, { hk: 'Ctrl+E', icon: 'extrude', options: [{ key: 'thickness', label: 'Thickness', type: 'float', value: 0 }, { key: 'offset', label: 'Offset', type: 'float', value: 0 }, { key: 'divisions', label: 'Divisions', type: 'int', value: 1 }, { key: 'keepFacesTogether', label: 'Keep faces together', type: 'bool', value: true }] });
 C('bevel', 'Bevel', (a) => {
   const o0 = { fraction: 0.5, segments: 1, ...opts('bevel'), ...a };

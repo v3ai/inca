@@ -45,7 +45,7 @@ function curveOf(id) {
 export const OPS = {
   meshData: { hidden: true, apply: (_pm, p) => ({ mesh: P.PolyMesh.fromJSON(p.data) }) },
   polyTweak: { hidden: true, apply: (pm, p) => P.opTweak(pm, p) },
-  polyExtrudeFace: { base: 'polyExtrudeFace', channels: [num('thickness'), num('offset', { min: -1, max: 1 }), int('divisions', { min: 1, max: 50 }), bool('keepFacesTogether')], apply: (pm, p) => P.opExtrudeFaces(pm, p) },
+  polyExtrudeFace: { base: 'polyExtrudeFace', channels: [num('translateX', { inView: false }), num('translateY', { inView: false }), num('translateZ', { inView: false }), num('localTranslateZ'), num('thickness'), num('offset', { min: -1, max: 1 }), int('divisions', { min: 1, max: 50 }), bool('keepFacesTogether')], apply: (pm, p) => P.opExtrudeFaces(pm, p) },
   polyExtrudeEdge: { base: 'polyExtrudeEdge', channels: [num('thickness'), num('offset')], apply: (pm, p) => P.opExtrudeEdges(pm, p) },
   polyBevel: { base: 'polyBevel', channels: [num('fraction', { min: 0.001, max: 1 }), int('segments', { min: 1, max: 1 })], apply: (pm, p) => P.opBevel(pm, p) },
   polyChamferVtx: { base: 'polyChamfer', channels: [num('width', { min: 0.001 })], apply: (pm, p) => P.opChamferVertex(pm, p) },

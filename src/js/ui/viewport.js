@@ -4,7 +4,8 @@ import { TransformControls } from 'three/addons/controls/TransformControls.js';
 import { computeBoundsTree, disposeBoundsTree, acceleratedRaycast } from 'three-mesh-bvh';
 import { App } from '../core/app.js';
 import { h, menuBar, iconBtn, fmt, showMenu } from './dom.js';
-import { syncCamera, updateXform, findNode, worldBBox, allDag, WIRE_MATS, COLORS, isDag } from '../core/scene.js';
+import { syncCamera, updateXform, findNode, worldBBox, allDag, WIRE_MATS, COLORS, isDag, cullable } from '../core/scene.js';
+import { edgeCullNormals } from '../core/polymesh.js';
 import { Sel } from '../core/selection.js';
 import { Manip, placeProxy, manipVisible, beginDrag, applyDrag, endDrag, softWeights } from '../core/manip.js';
 
@@ -17,11 +18,15 @@ const BG = { 0: [0x6b6b6b, null], 1: [0x000000, null], 2: [0x3a3a3a, null], 3: [
 
 // shared overlays: component display colours
 const COMP = { vert: new THREE.Color(0xc23ad6), vertSel: new THREE.Color(0xffe600), edge: new THREE.Color(COLORS.hilite), edgeSel: new THREE.Color(0xff8a1e), hover: new THREE.Color(0xff2a2a), cv: new THREE.Color(0xd16ff0), dot: new THREE.Color(0x4a8ad6) };
-const pointsMat = new THREE.PointsMaterial({ size: 6, sizeAttenuation: false, vertexColors: true, depthTest: true });
+const pointsMat = cullable(new THREE.PointsMaterial({ size: 6, sizeAttenuation: false, vertexColors: true, depthTest: true }));
 const pointsMatX = new THREE.PointsMaterial({ size: 6, sizeAttenuation: false, vertexColors: true, depthTest: false, transparent: true });
-const edgeMat = new THREE.LineBasicMaterial({ vertexColors: true, depthTest: true });
-const faceSelMat = new THREE.MeshBasicMaterial({ color: 0xff8a1e, transparent: true, opacity: 0.45, depthTest: true, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
-const faceHoverMat = new THREE.MeshBasicMaterial({ color: 0xff2a2a, transparent: true, opacity: 0.35, depthTest: true, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+const edgeMat = cullable(new THREE.LineBasicMaterial({ vertexColors: true, depthTest: true }));
+const dotMat = cullable(new THREE.PointsMaterial({ size: 4, sizeAttenuation: false, vertexColors: true }));
+const faceSelMat = cullable(new THREE.MeshBasicMaterial({ color: 0xff8a1e, transparent: true, opacity: 0.45, depthTest: true, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }));
+const faceHoverMat = cullable(new THREE.MeshBasicMaterial({ color: 0xff2a2a, transparent: true, opacity: 0.35, depthTest: true, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }));
+// cullA/cullB attributes for backface culling (see scene.cullable)
+const setCull = (g, a, b = a) => { g.setAttribute('cullA', new THREE.Float32BufferAttribute(a, 3)); g.setAttribute('cullB', new THREE.Float32BufferAttribute(b, 3)); return g; };
+const faceNormals = (pm) => pm.f.map((_, fi) => { const n = pm.faceNormal(fi); const l = Math.hypot(n[0], n[1], n[2]) || 1; return [n[0] / l, n[1] / l, n[2] / l]; });
 const hoverLineMat = new THREE.LineBasicMaterial({ color: 0xff2a2a, depthTest: false });
 const toolLineMat = new THREE.LineDashedMaterial({ color: 0xffe14a, dashSize: 0.08, gapSize: 0.05, depthTest: false });
 const toolPtMat = new THREE.PointsMaterial({ size: 8, sizeAttenuation: false, color: 0x5cff5c, depthTest: false });
@@ -363,7 +368,7 @@ export class Viewport {
   }
   rayMesh(rc, n) {
     const ud = n.userData; let mesh = ud.mesh; let triFace = mesh.userData.triFace;
-    if (mesh.userData.pick) { if (!this._pm) this._pm = new THREE.Mesh(); this._pm.geometry = mesh.userData.pick.geometry; this._pm.matrixWorld.copy(mesh.matrixWorld); this._pm.material = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide }); mesh = this._pm; triFace = ud.mesh.userData.pick.triFace; }
+    if (mesh.userData.pick) { if (!this._pm) this._pm = new THREE.Mesh(); this._pm.geometry = mesh.userData.pick.geometry; this._pm.matrixWorld.copy(mesh.matrixWorld); this._pm.material = new THREE.MeshBasicMaterial({ side: App.backfaceCulling ? THREE.FrontSide : THREE.DoubleSide }); mesh = this._pm; triFace = ud.mesh.userData.pick.triFace; }
     const g = mesh.geometry; if (!g.boundsTree && g.attributes.position && g.attributes.position.count > 300) g.computeBoundsTree();
     const prevSide = Array.isArray(mesh.material) ? null : mesh.material.side;
     const hits = rc.intersectObject(mesh, false);
@@ -386,6 +391,16 @@ export class Viewport {
     }
     return false;
   }
+  // with Backface Culling on: per-face "faces the camera" flags (null = nothing is culled)
+  frontFaces(o) {
+    if (!App.backfaceCulling || o.inca.kind !== 'mesh') return null;
+    const pm = o.inca.mesh; const M = o.matrixWorld; const nm = new THREE.Matrix3().getNormalMatrix(M);
+    const cp = new THREE.Vector3(); this.camera.getWorldPosition(cp);
+    const back = this.isOrtho ? new THREE.Vector3(0, 0, 1).applyQuaternion(this.camera.getWorldQuaternion(new THREE.Quaternion())) : null;
+    const out = new Uint8Array(pm.f.length); const n = new THREE.Vector3(), c = new THREE.Vector3();
+    pm.f.forEach((_, fi) => { n.set(...pm.faceNormal(fi)).applyMatrix3(nm); out[fi] = n.dot(back || c.set(...pm.faceCenter(fi)).applyMatrix4(M).sub(cp).negate()) > 0 ? 1 : 0; });
+    return out;
+  }
   // component picking: returns {o, id, kind, t?}
   pickComponent(px, kind = App.compMode, { forTool = false } = {}) {
     const best = { d: Infinity };
@@ -396,12 +411,14 @@ export class Viewport {
       const pts = o.inca.kind === 'curve' ? o.inca.curve.cvs : o.inca.mesh.v;
       const W = pts.map(p => new THREE.Vector3(p[0], p[1], p[2]).applyMatrix4(M));
       const S = W.map(w => this.project(w));
+      const ff = this.frontFaces(o); const t = ff && o.inca.mesh.topo;
+      const vOK = (i) => !ff || !t.vertFaces[i].length || t.vertFaces[i].some(f => ff[f]); const eOK = (i) => !ff || !t.edgeFaces[i].length || t.edgeFaces[i].some(f => ff[f]);
       if (kind === 'vertex' || kind === 'uv' || o.inca.kind === 'curve') {
-        S.forEach((s, i) => { if (s.z > 1 || s.z < -1) return; const d = Math.hypot(s.x - px.x, s.y - px.y); if (d < 12 && (d < best.d - 0.5 || (Math.abs(d - best.d) < 0.5 && s.z < best.z))) { if (!this.occluded(W[i], o)) Object.assign(best, { d, o, id: i, z: s.z, kind: 'vertex' }); } });
+        S.forEach((s, i) => { if (s.z > 1 || s.z < -1 || !vOK(i)) return; const d = Math.hypot(s.x - px.x, s.y - px.y); if (d < 12 && (d < best.d - 0.5 || (Math.abs(d - best.d) < 0.5 && s.z < best.z))) { if (!this.occluded(W[i], o)) Object.assign(best, { d, o, id: i, z: s.z, kind: 'vertex' }); } });
       } else if (kind === 'edge') {
         const E = o.inca.mesh.topo.edges;
         E.forEach(([a, b], i) => {
-          const A = S[a], B = S[b]; if (A.z > 1 || B.z > 1) return;
+          const A = S[a], B = S[b]; if (A.z > 1 || B.z > 1 || !eOK(i)) return;
           const dx = B.x - A.x, dy = B.y - A.y; const L2 = dx * dx + dy * dy || 1;
           let t = ((px.x - A.x) * dx + (px.y - A.y) * dy) / L2; t = Math.max(0, Math.min(1, t));
           const d = Math.hypot(A.x + dx * t - px.x, A.y + dy * t - px.y);
@@ -412,7 +429,7 @@ export class Viewport {
         if (hit && hit.distance < best.d) Object.assign(best, { d: hit.distance, o, id: hit.baseFace, kind: 'face' });
         if (!hit && (this.opts.shading === 'wire' || this.opts.xray)) {
           // pick by face centre in wireframe
-          o.inca.mesh.f.forEach((f, fi) => { const c = new THREE.Vector3(...o.inca.mesh.faceCenter(fi)).applyMatrix4(M); const s = this.project(c); const d = Math.hypot(s.x - px.x, s.y - px.y); if (d < 10 && d + 1e5 < best.d + 1e5 && d < (best.dd ?? 1e9)) Object.assign(best, { dd: d, d: 0, o, id: fi, kind: 'face' }); });
+          o.inca.mesh.f.forEach((f, fi) => { if (ff && !ff[fi]) return; const c = new THREE.Vector3(...o.inca.mesh.faceCenter(fi)).applyMatrix4(M); const s = this.project(c); const d = Math.hypot(s.x - px.x, s.y - px.y); if (d < 10 && d + 1e5 < best.d + 1e5 && d < (best.dd ?? 1e9)) Object.assign(best, { dd: d, d: 0, o, id: fi, kind: 'face' }); });
         }
       }
     }
@@ -429,13 +446,15 @@ export class Viewport {
       const inside = (s) => s.z <= 1 && s.x >= r.x0 && s.x <= r.x1 && s.y >= r.y0 && s.y <= r.y1;
       const many = W.length > 4000;
       const ids = [];
-      if (App.compMode === 'vertex' || App.compMode === 'uv' || o.inca.kind === 'curve') S.forEach((s, i) => { if (inside(s) && (many || !this.occluded(W[i], o))) ids.push(i); });
-      else if (App.compMode === 'edge') o.inca.mesh.topo.edges.forEach(([a, b], i) => { const m = W[a].clone().lerp(W[b], 0.5); const sm = this.project(m); if ((inside(sm) || (inside(S[a]) && inside(S[b]))) && (many || !this.occluded(m, o))) ids.push(i); });
+      const ff = this.frontFaces(o); const t = ff && o.inca.mesh.topo;
+      const vOK = (i) => !ff || !t.vertFaces[i].length || t.vertFaces[i].some(f => ff[f]); const eOK = (i) => !ff || !t.edgeFaces[i].length || t.edgeFaces[i].some(f => ff[f]);
+      if (App.compMode === 'vertex' || App.compMode === 'uv' || o.inca.kind === 'curve') S.forEach((s, i) => { if (inside(s) && vOK(i) && (many || !this.occluded(W[i], o))) ids.push(i); });
+      else if (App.compMode === 'edge') o.inca.mesh.topo.edges.forEach(([a, b], i) => { if (!eOK(i)) return; const m = W[a].clone().lerp(W[b], 0.5); const sm = this.project(m); if ((inside(sm) || (inside(S[a]) && inside(S[b]))) && (many || !this.occluded(m, o))) ids.push(i); });
       else if (App.compMode === 'face') {
         const pm = o.inca.mesh;
         pm.f.forEach((f, fi) => {
           const c = new THREE.Vector3(...pm.faceCenter(fi)).applyMatrix4(M); const sc = this.project(c);
-          if (!inside(sc)) return;
+          if (!inside(sc) || (ff && !ff[fi])) return;
           // facing test for occlusion in shaded mode
           if (!(this.opts.xray || this.opts.shading === 'wire')) {
             const nrm = new THREE.Vector3(...pm.faceNormal(fi)).transformDirection(M);
@@ -765,26 +784,32 @@ export function updateComponentOverlays() {
     const pm = n.inca.mesh; const t = pm.topo;
     const mode = App.compMode;
     // edges (always drawn in component mode, coloured by selection in edge mode)
-    { const pos = [], col = [];
-      t.edges.forEach(([a, b], i) => { const p = pm.v[a], q = pm.v[b]; pos.push(p[0], p[1], p[2], q[0], q[1], q[2]); const c = (mode === 'edge' && cs.e.has(i)) ? COMP.edgeSel : COMP.edge; col.push(c.r, c.g, c.b, c.r, c.g, c.b); });
-      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    const fn = faceNormals(pm);
+    { const pos = [], col = [], ca = [], cb = [];
+      t.edges.forEach(([a, b], i) => { const p = pm.v[a], q = pm.v[b]; pos.push(p[0], p[1], p[2], q[0], q[1], q[2]); const c = (mode === 'edge' && cs.e.has(i)) ? COMP.edgeSel : COMP.edge; col.push(c.r, c.g, c.b, c.r, c.g, c.b); const [na, nb] = edgeCullNormals(pm, t, fn, a, b); ca.push(...na, ...na); cb.push(...nb, ...nb); });
+      const g = setCull(new THREE.BufferGeometry(), ca, cb); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
       const ls = new THREE.LineSegments(g, edgeMat); ls.renderOrder = 2; ud.comp.add(ls); }
     if (mode === 'vertex' || mode === 'uv') {
-      const pos = pm.v.flat(); const col = [];
+      const pos = [], col = [], cn = [];
       let w = null; if (Manip.soft.on && cs.v.size) w = softWeights(n, [...cs.v]);
-      pm.v.forEach((_, i) => { let c = cs.v.has(i) ? COMP.vertSel : COMP.vert; if (w && w.has(i) && !cs.v.has(i)) { const k = w.get(i); c = new THREE.Color().setRGB(1, k * 0.9, 0).lerp(COMP.vert, 0.0); c = new THREE.Color(0x111111).lerp(new THREE.Color(1, 0.85 * k + 0.1, 0), 0.3 + 0.7 * k); } col.push(c.r, c.g, c.b); });
-      const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+      // one point per face corner, so a vertex stays visible while any of its faces looks at the camera (backface culling)
+      pm.v.forEach((p, i) => {
+        let c = cs.v.has(i) ? COMP.vertSel : COMP.vert; if (w && w.has(i) && !cs.v.has(i)) { const k = w.get(i); c = new THREE.Color(0x111111).lerp(new THREE.Color(1, 0.85 * k + 0.1, 0), 0.3 + 0.7 * k); }
+        const fs = t.vertFaces[i]; const ns = fs.length ? fs.map(f => fn[f]) : [[0, 0, 0]];
+        for (const nn of ns) { pos.push(p[0], p[1], p[2]); col.push(c.r, c.g, c.b); cn.push(...nn); }
+      });
+      const g = setCull(new THREE.BufferGeometry(), cn); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); g.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
       const pts = new THREE.Points(g, pointsMat); pts.renderOrder = 3; ud.comp.add(pts);
     }
     if (mode === 'face') {
-      const pos = [];
-      for (const fi of cs.f) { const f = pm.f[fi]; if (!f) continue; for (let i = 1; i + 1 < f.length; i++) for (const k of [0, i, i + 1]) pos.push(...pm.v[f[k]]); }
-      if (pos.length) { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); const m = new THREE.Mesh(g, faceSelMat); m.renderOrder = 2; ud.comp.add(m); }
+      const pos = [], fcn = [];
+      for (const fi of cs.f) { const f = pm.f[fi]; if (!f) continue; for (let i = 1; i + 1 < f.length; i++) for (const k of [0, i, i + 1]) { pos.push(...pm.v[f[k]]); fcn.push(...fn[fi]); } }
+      if (pos.length) { const g = setCull(new THREE.BufferGeometry(), fcn); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); const m = new THREE.Mesh(g, faceSelMat); m.renderOrder = 2; ud.comp.add(m); }
       // face centre dots
       const dp = []; const dc = [];
       pm.f.forEach((_, fi) => { dp.push(...pm.faceCenter(fi)); const c = cs.f.has(fi) ? COMP.edgeSel : COMP.dot; dc.push(c.r, c.g, c.b); });
-      const g2 = new THREE.BufferGeometry(); g2.setAttribute('position', new THREE.Float32BufferAttribute(dp, 3)); g2.setAttribute('color', new THREE.Float32BufferAttribute(dc, 3));
-      const dots = new THREE.Points(g2, new THREE.PointsMaterial({ size: 4, sizeAttenuation: false, vertexColors: true })); ud.comp.add(dots);
+      const g2 = setCull(new THREE.BufferGeometry(), fn.flat()); g2.setAttribute('position', new THREE.Float32BufferAttribute(dp, 3)); g2.setAttribute('color', new THREE.Float32BufferAttribute(dc, 3));
+      const dots = new THREE.Points(g2, dotMat); ud.comp.add(dots);
     }
   });
   // hover (pre-selection highlight)
@@ -796,7 +821,7 @@ export function updateComponentOverlays() {
       const pm = c.o.inca.mesh; let obj = null;
       if (c.kind === 'vertex') { const p = c.o.inca.kind === 'curve' ? c.o.inca.curve.cvs[c.id] : pm.v[c.id]; if (p) { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(p, 3)); obj = new THREE.Points(g, new THREE.PointsMaterial({ size: 9, sizeAttenuation: false, color: 0xff2a2a, depthTest: false })); } }
       else if (c.kind === 'edge' && pm) { const e = pm.topo.edges[c.id]; if (e) { const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute([...pm.v[e[0]], ...pm.v[e[1]]], 3)); obj = new THREE.LineSegments(g, hoverLineMat); } }
-      else if (c.kind === 'face' && pm) { const f = pm.f[c.id]; if (f) { const pos = []; for (let i = 1; i + 1 < f.length; i++) for (const k of [0, i, i + 1]) pos.push(...pm.v[f[k]]); const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); obj = new THREE.Mesh(g, faceHoverMat); } }
+      else if (c.kind === 'face' && pm) { const f = pm.f[c.id]; if (f) { const pos = []; for (let i = 1; i + 1 < f.length; i++) for (const k of [0, i, i + 1]) pos.push(...pm.v[f[k]]); const nn = pm.faceNormal(c.id); const g = setCull(new THREE.BufferGeometry(), pos.map((_, j) => nn[j % 3])); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); obj = new THREE.Mesh(g, faceHoverMat); } }
       if (obj) { obj.userData.helper = true; obj.renderOrder = 5; c.o.add(obj); App._hoverObj = obj; }
     }
   }
