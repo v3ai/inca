@@ -1,7 +1,7 @@
 {
   "name": "inca",
   "productName": "Inca",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "Inca - a free 3D modeling, animation and rendering application",
   "main": "main.js",
   "author": "Inca contributors",
