@@ -2,7 +2,7 @@
 import { App } from '../core/app.js';
 import { runMEL, runJS } from '../core/mel.js';
 import { h, menuBar, showMenu, FloatWin, toast, promptDialog } from './dom.js';
-import { ICONS } from './icons.js';
+import { icon } from './icons.js';
 
 const STORE_KEY = 'inca.scriptEditor.tabs';
 const MAX_ROWS = 4000;
@@ -20,7 +20,7 @@ const SE_ICONS = {
   exec: sv('<path d="M7 4 L18 12 L7 20Z" fill="#7ccf6b" stroke="#222" stroke-width=".8"/>'),
   shelf: sv('<rect x="2" y="9" width="20" height="9" fill="#5d5d5d" stroke="#222" stroke-width=".8"/><path d="M12 2 V8 M9 5 H15" stroke="#7ccf6b" stroke-width="2"/>'),
 };
-const seIcon = (name) => SE_ICONS[name] || ICONS[name] || ICONS.help;
+const seIcon = (name) => SE_ICONS[name] || icon(name);
 
 function injectStyle() {
   if (document.getElementById('inca-se-style')) return;

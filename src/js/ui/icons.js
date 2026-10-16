@@ -215,6 +215,14 @@ const I = {
   help: svg(`<circle cx="12" cy="12" r="9" fill="none" stroke="${D}" stroke-width="1.6"/><text x="12" y="16.5" text-anchor="middle" font-size="12" font-weight="700" fill="${D}" font-family="Arial">?</text>`),
 };
 I.lastToolBox = I.lastTool;
-export function icon(name) { return I[name] || I.help; }
+// gradient ids are shared by every copy of an icon in the page, and url(#id) resolves to the first one in the
+// document, which may sit in a hidden svg (status line toggles) and then paints nothing: give each copy its own ids
+let uid = 0;
+export function icon(name) {
+  const s = I[name] || I.help;
+  if (!s.includes(' id="')) return s;
+  const n = ++uid;
+  return s.replace(/id="([^"]+)"/g, `id="$1-${n}"`).replace(/url\(#([^)]+)\)/g, `url(#$1-${n})`);
+}
 export const ICONS = I;
 export function iconEl(name, cls = 'ib') { const d = document.createElement('div'); d.className = cls; d.innerHTML = icon(name); return d; }

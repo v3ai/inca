@@ -86,7 +86,7 @@ export function openShelfEditor() {
   const pickIcon = (anchor, onPick) => {
     document.querySelectorAll('.she-iconpick').forEach(e => e.remove());
     const pop = h('div', { class: 'she-iconpick' });
-    for (const name of Object.keys(ICONS).sort()) { const d = h('div', { title: name, html: ICONS[name] }); d.addEventListener('click', () => { pop.remove(); onPick(name); }); pop.append(d); }
+    for (const name of Object.keys(ICONS).sort()) { const d = h('div', { title: name, html: icon(name) }); d.addEventListener('click', () => { pop.remove(); onPick(name); }); pop.append(d); }
     document.body.append(pop);
     const r = anchor.getBoundingClientRect(); const pr = pop.getBoundingClientRect();
     pop.style.left = Math.max(4, Math.min(r.left, innerWidth - pr.width - 4)) + 'px';
