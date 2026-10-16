@@ -124,7 +124,20 @@ App.ui.hotbox = (show) => {
   const vp = App.hoverViewport || App.activeViewport;
   const pos = App._mouse || { x: innerWidth / 2, y: innerHeight / 2 };
   hb = h('div', { class: 'hotbox' }); document.body.append(hb);
-  const rowAt = (y, menus) => { const r = h('div', { class: 'hb-row', style: { left: pos.x + 'px', top: y + 'px' } }); for (const mm of menus) { const it = h('div', { class: 'hb-item', text: mm.label }); it.addEventListener('mouseenter', () => { for (const x of r.parentNode.querySelectorAll('.hb-item.open')) x.classList.remove('open'); it.classList.add('open'); const b = it.getBoundingClientRect(); closeMenus(); showMenu(mm.items, b.left, b.bottom); }); r.append(it); } hb.append(r); return r; };
+  // a menu opens when its name is pressed with LMB (release over an item to run it, or click again);
+  // pressing the open menu's name closes it
+  const menuItem = (label, items) => {
+    const it = h('div', { class: 'hb-item', text: label }); let wasOpen = false;
+    it.addEventListener('pointerdown', () => { wasOpen = it.classList.contains('open'); }); // before the document handler closes the menu
+    it.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault(); closeMenus(); if (wasOpen) return;
+      const b = it.getBoundingClientRect(); it.classList.add('open');
+      showMenu(items, b.left, b.bottom, { onClose: () => it.classList.remove('open') });
+    });
+    return it;
+  };
+  const rowAt = (y, menus) => { const r = h('div', { class: 'hb-row', style: { left: pos.x + 'px', top: y + 'px' } }); for (const mm of menus) r.append(menuItem(mm.label, mm.items)); hb.append(r); return r; };
   const common = Object.entries(App.ui.commonMenus).map(([label, items]) => ({ label, items }));
   const set = Object.entries(App.ui.menuSets[App.prefs.menuSet] || {}).map(([label, items]) => ({ label, items }));
   const others = Object.entries(App.ui.menuSets).filter(([k]) => k !== App.prefs.menuSet).flatMap(([k, ms]) => Object.entries(ms).slice(0, 3).map(([label, items]) => ({ label, items })));
@@ -134,10 +147,7 @@ App.ui.hotbox = (show) => {
   rowAt(pos.y - 30, others.slice(0, 8));
   hb.append(h('div', { class: 'hb-center', text: 'Inca', style: { left: pos.x + 'px', top: pos.y + 'px' } }));
   if (vp) {
-    const panelMenus = [...vp.menubar.querySelectorAll('.menu-title')].map(t => ({ label: t.textContent, el: t }));
-    const r = h('div', { class: 'hb-row', style: { left: pos.x + 'px', top: (pos.y + 28) + 'px' } });
-    for (const pm of panelMenus) { const it = h('div', { class: 'hb-item', text: pm.label }); it.addEventListener('mouseenter', () => { closeMenus(); pm.el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true })); }); r.append(it); }
-    hb.append(r);
+    rowAt(pos.y + 28, [...vp.menubar.querySelectorAll('.menu-title')].filter(t => t._items).map(t => ({ label: t.textContent, items: t._items })));
     const lay = h('div', { class: 'hb-row', style: { left: pos.x + 'px', top: (pos.y + 56) + 'px' } }, ...[['Single', 'single'], ['Four', 'four'], ['Two Side', 'twoSide'], ['Two Stack', 'twoStack'], ['Three', 'three']].map(([l, k]) => { const it = h('div', { class: 'hb-item', text: l + ' Pane' }); it.addEventListener('mouseup', () => App.setLayout(k)); return it; }));
     hb.append(lay);
   }
@@ -154,9 +164,19 @@ App.on('inViewEditor', (rec) => {
   const vp = App.activeViewport; if (!vp) return;
   const r = vp.view.getBoundingClientRect();
   ivfRec = rec;
-  ivf = h('div', { class: 'ivf', style: { left: (r.left + 10) + 'px', top: (r.top + 30) + 'px' } });
-  const head = h('div', { class: 'ivf-title' }, h('span', { text: rec.name, style: { flex: '1' } }), h('span', { text: '✕', style: { cursor: 'default', padding: '0 4px' }, title: 'Close In-View Editor', onclick: closeIVF }));
+  ivf = h('div', { class: 'ivf' });
+  const close = h('span', { text: '✕', style: { cursor: 'default', padding: '0 4px' }, title: 'Close In-View Editor', onclick: closeIVF });
+  const head = h('div', { class: 'ivf-title', title: 'Drag to move the In-View Editor' }, h('span', { text: rec.name, style: { flex: '1' } }), close);
   ivf.append(head);
+  // drag the title to move it; the offset from the viewport corner is remembered for the next time it opens
+  head.addEventListener('mousedown', (e) => {
+    if (e.button !== 0 || e.target === close) return;
+    e.preventDefault();
+    const el = ivf, x0 = e.clientX, y0 = e.clientY, l0 = el.offsetLeft, t0 = el.offsetTop;
+    const mm = (ev) => placeIVF(el, vp, l0 + ev.clientX - x0, t0 + ev.clientY - y0);
+    const mu = () => { removeEventListener('mousemove', mm); removeEventListener('mouseup', mu); const vr = vp.view.getBoundingClientRect(); App.prefs.opt.ivfPos = { x: el.offsetLeft - vr.left, y: el.offsetTop - vr.top }; App.savePrefs(); };
+    addEventListener('mousemove', mm); addEventListener('mouseup', mu);
+  });
   const rows = [];
   for (const ch of op.channels) {
     if (ch.inView === false) continue;
@@ -184,7 +204,15 @@ App.on('inViewEditor', (rec) => {
   }
   document.body.append(ivf);
   ivf._rows = rows;
+  const p = App.prefs.opt.ivfPos || { x: 10, y: 30 };
+  placeIVF(ivf, vp, r.left + p.x, r.top + p.y);
 });
+// keep the In-View Editor inside its viewport
+function placeIVF(el, vp, x, y) {
+  const r = vp.view.getBoundingClientRect();
+  el.style.left = Math.max(r.left, Math.min(r.right - el.offsetWidth, x)) + 'px';
+  el.style.top = Math.max(r.top, Math.min(r.bottom - el.offsetHeight, y)) + 'px';
+}
 App.on('refresh', (d) => { if (ivf && (d.has('channels') || d.has('attr'))) { if (!App.nodes.has(ivfRec?.id)) closeIVF(); else for (const r of ivf._rows) r._upd(); } });
 App.on('selectionChanged', () => { if (!ivfRec) return; const o = S.historyOwner(ivfRec); if (!o || !(App.sel.includes(o) || App.hilite.includes(o))) closeIVF(); });
 App.on('sceneLoaded', closeIVF);

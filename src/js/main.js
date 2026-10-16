@@ -113,6 +113,8 @@ function onKeyDown(e) {
   const combo = comboFromEvent(e);
   if (!combo) return;
   if (inWin && !/^Ctrl\+/.test(combo)) return;
+  // holding Space auto-repeats keydown: that must not close a menu opened from the hotbox
+  if (combo === 'Space' && e.repeat) { e.preventDefault(); return; }
   if (menuIsOpen() && e.key !== 'Escape') closeMenus();
   // tools get first crack (Enter / Escape / Backspace while drawing curves etc.)
   if (App.tools?.handleKey && App.tools.handleKey(e, combo)) { e.preventDefault(); return; }

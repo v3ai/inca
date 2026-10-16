@@ -118,6 +118,7 @@ export function menuBar(container, menus, { cls = '' } = {}) {
   const titles = [];
   for (const m of menus) {
     const t = h('div', { class: 'menu-title ' + (m.cls || cls), text: m.label });
+    t._items = m.items; // lets the hotbox reopen a panel's menus
     const open = () => {
       closeMenus(); active = true; t.classList.add('open');
       const r = t.getBoundingClientRect();

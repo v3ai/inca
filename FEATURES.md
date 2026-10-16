@@ -19,15 +19,15 @@ Legend: ✅ built · 🟡 partial / simplified · ⏭ planned
 - ✅ Shelves: Curves/Surfaces, Poly Modeling, Sculpting, Rigging, Animation, Rendering, FX, Custom; Ctrl+Shift+click a menu item to add it; right-click/MMB-drag to edit; Shelf Editor; save/load shelves
 - ✅ Tool box (Select, Lasso, Paint, Move, Rotate, Scale, Last tool) + Quick Layout buttons
 - ✅ Workspaces (Maya Classic, Modeling Standard/Expert, Sculpting, Animation, Rigging, Rendering, UV Editing)
-- ✅ Channel Box / Layer Editor: channels, SHAPES, INPUTS (construction history), virtual sliders (MMB in viewport, Ctrl/MMB-drag in fields; int/enum channels step in whole numbers and respect min/max), expressions in fields (`+=2`), right-click Key/Lock/Hide/Break, keyed/locked colouring
+- ✅ Channel Box / Layer Editor: channels, SHAPES, INPUTS (construction history), virtual sliders (MMB in viewport, Ctrl/MMB-drag in fields; int/enum channels step in whole numbers and respect min/max), expressions in fields (`+=2`); a value typed into a selected channel goes to all selected channels, right-click Key/Lock/Hide/Break, keyed/locked colouring
 - ✅ Display layers: create (empty/from selected), V / T / R, colour, select, rename, delete
 - ✅ Attribute Editor (Ctrl+A) with tabs for transform, shape, history nodes, material and textures; texture map buttons; Copy Tab; lock/focus
 - ✅ Outliner (dock), hierarchy, drag to parent/reorder/unparent, inline rename, search, shapes/sets/materials display
 - ✅ Time Slider, Range Slider, playback controls, auto key, fps menu, looping, key ticks, shift-drag range edits
 - ✅ Command line (MEL / JS), result line, help line, Script Editor
 - ✅ Floating editors; side tabs; dock resizing
-- ✅ Hotbox (hold Space), RMB marking menus (object, component, Shift+RMB tool menus, Ctrl+RMB conversion)
-- ✅ In-View Editor for history nodes (drag labels to scrub values); option boxes remember settings
+- ✅ Hotbox (hold Space, click a menu name to open it), RMB marking menus (object, component, Shift+RMB tool menus, Ctrl+RMB conversion)
+- ✅ In-View Editor for history nodes (drag labels to scrub values, drag the title to move it; position is remembered); option boxes remember settings
 - ✅ Preferences (interface, display, manipulators, animation, time slider, units, undo, files, autosave); Hotkey Editor with keyboard map
 - ⏭ Arbitrary panel docking / saving custom workspaces, tear-off menus
 

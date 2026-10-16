@@ -373,8 +373,10 @@ export class Viewport {
     const prevSide = Array.isArray(mesh.material) ? null : mesh.material.side;
     const hits = rc.intersectObject(mesh, false);
     const hit = hits[0]; if (!hit) return null;
-    hit.baseFace = triFace ? triFace[Math.floor(hit.faceIndex)] : -1;
-    if (hit.face && g.index == null) hit.baseFace = triFace[Math.floor(hit.faceIndex)];
+    // the BVH adds an index to our non-indexed geometry and reorders its triangles, so faceIndex no longer
+    // matches triFace; the hit's vertex index still points at the original (unshared) corner, 3 per triangle
+    const tri = hit.face ? Math.floor(hit.face.a / 3) : Math.floor(hit.faceIndex);
+    hit.baseFace = triFace ? triFace[tri] ?? -1 : -1;
     return hit;
   }
   occluded(worldPt, owner) {

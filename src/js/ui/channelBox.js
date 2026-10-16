@@ -96,12 +96,13 @@ function build(container) {
       inp.addEventListener('change', () => {
         const s = inp.value.trim(); const cur = +S.getAttr(rec, attr) || 0; let n;
         const m = s.match(/^([+\-*/])=\s*(-?[\d.eE+-]+)$/);
-        if (m) { const a = parseFloat(m[2]); n = m[1] === '+' ? cur + a : m[1] === '-' ? cur - a : m[1] === '*' ? cur * a : cur / a; }
-        else { n = Number(s); if (isNaN(n)) { try { n = Function('"use strict";return (' + s.replace(/[^-+*/().\d\s eE]/g, '') + ')')(); } catch { n = NaN; } } }
+        if (m) { // relative edit: applied to each selected channel's own value
+          const a = parseFloat(m[2]); if (isNaN(a)) { inp.value = fmt(cur); return; }
+          return commit(chanId, rec, attr, (c) => m[1] === '+' ? c + a : m[1] === '-' ? c - a : m[1] === '*' ? c * a : c / a);
+        }
+        n = Number(s); if (isNaN(n)) { try { n = Function('"use strict";return (' + s.replace(/[^-+*/().\d\s eE]/g, '') + ')')(); } catch { n = NaN; } }
         if (typeof n !== 'number' || isNaN(n)) { inp.value = fmt(cur); return; }
-        if (opts.type === 'int') n = Math.round(n);
-        if (opts.min !== undefined) n = Math.max(opts.min, n); if (opts.max !== undefined) n = Math.min(opts.max, n);
-        commit(chanId, rec, attr, n, opts.relative ? n - cur : null);
+        commit(chanId, rec, attr, n);
       });
       // ctrl+LMB / MMB drag directly in the field = virtual slider
       inp.addEventListener('mousedown', (e) => {
@@ -138,16 +139,31 @@ function build(container) {
     st.fields.push(r); st.order.push(chanId); st.chanOpts.set(chanId, opts);
     return r;
   }
+  // a value entered in a selected channel goes to every selected channel (on every selected object), like Maya;
+  // value may be a function of the channel's current value (relative edits such as +=2)
   function commit(chanId, rec, attr, value) {
-    const list = st.selChannels.has(chanId) && st.selChannels.size > 0 ? [...new Set([chanId, ...st.selChannels])] : [chanId];
-    const sameAttrTargets = [];
-    for (const c of list) { const [kind, a, b] = c.split(':'); const at = kind === 'h' ? b : a; if (at !== attr) continue; sameAttrTargets.push(...targetsFor([c])); }
-    const targets = sameAttrTargets.length ? sameAttrTargets : [[rec, attr]];
+    const list = st.selChannels.has(chanId) ? [...new Set([chanId, ...st.selChannels])] : [chanId];
+    const targets = [];
+    for (const c of list) { const o = c === 'xf:visibility' ? { visibility: true } : st.chanOpts.get(c) || {}; for (const [r, a] of targetsFor([c])) targets.push([r, a, o]); }
+    if (!targets.length) targets.push([rec, attr, st.chanOpts.get(chanId) || {}]);
     Undo.checkpoint('setAttr ' + attr);
-    let n = 0;
-    for (const [r, a] of targets) { if (S.isLocked(r, a)) { App.emit('warning', `// Warning: ${S.nodeName(r)}.${a} is locked`); continue; } if (S.setAttr(r, a, value)) { n++; if (r.isObject3D) App.anim.autoKey(r, [a]); } }
-    App.emit('echo', `setAttr "${S.nodeName(rec)}.${attr}" ${typeof value === 'boolean' ? +value : fmt(+value, 4)};`);
+    for (const [r, a, o] of targets) {
+      if (S.isLocked(r, a)) { App.emit('warning', `// Warning: ${S.nodeName(r)}.${a} is locked`); continue; }
+      const v = channelValue(typeof value === 'function' ? value(+S.getAttr(r, a) || 0) : value, o);
+      if (v === undefined) continue;
+      if (S.setAttr(r, a, v)) { if (r.isObject3D) App.anim.autoKey(r, [a]); App.emit('echo', `setAttr "${S.nodeName(r)}.${a}" ${typeof v === 'number' || typeof v === 'boolean' ? fmt(+v, 4) : JSON.stringify(v)};`); }
+    }
     placeProxy(); App.dirty('channels', 'attr', 'outliner'); App.requestRender();
+  }
+  // convert an entered value to what a channel accepts (int / enum / bool / visibility, min / max); undefined = not applicable
+  function channelValue(v, o) {
+    if (o.type === 'enum' && o.values) return o.values.includes(v) ? v : undefined; // enums with their own values only take one of them
+    if (typeof v === 'string') return undefined;
+    if (typeof v === 'boolean') v = +v;
+    if (typeof v !== 'number' || !isFinite(v)) return undefined;
+    if (o.visibility) return v > 0 ? 1 : 0;
+    v = sliderValue(v, o);
+    return o.type === 'bool' ? !!v : v;
   }
   function channelMenu(e) {
     showMenu([
