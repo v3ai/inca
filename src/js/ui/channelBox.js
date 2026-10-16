@@ -200,7 +200,8 @@ function build(container) {
     }
   }
   function refreshValues() { for (const r of st.fields) r._upd(); }
-  function refreshAll() { const sig = signature(); if (sig !== st.sig) { st.sig = sig; rebuild(); } else refreshValues(); }
+  // undo/redo restores fresh node objects under the same ids, so the rows' bound records must be rebuilt too
+  function refreshAll() { const sig = signature(); const objs = App.sel; if (sig !== st.sig || objs.length !== st.objs?.length || objs.some((o, i) => o !== st.objs[i])) { st.sig = sig; st.objs = objs.slice(); rebuild(); } else refreshValues(); }
   App.on('selectionChanged', () => { st.selChannels = new Set([...st.selChannels].filter(c => !c.startsWith('h:'))); });
 
   // ------------------------------------------------------------ layer editor

@@ -87,9 +87,9 @@ for (const [t, l] of Object.entries(LIGHT_LABEL)) {
 C('createCamera', 'Camera', () => { ck('camera'); exitComponentMode(); const o = S.createCamera('camera1'); o.inca.t = [0, 2, 10]; S.updateXform(o); Sel.select([o]); echo('camera -centerOfInterest 5 -focalLength 35 -lensSqueezeRatio 1 -cameraScale 1 -horizontalFilmAperture 1.41732 -horizontalFilmOffset 0 -verticalFilmAperture 0.94488 -verticalFilmOffset 0 -filmFit Fill -overscan 1 -motionBlur 0 -shutterAngle 144 -nearClipPlane 0.1 -farClipPlane 10000 -orthographic 0 -orthographicWidth 30 -panZoomEnabled 0 -horizontalPan 0 -verticalPan 0 -zoom 1;'); result(o.inca.name); return o; }, { icon: 'camera' });
 C('createLocator', 'Locator', () => { ck('locator'); exitComponentMode(); const o = S.createLocator(); Sel.select([o]); echo('spaceLocator -p 0 0 0;'); result(o.inca.name); return o; }, { icon: 'locator' });
 C('createEmptyGroup', 'Empty Group', () => { ck('group'); const o = S.createGroup('null1'); Sel.select([o]); echo('group -em;'); result(o.inca.name); return o; }, { icon: 'group' });
-C('cvCurveTool', 'CV Curve Tool', () => App.setTool('cvCurve'), { icon: 'cvCurve', noRepeat: true, help: 'Click to place CVs; press Enter to complete the curve' });
-C('epCurveTool', 'EP Curve Tool', () => App.setTool('epCurve'), { icon: 'epCurve', noRepeat: true, help: 'Click to place edit points; press Enter to complete' });
-C('createPolygonTool', 'Create Polygon', () => App.setTool('createPoly'), { icon: 'planar', noRepeat: true, help: 'Click to place vertices; press Enter to complete the polygon' });
+C('cvCurveTool', 'CV Curve Tool', () => App.setTool('cvCurve'), { icon: 'cvCurve', help: 'Click to place CVs; press Enter to complete the curve' });
+C('epCurveTool', 'EP Curve Tool', () => App.setTool('epCurve'), { icon: 'epCurve', help: 'Click to place edit points; press Enter to complete' });
+C('createPolygonTool', 'Create Polygon', () => App.setTool('createPoly'), { icon: 'planar', help: 'Click to place vertices; press Enter to complete the polygon' });
 
 // ------------------------------------------------------------------ edit
 C('undo', 'Undo', () => { Undo.undo(); placeProxy(); }, { hk: 'Z', icon: 'undo', noRepeat: true });
@@ -226,9 +226,9 @@ C('pivotEdit', 'Edit Pivot', () => { Manip.pivotMode = !Manip.pivotMode; if (Man
 C('softSelect', 'Soft Select', () => { Manip.soft.on = !Manip.soft.on; for (const o of App.hilite) o.userData.compDirty = true; App.activeViewport?.flash('Soft Select: ' + (Manip.soft.on ? 'ON' : 'OFF')); App.dirty('toolSettings'); }, { hk: 'B', icon: 'softSelect', noRepeat: true });
 C('manipBigger', 'Increase Manipulator Size', () => { App.prefs.manipSize = Math.min(4, (App.prefs.manipSize || 1) * 1.15); for (const v of App.viewports) v.tc.setSize(App.prefs.manipSize); App.savePrefs(); }, { hk: '=', noRepeat: true });
 C('manipSmaller', 'Decrease Manipulator Size', () => { App.prefs.manipSize = Math.max(0.2, (App.prefs.manipSize || 1) / 1.15); for (const v of App.viewports) v.tc.setSize(App.prefs.manipSize); App.savePrefs(); }, { hk: '-', noRepeat: true });
-C('insertEdgeLoopTool', 'Insert Edge Loop', () => App.setTool('edgeLoop'), { icon: 'edgeLoop', noRepeat: true, help: 'Click on an edge to insert an edge loop; drag to slide' });
-C('multiCutTool', 'Multi-Cut', () => App.setTool('multiCut'), { icon: 'multiCut', noRepeat: true, help: 'Click on edges to place cut points; Enter/right-click to complete' });
-C('targetWeldTool', 'Target Weld', () => App.setTool('targetWeld'), { icon: 'targetWeld', noRepeat: true, help: 'Drag from a vertex to a target vertex to weld them' });
+C('insertEdgeLoopTool', 'Insert Edge Loop', () => App.setTool('edgeLoop'), { icon: 'edgeLoop', help: 'Click on an edge to insert an edge loop; drag to slide' });
+C('multiCutTool', 'Multi-Cut', () => App.setTool('multiCut'), { icon: 'multiCut', help: 'Click on edges to place cut points; Enter/right-click to complete' });
+C('targetWeldTool', 'Target Weld', () => App.setTool('targetWeld'), { icon: 'targetWeld', help: 'Drag from a vertex to a target vertex to weld them' });
 
 // ------------------------------------------------------------------ modify
 C('resetTransformations', 'Reset Transformations', () => { const s = requireSel(); if (!s) return; ck('reset'); for (const o of s) S.resetTransforms(o); echo('makeIdentity -apply false -t 1 -r 1 -s 1;'); placeProxy(); });

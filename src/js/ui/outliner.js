@@ -80,7 +80,9 @@ function build(container) {
       if (e.ctrlKey) Sel.select([o], 'toggle'); else { Sel.select([o], 'replace'); anchor = o; }
       if (!e.shiftKey && !e.ctrlKey) anchor = o;
     };
-    if (!isMid && !App.sel.includes(o)) doSelect();
+    // select on press when the item isn't selected yet; otherwise wait for the release so a multi-selection can be dragged
+    const selectedOnDown = !isMid && !App.sel.includes(o);
+    if (selectedOnDown) doSelect();
     const mm = (ev) => {
       if (!dragging && Math.hypot(ev.clientX - x0, ev.clientY - y0) > 5) {
         dragging = true;
@@ -97,7 +99,7 @@ function build(container) {
     const mu = () => {
       removeEventListener('mousemove', mm); removeEventListener('mouseup', mu);
       ghost?.remove(); for (const x of list.querySelectorAll('.drop, .drop-line')) x.classList.remove('drop', 'drop-line');
-      if (!dragging) { if (!isMid && App.sel.includes(o) && !(App.sel.length === 1 && App.sel[0] === o)) doSelect(); else if (!isMid && (e.ctrlKey || e.shiftKey)) { } return; }
+      if (!dragging) { if (!isMid && !selectedOnDown && App.sel.includes(o) && (e.ctrlKey || e.shiftKey || !(App.sel.length === 1 && App.sel[0] === o))) doSelect(); return; }
       const moving = (App.sel.includes(o) ? App.sel : [o]).filter(n => !n.inca.startup);
       if (!moving.length) return;
       const overList = list.matches(':hover');

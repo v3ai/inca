@@ -533,6 +533,10 @@ export class Viewport {
     v.addEventListener('wheel', (e) => { e.preventDefault(); this.dolly(-e.deltaY * 0.35, this.localPx(e)); }, { passive: false });
     v.addEventListener('dblclick', (e) => this.onDbl(e));
     this.canvas.addEventListener('pointerdown', () => { App.setActiveViewport(this); }, true);
+    // Alt = camera navigation: keep the manipulator from grabbing (or hover-highlighting) an axis
+    const altGuard = (e) => { if (e.altKey && !this.tc.dragging) e.stopPropagation(); };
+    v.addEventListener('pointerdown', altGuard, true);
+    v.addEventListener('pointermove', altGuard, true);
   }
   onDown(e) {
     App.setActiveViewport(this);

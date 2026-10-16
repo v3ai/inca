@@ -51,7 +51,8 @@ export function placeProxy() {
 }
 
 export function manipVisible() {
-  if (Manip.mode === 'none' || App.tool === 'select' || App.tool === 'lasso' || App.tool === 'paint' || App.tool === 'cvCurve' || App.tool === 'epCurve' || App.tool === 'edgeLoop' || App.tool === 'multiCut' || App.tool === 'targetWeld' || App.tool === 'createPoly') return false;
+  // interactive tools (Multi-Cut, Quad Draw, Sculpt, curves, joints...) handle their own clicks: no manipulator to grab
+  if (Manip.mode === 'none' || App.tool === 'select' || App.tools?.isInteractive?.(App.tool)) return false;
   if (App.compMode) return App.hilite.some(o => Sel.affectedVerts(o).length);
   return topSelected().length > 0;
 }

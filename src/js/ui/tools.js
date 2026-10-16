@@ -120,12 +120,17 @@ const TOOLS = {
   },
   // ---------------- multi-cut
   multiCut: {
-    help: 'Multi-Cut Tool: click on edges/vertices to cut. Shift snaps to 10% steps. Ctrl+click on an edge inserts an edge loop. Enter or right-click to complete, Backspace undoes the last point',
+    help: 'Multi-Cut Tool: click on edges/vertices to cut (cut points snap like vertices; hold V to snap from further away). Shift snaps to 10% steps. Ctrl+click on an edge inserts an edge loop. Enter or right-click to complete, Backspace undoes the last point',
     start() { st.pts = []; st.obj = null; },
     hover(vp, e, px) { st.hoverPt = this.pick(vp, px, e); this.draw(); return true; },
     pick(vp, px, e) {
       const objs = st.obj ? [st.obj] : meshTargets();
-      const v = pickVertex(vp, px, objs, 8); if (v) return { o: v.o, vertex: v.i, w: v.w };
+      // the cut's own points snap like vertices (e.g. click the first point again to close a loop); hold V to snap from further away
+      const R = Manip._keyPoint ? 40 : 8;
+      let own = null; for (const p of st.pts) { if (p.vertex !== undefined) continue; const s = vp.project(p.w); const d = Math.hypot(s.x - px.x, s.y - px.y); if (s.z <= 1 && d < R && (!own || d < own.d)) own = { p, d }; }
+      const v = pickVertex(vp, px, objs, R);
+      if (own && (!v || own.d <= v.d)) return { ...own.p, w: own.p.w.clone() };
+      if (v) return { o: v.o, vertex: v.i, w: v.w };
       const ed = pickEdge(vp, px, objs); if (!ed) return null;
       let t = ed.t; if (e.shiftKey) t = Math.round(t * 10) / 10; t = Math.max(0.001, Math.min(0.999, t));
       return { o: ed.o, edge: [ed.a, ed.b], t, w: ed.W[ed.a].clone().lerp(ed.W[ed.b], t) };
@@ -332,10 +337,10 @@ App.tools = {
   cancel() { if (st) { st.pts = []; st.t.draw?.(); } },
 };
 // right-click completes the multi-cut (handled before marking menus)
-addEventListener('mousedown', (e) => { if (e.button === 2 && st && (st.name === 'multiCut' || st.name === 'createPoly' || st.name === 'cvCurve' || st.name === 'epCurve') && st.pts?.length && e.target.closest?.('.panel-view')) { e.stopPropagation(); e.preventDefault(); st.t.complete?.(); } }, true);
+addEventListener('mousedown', (e) => { if (e.button === 2 && !e.altKey && st && (st.name === 'multiCut' || st.name === 'createPoly' || st.name === 'cvCurve' || st.name === 'epCurve') && st.pts?.length && e.target.closest?.('.panel-view')) { e.stopPropagation(); e.preventDefault(); st.t.complete?.(); } }, true);
 
 // ------------------------------------------------------------------ commands
-C('pencilCurveTool', 'Pencil Curve Tool', () => App.setTool('pencilCurve'), { icon: 'pencilCurve', noRepeat: true });
-C('sculptTool', 'Sculpt Tool', () => { setOpt('sculptBrush', 'sculpt'); App.setTool('sculpt'); App.ui.toggleToolSettings(true); }, { icon: 'softSelect', noRepeat: true });
-for (const [b, l] of [['smooth', 'Smooth'], ['relax', 'Relax'], ['grab', 'Grab'], ['pinch', 'Pinch'], ['flatten', 'Flatten'], ['inflate', 'Inflate']]) C(b + 'SculptTool', l + ' Sculpt Tool', () => { setOpt('sculptBrush', b); App.setTool('sculpt'); App.dirty('toolSettings'); }, { icon: 'softSelect', noRepeat: true });
+C('pencilCurveTool', 'Pencil Curve Tool', () => App.setTool('pencilCurve'), { icon: 'pencilCurve' });
+C('sculptTool', 'Sculpt Tool', () => { setOpt('sculptBrush', 'sculpt'); App.setTool('sculpt'); App.ui.toggleToolSettings(true); }, { icon: 'softSelect' });
+for (const [b, l] of [['smooth', 'Smooth'], ['relax', 'Relax'], ['grab', 'Grab'], ['pinch', 'Pinch'], ['flatten', 'Flatten'], ['inflate', 'Inflate']]) C(b + 'SculptTool', l + ' Sculpt Tool', () => { setOpt('sculptBrush', b); App.setTool('sculpt'); App.dirty('toolSettings'); }, { icon: 'softSelect' });
 C('makeLive', 'Make Live', () => { const o = Sel.lead(); App.liveSurface = App.liveSurface === o ? null : (o?.inca.kind === 'mesh' ? o : null); App.help(App.liveSurface ? 'Live surface: ' + o.inca.name : 'No live surface'); App.dirty('statusline'); }, { noRepeat: true });

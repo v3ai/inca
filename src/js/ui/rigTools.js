@@ -40,7 +40,7 @@ export function install() {
     end() { if (this.made?.length) this.complete(); },
     settings: [{ key: 'orient', label: 'Orient joint to child (X)', type: 'bool', get: () => optsOf('jointTool').orient !== false, set: (v) => { (App.prefs.opt.jointTool ||= {}).orient = v; App.savePrefs(); } }],
   }, 'joint');
-  C('jointTool', 'Create Joints', () => App.setTool('jointTool'), { icon: 'joint', noRepeat: true, help: 'Click in a view to place joints; Enter completes the chain' });
+  C('jointTool', 'Create Joints', () => App.setTool('jointTool'), { icon: 'joint', help: 'Click in a view to place joints; Enter completes the chain' });
   C('insertJoint', 'Insert Joint', () => { const j = Sel.lead(); if (!j || j.inca.kind !== 'joint') return warn('Select a joint'); const kid = S.dagChildren(j).find(c => c.inca.kind === 'joint'); if (!kid) return warn('The joint has no child joint'); ck('insert joint'); const mid = wpos(j).lerp(wpos(kid), 0.5); const n = createJointAt(mid, j); S.parentTo(kid, n, true); orientHierarchy([j]); Sel.select([n]); echo('insertJoint ' + j.inca.name + ';'); });
   C('mirrorJoint', 'Mirror Joints', (a) => {
     const root = Sel.lead(); if (!root || root.inca.kind !== 'joint') return warn('Select the root joint to mirror'); ck('mirror joint');
@@ -78,7 +78,7 @@ export function install() {
     Rig.evaluate(); echo(`skinCluster -toSelectedBones -bindMethod 0 -skinMethod 0 -normalizeWeights 1 -weightDistribution 0 -mi ${o0.maxInfluences} -dr ${o0.dropoffRate};`);
   }, { icon: 'joint', options: [{ key: 'maxInfluences', label: 'Max influences', type: 'int', value: 4 }, { key: 'dropoffRate', label: 'Dropoff rate', type: 'float', value: 4 }] });
   C('unbindSkin', 'Unbind Skin', () => { const ms = meshesOf(App.sel); if (!ms.length) return warn('Select skinned meshes'); ck('unbind skin'); for (const m of ms) { if (m.inca.rig) delete m.inca.rig.skin; S.rebuildShape(m); } echo('doDetachSkin "2" { "1","1" };'); });
-  C('paintWeights', 'Paint Skin Weights', () => App.setTool('paintWeights'), { icon: 'softSelect', noRepeat: true });
+  C('paintWeights', 'Paint Skin Weights', () => App.setTool('paintWeights'), { icon: 'softSelect' });
   App.tools.register('paintWeights', {
     help: 'Paint Skin Weights: pick the influence joint in Tool Settings, then drag on the skinned mesh. Ctrl subtracts, Shift smooths',
     settings: [
@@ -180,7 +180,7 @@ export function install() {
       addEventListener('mousemove', mm); addEventListener('mouseup', mu); return true;
     },
   }, 'nurbsCube');
-  C('latticePointTool', 'Edit Lattice Points', () => App.setTool('latticePoint'), { icon: 'nurbsCube', noRepeat: true });
+  C('latticePointTool', 'Edit Lattice Points', () => App.setTool('latticePoint'), { icon: 'nurbsCube' });
   // ---------------------------------------------------------------- constraints
   const conOpts = [{ key: 'maintainOffset', label: 'Maintain offset', type: 'bool', value: true }, { key: 'weight', label: 'Weight', type: 'float', value: 1 }];
   for (const t of ['parent', 'point', 'orient', 'scale', 'aim', 'poleVector']) C(t + 'Constraint', t === 'poleVector' ? 'Pole Vector' : t[0].toUpperCase() + t.slice(1), (a) => {

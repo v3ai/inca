@@ -169,7 +169,7 @@ const tool = {
   },
 };
 App.tools.register('quadDraw', tool, 'polyPlane');
-App.cmds.register('quadDrawTool', 'Quad Draw', () => App.setTool('quadDraw'), { icon: 'polyPlane', noRepeat: true, help: tool.help });
+App.cmds.register('quadDrawTool', 'Quad Draw', () => App.setTool('quadDraw'), { icon: 'polyPlane', help: tool.help });
 // Backspace deletes the last dot; Shift press/release refreshes the preview without moving the mouse
 addEventListener('keydown', (e) => {
   if (App.tool !== 'quadDraw' || e.defaultPrevented || /^(INPUT|TEXTAREA|SELECT)$/.test(e.target?.tagName || '')) return;
