@@ -16,10 +16,33 @@ export const Manip = {
   snapGrid: false, snapPoint: false, snapCurve: false, stepRotate: false,
   _keyGrid: false, _keyPoint: false,
   liveExtrude: null, // Set of polyExtrudeFace ids the move manipulator edits instead of adding a polyTweak
+  // the handle MMB drags drive, per mode (null = the centre / view plane); set by clicking a handle
+  activeAxis: { translate: null, rotate: null, scale: null },
+  discrete: { translate: false, rotate: false, scale: false }, // Discrete Move / Rotate / Scale
+  step: { translate: 1, rotate: 15, scale: 1 },
+  channelManip: null, // {mode, axis, prevMode}: manipulator shown for the channels selected in the Channel Box
+  symmetry: 'off',
 };
 Manip.proxy.name = 'manipProxy';
 App.manip = Manip;
 App.on('selectionChanged', () => { Manip.liveExtrude = null; });
+// picking a tool replaces the Channel Box's temporary manipulator
+App.on('toolChanged', () => { Manip.channelManip = null; });
+
+// Selecting translate/rotate/scale channels in the Channel Box shows that manipulator with those axes active, without
+// changing the tool (like Maya's); clicking in a viewport hides it again and restores the tool's own manipulator
+export function setChannelManip(mode, axis) {
+  const cm = Manip.channelManip;
+  if (!mode) { if (!cm) return; Manip.channelManip = null; Manip.mode = cm.prevMode; }
+  else { if (cm && cm.mode === mode && cm.axis === axis) return; Manip.channelManip = { mode, axis, prevMode: cm ? cm.prevMode : Manip.mode }; Manip.mode = mode; }
+  placeProxy(); App.requestRender();
+}
+// the step used while dragging, or null: grid snap (X) for moves, Discrete Move/Rotate/Scale, J for 15 degree rotations
+export function dragStep(mode) {
+  if (mode === 'translate' && (Manip.snapGrid || Manip._keyGrid)) return App.prefs?.grid?.spacing ?? 1;
+  if (mode === 'rotate' && Manip.stepRotate) return 15;
+  return Manip.discrete[mode] && Manip.step[mode] > 0 ? Manip.step[mode] : null;
+}
 
 const topSelected = () => App.sel.filter(o => { let p = o.parent; while (p && p.inca) { if (App.sel.includes(p)) return false; p = p.parent; } return true; }).filter(o => !o.inca.startup);
 
@@ -52,7 +75,7 @@ export function placeProxy() {
 
 export function manipVisible() {
   // interactive tools (Multi-Cut, Quad Draw, Sculpt, curves, joints...) handle their own clicks: no manipulator to grab
-  if (Manip.mode === 'none' || App.tool === 'select' || App.tools?.isInteractive?.(App.tool)) return false;
+  if (Manip.mode === 'none' || (App.tool === 'select' && !Manip.channelManip) || App.tools?.isInteractive?.(App.tool)) return false;
   if (App.compMode) return App.hilite.some(o => Sel.affectedVerts(o).length);
   return topSelected().length > 0;
 }
@@ -73,8 +96,10 @@ export function beginDrag() {
       if (Manip.soft.on && o.inca.kind === 'mesh') {
         const w = softWeights(o, verts); verts = [...w.keys()]; weights = verts.map(i => w.get(i));
       }
+      if (!weights) verts = verts.slice(); // symmetry appends the mirrored partners
+      const mirror = symmetryPartners(o, pts, verts, weights);
       const world = verts.map(i => new THREE.Vector3(...pts[i]).applyMatrix4(o.matrixWorld));
-      st.comps.push({ o, verts, world, orig: verts.map(i => pts[i].slice()), inv: o.matrixWorld.clone().invert(), weights });
+      st.comps.push({ o, verts, world, orig: verts.map(i => pts[i].slice()), inv: o.matrixWorld.clone().invert(), weights, mirror });
     }
   } else {
     for (const o of topSelected()) st.objs.push({ o, wm: worldMatrix(o), piv: worldPivot(o), t: o.inca.t.slice(), r: o.inca.r.slice(), s: o.inca.s.slice(), pinv: parentWorld(o).invert() });
@@ -122,6 +147,7 @@ export function applyDrag() {
     for (const c of st.comps) {
       const out = new Float32Array(c.verts.length * 3);
       c.world.forEach((w, i) => {
+        if (c.mirror && c.mirror.map[i] >= 0) return; // mirrored below from its partner
         const wt = c.weights ? c.weights[i] : 1;
         let nw;
         if (Manip.mode === 'translate') nw = w.clone().addScaledVector(dpos, wt);
@@ -129,6 +155,7 @@ export function applyDrag() {
         else { const l = w.clone().sub(st.pos).applyQuaternion(qInv); const f = new THREE.Vector3(1 + (sc.x - 1) * wt, 1 + (sc.y - 1) * wt, 1 + (sc.z - 1) * wt); l.multiply(f).applyQuaternion(st.quat); nw = l.add(st.pos); }
         nw.applyMatrix4(c.inv); out[i * 3] = nw.x; out[i * 3 + 1] = nw.y; out[i * 3 + 2] = nw.z;
       });
+      if (c.mirror) mirrorOut(c, out);
       if (c.o.inca.kind === 'curve') { c.verts.forEach((vi, i) => { c.o.inca.curve.cvs[vi] = [out[i * 3], out[i * 3 + 1], out[i * 3 + 2]]; }); rebuildShape(c.o); }
       else setMeshPositions(c.o, c.verts, out);
       c.o.userData.compDirty = true;
@@ -183,6 +210,43 @@ export function endDrag() {
   App.dirty('channels', 'attr', 'timeline');
 }
 const fx = (n) => +n.toFixed(4);
+
+// ------------------------------------------------------------------ symmetry
+// With Symmetry on, moving components also moves their mirror images across the symmetry plane (object X = the
+// object's own YZ plane, world X/Y/Z = the world plane through the origin). The partners are appended to `verts`
+// (and `weights`); the returned array maps each entry to the index of the entry it mirrors, or -1.
+const SYM_AXIS = { objectX: 0, worldX: 0, worldY: 1, worldZ: 2 };
+function symmetryPartners(o, pts, verts, weights) {
+  const ax = SYM_AXIS[Manip.symmetry]; if (ax === undefined || !verts.length) return null;
+  const local = Manip.symmetry === 'objectX';
+  const P = pts.map(p => local ? new THREE.Vector3(...p) : new THREE.Vector3(...p).applyMatrix4(o.matrixWorld));
+  const box = new THREE.Box3().setFromPoints(P); const tol = Math.max(box.getSize(new THREE.Vector3()).length() * 1e-4, 1e-6);
+  // spatial hash: points are matched within `tol`, so look in the neighbouring cells too
+  const key = (x, y, z) => x + ',' + y + ',' + z; const grid = new Map();
+  P.forEach((p, i) => { const k = key(Math.floor(p.x / tol), Math.floor(p.y / tol), Math.floor(p.z / tol)); let b = grid.get(k); if (!b) grid.set(k, b = []); b.push(i); });
+  const find = (q) => {
+    const cx = Math.floor(q.x / tol), cy = Math.floor(q.y / tol), cz = Math.floor(q.z / tol); let best = -1, bd = tol * tol;
+    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (let dz = -1; dz <= 1; dz++) for (const j of grid.get(key(cx + dx, cy + dy, cz + dz)) || []) { const d = P[j].distanceToSquared(q); if (d <= bd) { bd = d; best = j; } }
+    return best;
+  };
+  const idx = new Map(verts.map((v, i) => [v, i])); const mirror = verts.map(() => -1); const n = verts.length;
+  for (let i = 0; i < n; i++) {
+    const q = P[verts[i]].clone(); q.setComponent(ax, -q.getComponent(ax));
+    const j = find(q); if (j < 0 || j === verts[i] || idx.has(j)) continue;
+    idx.set(j, verts.length); verts.push(j); mirror.push(i); if (weights) weights.push(weights[i]);
+  }
+  return mirror.some(m => m >= 0) ? { ax, local, map: mirror } : null;
+}
+function mirrorOut(c, out) {
+  const { ax, local, map } = c.mirror; const w = new THREE.Vector3(), wm = c.o.matrixWorld;
+  for (let i = 0; i < map.length; i++) {
+    const s = map[i]; if (s < 0) continue;
+    w.set(out[s * 3], out[s * 3 + 1], out[s * 3 + 2]);
+    if (local) w.setComponent(ax, -w.getComponent(ax));
+    else { w.applyMatrix4(wm); w.setComponent(ax, -w.getComponent(ax)); w.applyMatrix4(c.inv); }
+    out[i * 3] = w.x; out[i * 3 + 1] = w.y; out[i * 3 + 2] = w.z;
+  }
+}
 
 export function softWeights(o, verts) {
   const pm = o.inca.mesh; const R = Manip.soft.radius;

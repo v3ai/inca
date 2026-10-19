@@ -5,11 +5,13 @@ import { Sel } from '../core/selection.js';
 import { Undo } from '../core/undo.js';
 import { OPS, niceName } from '../core/ops.js';
 import { MAT_TYPES } from '../core/materials.js';
-import { placeProxy } from '../core/manip.js';
+import { Manip, placeProxy } from '../core/manip.js';
 import { h, showMenu, closeMenus, menuBar, optionsDialog, fmt } from './dom.js';
 
 // ------------------------------------------------------------------ generic marking menu
 // radial: {N,NE,E,SE,S,SW,W,NW: item}, list: items (showMenu format). item: {label, fn|cmd, enabled?, sub?}
+// items with check() get a check box
+const chk = (it) => it.check ? h('span', { class: 'mm-chk', text: it.check() ? '✓' : '' }) : null;
 const DIRS = { N: -90, NE: -45, E: 0, SE: 45, S: 90, SW: 135, W: 180, NW: -135 };
 export function markingMenu(x, y, radial, list, { title = null } = {}) {
   closeMenus();
@@ -22,7 +24,7 @@ export function markingMenu(x, y, radial, list, { title = null } = {}) {
     if (!it) continue;
     const a = DIRS[d] * Math.PI / 180; const ix = x + Math.cos(a) * R * (d === 'E' || d === 'W' ? 1.25 : 1), iy = y + Math.sin(a) * R * (d === 'N' || d === 'S' ? 0.6 : 0.75);
     const en = it.enabled ? it.enabled() : true;
-    const el = h('div', { class: 'mm-item' + (en ? '' : ' disabled'), text: it.label + (it.sub ? ' ▸' : ''), style: { left: ix + 'px', top: iy + 'px' } });
+    const el = h('div', { class: 'mm-item' + (en ? '' : ' disabled'), style: { left: ix + 'px', top: iy + 'px' } }, chk(it), it.label + (it.sub ? ' ▸' : ''));
     el._it = it; el._dir = d; el._en = en; root.append(el); items.push(el);
   }
   let listEl = null; const rows = [];
@@ -33,7 +35,7 @@ export function markingMenu(x, y, radial, list, { title = null } = {}) {
       if (it === '-') { listEl.append(h('div', { class: 'sep' })); continue; }
       const en = it.enabled ? it.enabled() : true;
       const label = it.label ?? App.cmds.info(it.cmd)?.label ?? it.cmd;
-      const r = h('div', { class: 'mi' + (en ? '' : ' disabled'), text: label + (it.sub ? '  ▸' : '') }); r._it = it; r._en = en; listEl.append(r); rows.push(r);
+      const r = h('div', { class: 'mi' + (en ? '' : ' disabled') }, chk(it), label + (it.sub ? '  ▸' : '')); r._it = it; r._en = en; listEl.append(r); rows.push(r);
     }
     root.append(listEl);
     const lr = listEl.getBoundingClientRect(); if (lr.bottom > innerHeight) listEl.style.top = Math.max(0, innerHeight - lr.height - 4) + 'px'; if (lr.right > innerWidth) listEl.style.left = (innerWidth - lr.width - 4) + 'px'; if (lr.left < 0) listEl.style.left = '4px';
@@ -114,6 +116,31 @@ App.on('markingMenu', ({ e, vp, px }) => {
   if (o) return markingMenu(x, y, { N: { label: 'Select', fn: () => Sel.select([o]) }, E: { label: 'Attribute Editor', fn: () => App.ui.showAttr(o) }, W: { label: o.inca.kind === 'camera' ? 'Look Through' : 'Frame', fn: () => { if (o.inca.kind === 'camera') vp.setCamera(o.inca.name); else { Sel.select([o]); vp.frameSelection(); } } } }, [{ label: 'Select All', cmd: 'selectAll' }, { label: 'Select Hierarchy', cmd: 'selectHierarchy' }, '-', { cmd: 'hideSelection' }, { cmd: 'deleteSel', label: 'Delete' }], { title: o.inca.name + '...' });
   markingMenu(x, y, { N: { label: 'Select All', cmd: 'selectAll' }, S: { label: 'Complete Tool', fn: () => App.tools?.complete?.() }, E: { label: 'Object Mode', fn: () => Sel.setMode(null) }, W: { label: 'Deselect All', cmd: 'deselectAll' }, NE: { label: 'Frame All', fn: () => vp.frameAll() }, NW: { label: 'Repeat Last', cmd: 'repeatLast' } },
     [{ label: 'Create', sub: () => App.ui.commonMenus.Create() }, '-', { label: 'Select Similar', cmd: 'selectSimilar' }, { label: 'Paste', cmd: 'paste' }, '-', { label: 'Look Through Default', fn: () => vp.setCamera(vp._slot || 'persp') }]);
+});
+
+// ------------------------------------------------------------------ W / E / R + LMB: transform tool marking menus
+const SYMMETRY = [['off', 'Off'], ['objectX', 'Object X'], ['worldX', 'World X'], ['worldY', 'World Y'], ['worldZ', 'World Z']];
+const STEPS = { translate: [0.1, 0.25, 0.5, 1, 2, 5, 10], rotate: [1, 5, 10, 15, 30, 45, 90], scale: [0.1, 0.25, 0.5, 1] };
+App.on('toolMarkingMenu', ({ e, tool }) => {
+  const mode = { move: 'translate', rotate: 'rotate', scale: 'scale' }[tool];
+  if (App.tool !== tool) App.setTool(tool);
+  const set = (fn) => () => { fn(); placeProxy(); App.dirty('toolSettings', 'statusline'); App.requestRender(); };
+  const space = (v, label) => ({ label, check: () => Manip.space[mode] === v, fn: set(() => { Manip.space[mode] = v; }) });
+  const discrete = { translate: 'Discrete Move', rotate: 'Discrete Rotate', scale: 'Discrete Scale' }[mode];
+  const unit = mode === 'rotate' ? '°' : '';
+  markingMenu(e.clientX, e.clientY, {
+    N: space('world', 'World'),
+    NE: space('local', 'Object'),
+    E: { label: 'Edit Pivot', check: () => Manip.pivotMode, fn: () => App.cmds.run('pivotEdit') },
+    SE: { label: 'Soft Select', check: () => Manip.soft.on, fn: () => App.cmds.run('softSelect') },
+    S: { label: 'Tool Settings...', fn: () => App.ui.toggleToolSettings(true) },
+    SW: { label: discrete, check: () => Manip.discrete[mode], fn: set(() => { Manip.discrete[mode] = !Manip.discrete[mode]; }) },
+    W: { label: 'Step Size', sub: STEPS[mode].map(v => ({ label: v + unit, check: () => Manip.step[mode] === v, fn: set(() => { Manip.step[mode] = v; Manip.discrete[mode] = true; }) })) },
+    NW: { label: 'Symmetry', sub: SYMMETRY.map(([v, l]) => ({ label: l, check: () => (Manip.symmetry || 'off') === v, fn: set(() => { Manip.symmetry = v; }) })) },
+  }, [
+    { label: 'Reset Active Handle', enabled: () => !!Manip.activeAxis[mode], fn: set(() => { Manip.activeAxis[mode] = null; }) },
+    { label: 'Reset Tool', fn: set(() => { Manip.space[mode] = mode === 'translate' ? 'world' : 'local'; Manip.discrete[mode] = false; Manip.step[mode] = { translate: 1, rotate: 15, scale: 1 }[mode]; Manip.activeAxis[mode] = null; Manip.pivotMode = false; }) },
+  ], { title: App.cmds.info(tool + 'Tool')?.label || tool });
 });
 
 // ------------------------------------------------------------------ hotbox

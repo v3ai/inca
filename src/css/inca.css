@@ -280,6 +280,7 @@ input[type=range] { accent-color: #9a9a9a; height: 14px; }
 .mm .mm-item { position: absolute; background: rgba(82,82,82,.97); border: 1px solid #1f1f1f; padding: 2px 9px; white-space: nowrap; color: #eee; transform: translate(-50%, -50%); box-shadow: 1px 2px 4px rgba(0,0,0,.4); font-size: 12px; }
 .mm .mm-item.hot { background: var(--hi); color: #fff; }
 .mm .mm-item.disabled { color: #8a8a8a; }
+.mm .mm-chk { display: inline-block; width: 10px; height: 10px; margin-right: 5px; border: 1px solid #aaa; font-size: 10px; line-height: 10px; text-align: center; vertical-align: -1px; flex: none; }
 .mm .mm-list { position: absolute; background: rgba(82,82,82,.97); border: 1px solid #1f1f1f; padding: 2px 0; min-width: 170px; box-shadow: 1px 2px 4px rgba(0,0,0,.4); }
 .mm .mm-list .mi { display: flex; align-items: center; height: 20px; padding: 0 10px; color: #eee; white-space: nowrap; }
 .mm .mm-list .mi.hot { background: var(--hi); color: #fff; }

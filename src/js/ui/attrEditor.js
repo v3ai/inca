@@ -311,13 +311,14 @@ function buildToolSettings(container) {
     body.innerHTML = ''; ctx.fields = [];
     const t = App.tool;
     head.textContent = { select: 'Select Tool', lasso: 'Lasso Tool', paint: 'Paint Selection Tool', move: 'Move Tool', rotate: 'Rotate Tool', scale: 'Scale Tool', cvCurve: 'CV Curve Tool', epCurve: 'EP Curve Tool', edgeLoop: 'Insert Edge Loop Tool', multiCut: 'Multi-Cut Tool', targetWeld: 'Target Weld Tool', createPoly: 'Create Polygon Tool' }[t] || t;
-    body.append(h('div', { class: 'ae-row', style: { justifyContent: 'flex-end', padding: '2px 4px' } }, h('button', { text: 'Reset Tool', onclick: () => { P[t] = {}; if (TRANSFORM_SPACE[t]) Manip.space[TRANSFORM_SPACE[t]] = t === 'move' ? 'world' : 'local'; Manip.soft = { on: false, radius: 2, falloff: 'smooth' }; render(); placeProxy(); App.requestRender(); } })));
+    body.append(h('div', { class: 'ae-row', style: { justifyContent: 'flex-end', padding: '2px 4px' } }, h('button', { text: 'Reset Tool', onclick: () => { P[t] = {}; const m = TRANSFORM_SPACE[t]; if (m) { Manip.space[m] = t === 'move' ? 'world' : 'local'; Manip.discrete[m] = false; Manip.step[m] = { translate: 1, rotate: 15, scale: 1 }[m]; Manip.activeAxis[m] = null; } Manip.soft = { on: false, radius: 2, falloff: 'smooth' }; render(); placeProxy(); App.requestRender(); } })));
     const mode = TRANSFORM_SPACE[t];
     if (mode) {
       const spaces = t === 'scale' ? [['Object', 'local'], ['World', 'world']] : [['World', 'world'], ['Object', 'local']];
       body.append(frame(head.textContent.replace(' Tool', '') + ' Settings', [
         F({ key: 'space', label: 'Axis Orientation', type: 'enum', options: spaces.map(s => s[0]), values: spaces.map(s => s[1]), get: () => Manip.space[mode], set: (v) => { Manip.space[mode] = v; placeProxy(); App.requestRender(); } }),
-        F({ key: 'step', label: t === 'rotate' ? 'Discrete rotate (deg)' : 'Step snap', type: 'float', min: 0, smin: 0, smax: t === 'rotate' ? 90 : 5, get: () => (Manip.step || {})[mode] || 0, set: (v) => { Manip.step = { ...(Manip.step || {}), [mode]: v }; App.requestRender(); } }),
+        F({ key: 'discrete', label: { move: 'Discrete move', rotate: 'Discrete rotate', scale: 'Discrete scale' }[t], type: 'bool', get: () => Manip.discrete[mode], set: (v) => { Manip.discrete[mode] = v; App.requestRender(); } }),
+        F({ key: 'step', label: t === 'rotate' ? 'Step size (deg)' : 'Step size', type: 'float', min: 0.001, smin: 0, smax: t === 'rotate' ? 90 : 5, get: () => Manip.step[mode], set: (v) => { Manip.step[mode] = v; App.requestRender(); } }),
         F({ key: 'pivot', label: 'Edit pivot (D)', type: 'bool', get: () => Manip.pivotMode, set: (v) => { Manip.pivotMode = v; placeProxy(); App.requestRender(); } }),
       ], { key: 'ts-' + t }));
       body.append(softFields());
@@ -338,7 +339,7 @@ registerPanel('toolSettings', 'Tool Settings', buildToolSettings, { short: 'Tool
 // ------------------------------------------------------------------ Modeling Toolkit
 function buildMTK(container) {
   const modes = h('div', { class: 'mtk-modes' });
-  const md = [['objectModeOnly', 'selObject', 'Object selection'], ['vertexMode', 'polySphere', 'Vertex selection (F9)'], ['edgeMode', 'multiCut', 'Edge selection (F10)'], ['faceMode', 'polyPlane', 'Face selection (F11)'], ['uvMode', 'uvEditor', 'UV selection (F12)']];
+  const md = [['objectModeOnly', 'selObject', 'Object selection'], ['vertexMode', 'compVertex', 'Vertex selection (F9)'], ['edgeMode', 'compEdge', 'Edge selection (F10)'], ['faceMode', 'compFace', 'Face selection (F11)'], ['uvMode', 'compUV', 'UV selection (F12)']];
   const mbtns = md.map(([cmd, ic, t]) => { const b = iconBtn(ic, t, () => App.cmds.run(cmd)); b._cmd = cmd; return b; });
   modes.append(...mbtns, h('div', { class: 'spacer' }), iconBtn('softSelect', 'Soft Select (B)', () => App.cmds.run('softSelect')));
   const sym = h('select', {}, ['Off', 'Object X', 'World X', 'World Y', 'World Z'].map(s => h('option', { text: s })));
@@ -352,6 +353,6 @@ function buildMTK(container) {
     section('Tools', [['multiCutTool', 'multiCut'], ['targetWeldTool', 'targetWeld'], ['insertEdgeLoopTool', 'edgeLoop'], ['createPolygonTool', 'planar'], ['quadDrawTool', 'polyPlane']]),
     section('Normals & UVs', [['softenEdge', 'softEdge'], ['hardenEdge', 'hardEdge'], ['planarMap'], ['automaticMap', 'autoMap'], ['uvEditor']]),
   );
-  return { refresh() { for (const b of mbtns) b.classList.toggle('on', b._cmd === 'objectModeOnly' ? !App.compMode : b._cmd === App.compMode + 'Mode'); } };
+  return { refresh() { for (const b of mbtns) b.classList.toggle('on', b._cmd === 'objectModeOnly' ? !App.compMode : b._cmd === App.compMode + 'Mode'); sym.selectedIndex = Math.max(0, ['off', 'objectX', 'worldX', 'worldY', 'worldZ'].indexOf(Manip.symmetry || 'off')); } };
 }
 registerPanel('mtk', 'Modeling Toolkit', buildMTK, { short: 'Modeling Toolkit' });

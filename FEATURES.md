@@ -47,10 +47,12 @@ Legend: ✅ built · 🟡 partial / simplified · ⏭ planned
 
 ## 4. Selection & transforms
 - ✅ Click/Shift/Ctrl/Ctrl+Shift, marquee, lasso, paint selection, select all/inverse/by type/hierarchy/similar/by name
-- ✅ Move/Rotate/Scale manipulators (world/object space), MMB drag, step snap, grid snap (X), point snap (V), discrete rotate (J), manipulator size +/-
+- ✅ Move/Rotate/Scale manipulators (world/object space), MMB drag along the active handle (click a handle to make it active; Ctrl+click an axis to lock it and work in the other two, Ctrl+click the centre for the view plane; Shift+MMB picks the axis from the drag direction), Discrete Move/Rotate/Scale with step size, grid snap (X), point snap (V), discrete rotate (J), manipulator size +/-
+- ✅ Hold W / E / R + LMB: tool marking menus (axis orientation, edit pivot, soft select, discrete step, symmetry, tool settings)
+- ✅ Selecting translate/rotate/scale channels in the Channel Box shows that manipulator with those axes active; an LMB click in a viewport ends the MMB channel drag and restores the tool
 - ✅ Pivot edit (D/Insert), Center Pivot, Freeze, Reset, Match transforms, Snap to ground
 - ✅ Duplicate, Duplicate Special, Shift+D with transform, Group/Ungroup, Parent/Unparent, Copy/Paste, Delete
-- ✅ Soft selection (B) with falloff display; 🟡 symmetry setting stored (not yet applied to component moves)
+- ✅ Soft selection (B) with falloff display; symmetry (Object X, World X/Y/Z) mirrors component moves/rotates/scales
 
 ## 5. Polygon modeling
 - ✅ Primitives with construction history: Sphere, Cube, Cylinder, Cone, Plane, Torus, Pyramid, Prism, Pipe, Helix, Disc, Platonic solids

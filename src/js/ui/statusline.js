@@ -29,7 +29,7 @@ function buildStatusline() {
   const mask = (ic, title, k) => T(ic, title, () => App.selMask[k] !== false, () => { App.selMask[k] = App.selMask[k] === false; });
   const masks = grp(mask('olCurve', 'Select curves', 'curve'), mask('olMesh', 'Select surfaces (polygons & NURBS)', 'mesh'), mask('olLight', 'Select lights', 'light'), mask('olCamera', 'Select cameras', 'camera'), mask('olLocator', 'Select locators', 'locator'));
   // component masks shown in component mode
-  const compMasks = grp(...[['vertexMode', 'polySphere', 'Vertex (F9)', 'vertex'], ['edgeMode', 'multiCut', 'Edge (F10)', 'edge'], ['faceMode', 'polyPlane', 'Face (F11)', 'face'], ['uvMode', 'uvEditor', 'UV (F12)', 'uv']].map(([cmd, ic, t, m]) => T(ic, t, () => App.compMode === m, () => App.cmds.run(cmd))));
+  const compMasks = grp(...[['vertexMode', 'compVertex', 'Vertex (F9)', 'vertex'], ['edgeMode', 'compEdge', 'Edge (F10)', 'edge'], ['faceMode', 'compFace', 'Face (F11)', 'face'], ['uvMode', 'compUV', 'UV (F12)', 'uv']].map(([cmd, ic, t, m]) => T(ic, t, () => App.compMode === m, () => App.cmds.run(cmd))));
   const lockSel = T('isolate', 'Lock / unlock current selection', () => !!App.lockSelection, () => { App.lockSelection = !App.lockSelection; });
   // snapping
   const snaps = grp(

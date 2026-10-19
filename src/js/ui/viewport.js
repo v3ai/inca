@@ -7,13 +7,14 @@ import { h, menuBar, iconBtn, fmt, showMenu } from './dom.js';
 import { syncCamera, updateXform, findNode, worldBBox, allDag, WIRE_MATS, COLORS, isDag, cullable } from '../core/scene.js';
 import { edgeCullNormals } from '../core/polymesh.js';
 import { Sel } from '../core/selection.js';
-import { Manip, placeProxy, manipVisible, beginDrag, applyDrag, endDrag, softWeights } from '../core/manip.js';
+import { Manip, placeProxy, manipVisible, beginDrag, applyDrag, endDrag, softWeights, dragStep } from '../core/manip.js';
 
 THREE.BufferGeometry.prototype.computeBoundsTree = computeBoundsTree;
 THREE.BufferGeometry.prototype.disposeBoundsTree = disposeBoundsTree;
 THREE.Mesh.prototype.raycast = acceleratedRaycast;
 
 const D2R = Math.PI / 180;
+const PLANE_OF = { X: 'YZ', Y: 'XZ', Z: 'XY' }; // Ctrl+click on an axis locks it: the drag happens in the other two
 const BG = { 0: [0x6b6b6b, null], 1: [0x000000, null], 2: [0x3a3a3a, null], 3: [0xa0a0a0, null], 4: [0x6b6b6b, [0x8a8f96, 0x3d3f42]] };
 
 // shared overlays: component display colours
@@ -92,7 +93,7 @@ export class Viewport {
     this.tc.setSize(App.prefs?.manipSize ?? 1);
     this.gizmoScene.add(this.tc.getHelper());
     this.gizmoScene.add(Manip.proxy.parent ? new THREE.Object3D() : Manip.proxy);
-    this.tc.addEventListener('mouseDown', () => { this._tcDown = true; beginDrag(); });
+    this.tc.addEventListener('mouseDown', () => { this._tcDown = true; Manip.activeAxis[this.tc.mode] = this.tc.axis; beginDrag(); });
     this.tc.addEventListener('objectChange', () => { this.snapDuringDrag(); applyDrag(); App.requestRender(); });
     this.tc.addEventListener('mouseUp', () => { this._tcDown = false; endDrag(); placeProxy(); App.requestRender(); });
     this.tc.addEventListener('change', () => App.requestRender());
@@ -150,7 +151,7 @@ export class Viewport {
     // manipulator
     const showManip = o.show.manipulators && manipVisible() && (App.activeViewport === this || !App.prefs?.manipActiveOnly);
     this.tc.camera = cam;
-    if (showManip) { this.tc.enabled = true; this.tc.getHelper().visible = true; this.tc.setMode(Manip.pivotMode ? 'translate' : Manip.mode); const gs = App.prefs?.grid?.spacing ?? 1; const stp = Manip.step || {}; this.tc.setTranslationSnap((Manip.snapGrid || Manip._keyGrid) ? gs : (stp.translate || null)); this.tc.setRotationSnap(Manip.stepRotate ? 15 * D2R : (stp.rotate ? stp.rotate * D2R : null)); this.tc.setScaleSnap(stp.scale || null); this.tc.setSpace(Manip.pivotMode ? 'world' : (Manip.mode === 'scale' ? 'local' : Manip.space[Manip.mode] || 'world')); r.clearDepth(); r.render(this.gizmoScene, cam); }
+    if (showManip) { this.tc.enabled = true; this.tc.getHelper().visible = true; this.tc.setMode(Manip.pivotMode ? 'translate' : Manip.mode); const rs = dragStep('rotate'); this.tc.setTranslationSnap(dragStep('translate')); this.tc.setRotationSnap(rs ? rs * D2R : null); this.tc.setScaleSnap(dragStep('scale')); this.tc.setSpace(Manip.pivotMode ? 'world' : (Manip.mode === 'scale' ? 'local' : Manip.space[Manip.mode] || 'world')); this.showActiveAxis(); r.clearDepth(); r.render(this.gizmoScene, cam); }
     else { this.tc.enabled = false; this.tc.getHelper().visible = false; }
     // view axis triad
     if (App.prefs?.hud?.viewAxis !== false) {
@@ -539,6 +540,29 @@ export class Viewport {
     const altGuard = (e) => { if (e.altKey && !this.tc.dragging) e.stopPropagation(); };
     v.addEventListener('pointerdown', altGuard, true);
     v.addEventListener('pointermove', altGuard, true);
+    v.addEventListener('pointerdown', (e) => this.handleModifiers(e), true);
+  }
+  // Ctrl+LMB on a move/scale axis handle: lock that axis and drag in the plane of the other two (Ctrl+LMB on the
+  // centre goes back to the view plane). Shift+LMB on the centre: drag along the axis closest to the mouse direction.
+  handleModifiers(e) {
+    if (e.button === 0 && App.heldToolKey && !e.altKey) { e.stopPropagation(); return; } // W/E/R + LMB: tool marking menu (onDown)
+    if (e.button !== 0 || e.altKey || !(e.ctrlKey || e.shiftKey) || !this.tc.enabled || this.tc.dragging || App.tools?.isInteractive?.(App.tool)) return;
+    const tc = this.tc; if (tc.mode === 'rotate') return;
+    tc.pointerHover(tc._getPointer(e)); const ax = tc.axis; if (!ax) return;
+    if (e.ctrlKey && !e.shiftKey) {
+      e.stopPropagation();
+      const plane = PLANE_OF[ax] || ax; Manip.activeAxis[tc.mode] = plane;
+      tc.axis = plane; tc.pointerDown(tc._getPointer(e));
+      if (tc.dragging) { this.canvas.setPointerCapture(e.pointerId); this.canvas.addEventListener('pointermove', tc._onPointerMove); }
+    } else if (e.shiftKey && !e.ctrlKey && ax === 'XYZ') {
+      e.stopPropagation(); this._tcDown = true; this.middleDrag(e, { auto: true, done: () => { this._tcDown = false; } });
+    }
+  }
+  // keep the active handle (the one MMB drags drive) highlighted while the mouse isn't over another one
+  showActiveAxis() {
+    const tc = this.tc; if (tc.dragging) return;
+    tc.worldPositionStart.copy(Manip.proxy.position); // the axis line helper is drawn from here
+    if (tc.axis === null) tc._gizmo.axis = Manip.channelManip?.axis || Manip.activeAxis[tc.mode] || null;
   }
   onDown(e) {
     App.setActiveViewport(this);
@@ -554,6 +578,8 @@ export class Viewport {
       addEventListener('mousemove', mm); addEventListener('mouseup', mu);
       return;
     }
+    // hold W / E / R and press LMB: the Move / Rotate / Scale Tool marking menu
+    if (e.button === 0 && App.heldToolKey) { e.preventDefault(); App.emit('toolMarkingMenu', { e, vp: this, tool: App.heldToolKey.tool }); return; }
     if (this._tcDown || (e.button === 0 && this.tc.enabled && this.tc.axis && !App.tools?.isInteractive?.(App.tool))) return; // manipulator handles it
     if (e.button === 2) { App.emit('markingMenu', { e, vp: this, px }); return; }
     if (e.button === 1) {
@@ -563,26 +589,66 @@ export class Viewport {
       return;
     }
     if (e.button !== 0) return;
+    // clicking in the viewport ends MMB dragging of the Channel Box's selected channels (and hides their manipulator)
+    App.channelSlider?.disarm?.();
     if (App.tools && App.tools.handleDown && App.tools.handleDown(this, e, px)) return;
     this.startSelectDrag(e, px);
   }
-  middleDrag(e) {
-    // Maya: MMB drag moves along the last-used axis (or view plane)
+  // Maya: MMB drag anywhere drives the active handle (the last one clicked, the centre by default). MMB or Ctrl+MMB
+  // over a handle makes it the active one first; Shift+MMB drags along the axis closest to the mouse direction.
+  middleDrag(e, { auto = false, done = null } = {}) {
+    const mode = Manip.pivotMode ? 'translate' : Manip.mode;
+    let ax = this.tc.axis;
+    if (ax && e.ctrlKey && mode !== 'rotate') ax = PLANE_OF[ax] || ax;
+    if (ax) Manip.activeAxis[mode] = ax;
+    ax = ax || Manip.channelManip?.axis || Manip.activeAxis[mode] || (mode === 'rotate' ? 'E' : 'XYZ');
+    if (e.shiftKey && !this.tc.axis && mode !== 'rotate') auto = true;
     const px0 = this.localPx(e);
     beginDrag();
-    const start = Manip.proxy.position.clone(); const { right, up } = this.camBasis(); const k = this.worldPerPixel();
-    const ax = this.tc.axis || this._lastAxis || 'XYZ';
+    const st = Manip.start; const p0 = st.pos.clone(); const cam = this.camera;
+    const axisVec = (c) => new THREE.Vector3(c === 'X' ? 1 : 0, c === 'Y' ? 1 : 0, c === 'Z' ? 1 : 0).applyQuaternion(st.quat);
+    const { right, up, back } = this.camBasis();
+    // where the mouse ray meets the plane through the manipulator with normal n
+    const hit = (px, n) => { const rc = this.raycaster(px); const out = new THREE.Vector3(); return rc.ray.intersectPlane(new THREE.Plane().setFromNormalAndCoplanarPoint(n, p0), out) ? out : null; };
+    const view = () => this.isOrtho ? back.clone().negate() : p0.clone().sub(cam.getWorldPosition(new THREE.Vector3())).normalize();
+    const snap = (x, s) => s ? Math.round(x / s) * s : x;
     const mm = (ev) => {
       const px = this.localPx(ev); const dx = px.x - px0.x, dy = px.y - px0.y;
-      const d = right.clone().multiplyScalar(dx * k).addScaledVector(up, -dy * k);
-      if (Manip.mode === 'translate') {
-        if (ax.length === 1) { const a = new THREE.Vector3(ax === 'X' ? 1 : 0, ax === 'Y' ? 1 : 0, ax === 'Z' ? 1 : 0); if (Manip.space.translate === 'local') a.applyQuaternion(Manip.proxy.quaternion); d.copy(a.multiplyScalar(d.dot(a))); }
-        Manip.proxy.position.copy(start).add(d);
-      } else if (Manip.mode === 'rotate') { Manip.proxy.quaternion.copy(Manip.start.quat).premultiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), dx * 0.01)); }
-      else { const f = Math.exp(dx * 0.01); Manip.proxy.scale.set(f, f, f); }
+      if (auto) {
+        if (Math.hypot(dx, dy) < 6) return;
+        // the axis whose screen direction best matches the drag
+        const a = this.project(p0); let best = 'X', bd = -1;
+        for (const c of 'XYZ') { const b = this.project(p0.clone().add(axisVec(c))); const sx = b.x - a.x, sy = b.y - a.y, l = Math.hypot(sx, sy); if (l < 1e-6) continue; const d = Math.abs((sx * dx + sy * dy) / l); if (d > bd) { bd = d; best = c; } }
+        ax = best; auto = false; Manip.activeAxis[mode] = ax; this.needsRender = true;
+      }
+      if (mode === 'translate') {
+        const s = dragStep('translate'); const d = new THREE.Vector3();
+        if (ax.length === 1) {
+          // along one axis: in the plane that contains the axis and faces the camera
+          const a = axisVec(ax); const n = a.clone().cross(view()).cross(a); if (n.lengthSq() < 1e-10) return;
+          const h0 = hit(px0, n), h1 = hit(px, n); if (!h0 || !h1) return;
+          d.copy(a).multiplyScalar(snap(h1.sub(h0).dot(a), s));
+        } else {
+          const n = ax === 'XYZ' ? back.clone() : axisVec('XYZ'.replace(ax[0], '').replace(ax[1], ''));
+          const h0 = hit(px0, n), h1 = hit(px, n); if (!h0 || !h1) return;
+          const w = h1.sub(h0);
+          if (s) { const qi = st.quat.clone().invert(); w.applyQuaternion(qi).set(snap(w.x, s), snap(w.y, s), snap(w.z, s)).applyQuaternion(st.quat); }
+          d.copy(w);
+        }
+        Manip.proxy.position.copy(p0).add(d);
+        this.snapDuringDrag();
+      } else if (mode === 'rotate') {
+        const s = dragStep('rotate'); const ang = snap(dx * 0.5, s) * D2R; let q;
+        if (ax === 'XYZE') q = new THREE.Quaternion().setFromAxisAngle(up, dx * 0.01).multiply(new THREE.Quaternion().setFromAxisAngle(right, dy * 0.01));
+        else q = new THREE.Quaternion().setFromAxisAngle(ax === 'E' ? back : axisVec(ax), ax === 'E' ? -ang : ang);
+        Manip.proxy.quaternion.copy(st.quat).premultiply(q);
+      } else {
+        const s = dragStep('scale'); let f = Math.exp(dx * 0.01); if (s) f = Math.max(s, snap(f, s));
+        Manip.proxy.scale.set(ax.includes('X') ? f : 1, ax.includes('Y') ? f : 1, ax.includes('Z') ? f : 1);
+      }
       applyDrag(); App.requestRender();
     };
-    const mu = () => { removeEventListener('mousemove', mm); removeEventListener('mouseup', mu); endDrag(); placeProxy(); App.requestRender(); };
+    const mu = () => { removeEventListener('mousemove', mm); removeEventListener('mouseup', mu); endDrag(); placeProxy(); done?.(); App.requestRender(); };
     addEventListener('mousemove', mm); addEventListener('mouseup', mu);
   }
   startSelectDrag(e, px) {

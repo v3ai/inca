@@ -6,7 +6,7 @@ import { Sel } from '../core/selection.js';
 import { OPS, niceName } from '../core/ops.js';
 import { h, menuBar, showMenu, fmt, iconBtn, colorToCss, promptDialog } from './dom.js';
 import { registerPanel } from './docks.js';
-import { placeProxy } from '../core/manip.js';
+import { placeProxy, setChannelManip } from '../core/manip.js';
 import '../core/rigging.js'; // rigging: loads the rigging/deformation modules (joints, IK, skin, deformers, constraints)
 
 const XF_LABEL = { translateX: 'Translate X', translateY: 'Translate Y', translateZ: 'Translate Z', rotateX: 'Rotate X', rotateY: 'Rotate Y', rotateZ: 'Rotate Z', scaleX: 'Scale X', scaleY: 'Scale Y', scaleZ: 'Scale Z', visibility: 'Visibility' };
@@ -14,9 +14,12 @@ const LIGHT_CH = { intensity: 'Intensity', colorR: 'Color R', colorG: 'Color G',
 const CAM_CH = { focalLength: 'Focal Length', near: 'Near Clip Plane', far: 'Far Clip Plane', orthoWidth: 'Orthographic Width', coi: 'Center Of Interest' };
 const LAYER_COLORS = [null, [0, 0, 0], [0.25, 0.25, 0.25], [0.6, 0.6, 0.6], [0.6, 0, 0.16], [0, 0, 0.38], [0, 0, 1], [0, 0.27, 0.1], [0.15, 0, 0.26], [0.78, 0, 0.78], [0.54, 0.28, 0.2], [0.25, 0.14, 0.12], [0.6, 0.15, 0], [1, 0, 0], [0, 1, 0], [0, 0.25, 0.6], [1, 1, 1], [1, 1, 0], [0.39, 0.86, 1], [0.26, 1, 0.64], [1, 0.69, 0.69], [0.89, 0.67, 0.47], [1, 1, 0.39], [0, 0.6, 0.33]];
 
-const st = { selChannels: new Set(), openHistory: new Set(), sig: '', fields: [], chanOpts: new Map() };
+const st = { selChannels: new Set(), openHistory: new Set(), sig: '', fields: [], chanOpts: new Map(), armed: false };
+// Selected channels are driven by MMB drags in a viewport ("armed") from the moment their names are clicked until the
+// next LMB click in a viewport, which leaves them highlighted but inactive, as in Maya.
 App.channelSlider = {
-  active: () => st.selChannels.size > 0 && (App.sel.length > 0),
+  active: () => st.armed && st.selChannels.size > 0 && (App.sel.length > 0),
+  disarm() { if (!st.armed) return; st.armed = false; syncManip(); },
   drag(e) { // MMB virtual slider in a viewport
     const chans = [...st.selChannels];
     const targets = []; for (const c of chans) { const o = st.chanOpts.get(c) || {}; if (o.type === 'enum' && o.values) continue; for (const [rec, a] of targetsFor([c])) targets.push([rec, a, a === 'visibility' ? { type: 'bool' } : o]); }
@@ -33,6 +36,21 @@ App.channelSlider = {
     addEventListener('mousemove', mm); addEventListener('mouseup', mu);
   },
 };
+// selecting only translate, rotate or scale channels shows that manipulator with their axes active
+const XF_MODE = { translate: 'translate', rotate: 'rotate', scale: 'scale' };
+function syncManip() {
+  let mode = null; const axes = new Set();
+  if (st.armed && !App.compMode && App.sel.length) {
+    for (const c of st.selChannels) {
+      const m = /^xf:(translate|rotate|scale)([XYZ])$/.exec(c);
+      if (!m || (mode && mode !== XF_MODE[m[1]])) { mode = null; break; }
+      mode = XF_MODE[m[1]]; axes.add(m[2]);
+    }
+  }
+  let axis = 'XYZ'.split('').filter(a => axes.has(a)).join('');
+  if (mode === 'rotate' && axis.length > 1) axis = 'XYZE';
+  setChannelManip(mode, mode ? axis : null);
+}
 // int / enum / bool channels step in whole numbers and respect min/max, like the text field and the In-View Editor
 function sliderValue(v, o) {
   if (o.type === 'int' || o.type === 'enum' || o.type === 'bool') v = Math.round(v);
@@ -65,7 +83,7 @@ function build(container) {
       { label: 'Key Selected', fn: () => keySelected() }, { label: 'Key All Keyable', fn: () => App.cmds.run('setKey') }, { label: 'Breakdown Selected', fn: () => keySelected() },
       '-', { label: 'Cut Selected', fn: () => deleteKeysSel() }, { label: 'Delete Selected', fn: () => deleteKeysSel() },
       '-', { label: 'Lock Selected', fn: () => lockSel(true) }, { label: 'Unlock Selected', fn: () => lockSel(false) }, { label: 'Hide Selected', fn: () => hideSel() },
-      '-', { label: 'Break Connections', fn: () => deleteKeysSel() }, { label: 'Select All Channels', fn: () => { for (const k of Object.keys(XF_LABEL)) st.selChannels.add('xf:' + k); refreshValues(); } },
+      '-', { label: 'Break Connections', fn: () => deleteKeysSel() }, { label: 'Select All Channels', fn: () => { for (const k of Object.keys(XF_LABEL)) st.selChannels.add('xf:' + k); st.armed = true; syncManip(); refreshValues(); } },
       '-', { label: 'Slider step: fine (0.01)', check: () => App.prefs.opt.cbSliderStep === 0.01, fn: () => { App.prefs.opt.cbSliderStep = 0.01; App.savePrefs(); } }, { label: 'Slider step: medium (0.1)', check: () => (App.prefs.opt.cbSliderStep || 0.1) === 0.1, fn: () => { App.prefs.opt.cbSliderStep = 0.1; App.savePrefs(); } }, { label: 'Slider step: coarse (1)', check: () => App.prefs.opt.cbSliderStep === 1, fn: () => { App.prefs.opt.cbSliderStep = 1; App.savePrefs(); } },
     ] },
     { label: 'Edit', items: [{ label: 'Expressions...', fn: () => App.cmds.run('scriptEditor') }, { label: 'Set Driven Key...', fn: () => App.cmds.run('setDrivenKeyWindow') }, '-', { label: 'Delete Attribute', enabled: () => false }] },
@@ -126,9 +144,9 @@ function build(container) {
       if (e.ctrlKey) st.selChannels.has(chanId) ? st.selChannels.delete(chanId) : st.selChannels.add(chanId);
       else if (e.shiftKey && st.lastClicked) { const ids = st.order; const a = ids.indexOf(st.lastClicked), b = ids.indexOf(chanId); if (a >= 0 && b >= 0) for (let i = Math.min(a, b); i <= Math.max(a, b); i++) st.selChannels.add(ids[i]); }
       else { st.selChannels = new Set([chanId]); }
-      st.lastClicked = chanId;
+      st.lastClicked = chanId; st.armed = true; syncManip();
       // drag across names to select a range
-      const mm = (ev) => { const el = document.elementFromPoint(ev.clientX, ev.clientY)?.closest('.cb-row'); if (el && el._chan) { st.selChannels.add(el._chan); refreshValues(); } };
+      const mm = (ev) => { const el = document.elementFromPoint(ev.clientX, ev.clientY)?.closest('.cb-row'); if (el && el._chan && !st.selChannels.has(el._chan)) { st.selChannels.add(el._chan); syncManip(); refreshValues(); } };
       const mu = () => { removeEventListener('mousemove', mm); removeEventListener('mouseup', mu); };
       addEventListener('mousemove', mm); addEventListener('mouseup', mu);
       refreshValues(); App.help('Middle-drag in a viewport to change the selected channels (virtual slider)');
@@ -171,7 +189,7 @@ function build(container) {
       { label: 'Key Selected', fn: keySelected }, { label: 'Key All', fn: () => App.cmds.run('setKey') }, { label: 'Breakdown Selected', fn: keySelected },
       '-', { label: 'Cut Selected', fn: deleteKeysSel }, { label: 'Copy Selected', fn: () => App.anim.copyKeys(App.sel) }, { label: 'Paste Selected', fn: () => { Undo.checkpoint('paste keys'); App.anim.pasteKeys(App.sel); App.anim.evaluate(); } }, { label: 'Delete Selected', fn: deleteKeysSel },
       '-', { label: 'Break Connections', fn: deleteKeysSel },
-      '-', { label: 'Select All', fn: () => { for (const k of st.order) st.selChannels.add(k); refreshValues(); } },
+      '-', { label: 'Select All', fn: () => { for (const k of st.order) st.selChannels.add(k); st.armed = true; syncManip(); refreshValues(); } },
       '-', { label: 'Lock Selected', fn: () => lockSel(true) }, { label: 'Unlock Selected', fn: () => lockSel(false) }, { label: 'Hide Selected', fn: hideSel }, { label: 'Lock and Hide Selected', fn: () => { lockSel(true); hideSel(); } },
       '-', { label: 'Expressions...', fn: () => App.cmds.run('scriptEditor') }, { label: 'Set Driven Key...', fn: () => App.cmds.run('setDrivenKeyWindow') },
     ], e.clientX, e.clientY);
@@ -218,7 +236,7 @@ function build(container) {
   function refreshValues() { for (const r of st.fields) r._upd(); }
   // undo/redo restores fresh node objects under the same ids, so the rows' bound records must be rebuilt too
   function refreshAll() { const sig = signature(); const objs = App.sel; if (sig !== st.sig || objs.length !== st.objs?.length || objs.some((o, i) => o !== st.objs[i])) { st.sig = sig; st.objs = objs.slice(); rebuild(); } else refreshValues(); }
-  App.on('selectionChanged', () => { st.selChannels = new Set([...st.selChannels].filter(c => !c.startsWith('h:'))); });
+  App.on('selectionChanged', () => { st.selChannels = new Set([...st.selChannels].filter(c => !c.startsWith('h:'))); syncManip(); });
 
   // ------------------------------------------------------------ layer editor
   const leTabs = h('div', { class: 'le-tabs' }, h('div', { class: 'le-tab active', text: 'Display' }), h('div', { class: 'le-tab', text: 'Anim', title: 'Animation layers are not available yet' }));
@@ -288,6 +306,6 @@ function keySelected() {
 }
 function deleteKeysSel() { Undo.checkpoint('delete keys'); for (const [rec, a] of targetsFor([...st.selChannels])) if (rec.isObject3D) App.anim.deleteCurve(rec, a); App.dirty('channels', 'timeline', 'graph'); }
 function lockSel(on) { Undo.checkpoint(on ? 'lock' : 'unlock'); for (const [rec, a] of targetsFor([...st.selChannels])) if (rec.isObject3D) rec.inca.locks[a] = on; App.dirty('channels'); }
-function hideSel() { Undo.checkpoint('hide channels'); for (const [rec, a] of targetsFor([...st.selChannels])) if (rec.isObject3D) { rec.inca.hiddenCh = rec.inca.hiddenCh || {}; rec.inca.hiddenCh[a] = true; } st.selChannels.clear(); App.dirty('channels'); }
+function hideSel() { Undo.checkpoint('hide channels'); for (const [rec, a] of targetsFor([...st.selChannels])) if (rec.isObject3D) { rec.inca.hiddenCh = rec.inca.hiddenCh || {}; rec.inca.hiddenCh[a] = true; } st.selChannels.clear(); syncManip(); App.dirty('channels'); }
 
 registerPanel('channels', 'Channel Box / Layer Editor', build, { short: 'Channel Box / Layer Editor' });

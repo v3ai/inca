@@ -77,6 +77,7 @@ App.applyPrefs = () => {
 
 // ------------------------------------------------------------------ hotkeys
 const HOLD_KEYS = { X: '_keyGrid', V: '_keyPoint', C: '_keyCurve' };
+const HELD_TOOL = { moveTool: 'move', rotateTool: 'rotate', scaleTool: 'scale' };
 App.hotkeys = {
   map: new Map(), defaults: new Map(),
   buildDefaults() {
@@ -128,6 +129,8 @@ function onKeyDown(e) {
     const k = HOLD_KEYS[combo.replace('Shift+', '')]; if (!Manip[k]) { Manip[k] = true; App.dirty('statusline'); } e.preventDefault(); return;
   }
   if (combo === 'J') { Manip.stepRotate = true; return; }
+  // W / E / R held: LMB in a viewport opens the tool's marking menu
+  const heldTool = HELD_TOOL[App.hotkeys.map.get(combo)]; if (heldTool) App.heldToolKey = { tool: heldTool, code: e.code };
   if (e.repeat && !/^(Alt\+[,.]|[,.]|Alt\+V)$/.test(combo)) { if (!['Alt+,', 'Alt+.'].includes(combo)) return; }
   const cmd = App.hotkeys.map.get(combo);
   if (cmd) { e.preventDefault(); Cmds.run(cmd); return; }
@@ -137,6 +140,7 @@ function onKeyUp(e) {
   const k = (e.code || '').replace(/^Key/, '');
   if (HOLD_KEYS[k] && Manip[HOLD_KEYS[k]]) { Manip[HOLD_KEYS[k]] = false; App.dirty('statusline'); }
   if (k === 'J') Manip.stepRotate = false;
+  if (App.heldToolKey && e.code === App.heldToolKey.code) App.heldToolKey = null;
   if (e.code === 'Space' && spaceDown) {
     const dt = performance.now() - spaceDown; spaceDown = 0; clearTimeout(spaceTimer);
     if (spaceHotbox) { App.ui.hotbox?.(false); spaceHotbox = false; }
@@ -145,7 +149,7 @@ function onKeyUp(e) {
 }
 addEventListener('keydown', onKeyDown);
 addEventListener('keyup', onKeyUp);
-addEventListener('blur', () => { for (const k of Object.values(HOLD_KEYS)) Manip[k] = false; if (spaceHotbox) App.ui.hotbox?.(false); spaceDown = 0; spaceHotbox = false; });
+addEventListener('blur', () => { App.heldToolKey = null; for (const k of Object.values(HOLD_KEYS)) Manip[k] = false; if (spaceHotbox) App.ui.hotbox?.(false); spaceDown = 0; spaceHotbox = false; });
 
 // ------------------------------------------------------------------ viewports & layouts
 App.layout = 'single';
@@ -181,7 +185,7 @@ App.setActiveViewport = (vp) => {
 
 // ------------------------------------------------------------------ tools / time
 const TRANSFORM = { move: 'translate', rotate: 'rotate', scale: 'scale' };
-const TOOL_HELP = { select: 'Select Tool: select an object', lasso: 'Lasso Tool: draw a lasso to select', paint: 'Paint Selection Tool: drag to paint-select components', move: 'Move Tool: Use manipulator to move object(s). Ctrl+MMB drag to move components along normals. Use D or INSERT to change the pivot position and axis orientation.', rotate: 'Rotate Tool: Use manipulator to rotate object(s). Use D or INSERT to change the pivot position.', scale: 'Scale Tool: Use manipulator to scale object(s). Ctrl+LMB drag on an axis to scale the other two axes.' };
+const TOOL_HELP = { select: 'Select Tool: select an object', lasso: 'Lasso Tool: draw a lasso to select', paint: 'Paint Selection Tool: drag to paint-select components', move: 'Move Tool: Use manipulator to move object(s). MMB drag moves along the active handle, Ctrl+click an axis to move in the other two, Shift+MMB picks the axis. Hold W + LMB for options. Use D or INSERT to change the pivot position and axis orientation.', rotate: 'Rotate Tool: Use manipulator to rotate object(s). MMB drag rotates around the active ring. Hold E + LMB for options. Use D or INSERT to change the pivot position.', scale: 'Scale Tool: Use manipulator to scale object(s). Ctrl+LMB drag on an axis to scale the other two axes, Shift+MMB picks the axis. Hold R + LMB for options.' };
 App.setTool = (name) => {
   if (App.tools?.isInteractive?.(App.tool) && App.tool !== name) App.tools.deactivate?.();
   App.tool = name;
