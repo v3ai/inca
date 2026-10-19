@@ -222,9 +222,18 @@ C('moveTool', 'Move Tool', () => App.setTool('move'), { hk: 'W', icon: 'move', n
 C('rotateTool', 'Rotate Tool', () => App.setTool('rotate'), { hk: 'E', icon: 'rotate', noRepeat: true });
 C('scaleTool', 'Scale Tool', () => App.setTool('scale'), { hk: 'R', icon: 'scale', noRepeat: true });
 C('lastToolUsed', 'Last Tool Used', () => App.setTool(App.lastTool || 'move'), { hk: 'Y', icon: 'lastTool', noRepeat: true });
-C('pivotEdit', 'Edit Pivot', () => { Manip.pivotMode = !Manip.pivotMode; if (Manip.pivotMode && Manip.mode === 'none') App.setTool('move'); App.activeViewport?.flash(Manip.pivotMode ? 'Pivot edit: ON' : 'Pivot edit: OFF'); placeProxy(); App.requestRender(); }, { hk: 'D', noRepeat: true });
+C('pivotEdit', 'Edit Pivot', () => { Manip.pivotMode = !Manip.pivotMode; if (Manip.pivotMode && Manip.mode === 'none') App.setTool('move'); App.activeViewport?.flash(Manip.pivotMode ? 'Pivot edit: ON' : 'Pivot edit: OFF'); placeProxy(); App.requestRender(); }, { hk: 'Insert', noRepeat: true });
+// Maya's D is sticky: Edit Pivot only while the key is held (the hotkey dispatcher calls App.pivotHoldEnd on release)
+C('pivotEditHold', 'Edit Pivot (Hold)', () => {
+  if (App.pivotHoldEnd) return;
+  const was = Manip.pivotMode, tool = App.tool;
+  Manip.pivotMode = true; if (Manip.mode === 'none') App.setTool('move'); placeProxy(); App.requestRender();
+  const end = () => { Manip.pivotMode = was; if (App.tool !== tool) App.setTool(tool); placeProxy(); App.requestRender(); };
+  // released mid-drag: finish dragging the pivot first
+  App.pivotHoldEnd = () => { App.pivotHoldEnd = null; if (Manip.dragging) addEventListener('mouseup', () => setTimeout(end, 0), { once: true }); else end(); };
+}, { hk: 'D', noRepeat: true, help: 'Hold to edit the pivot of the selection; release to go back' });
 C('softSelect', 'Soft Select', () => { Manip.soft.on = !Manip.soft.on; for (const o of App.hilite) o.userData.compDirty = true; App.activeViewport?.flash('Soft Select: ' + (Manip.soft.on ? 'ON' : 'OFF')); App.dirty('toolSettings'); }, { hk: 'B', icon: 'softSelect', noRepeat: true });
-C('manipBigger', 'Increase Manipulator Size', () => { App.prefs.manipSize = Math.min(4, (App.prefs.manipSize || 1) * 1.15); for (const v of App.viewports) v.tc.setSize(App.prefs.manipSize); App.savePrefs(); }, { hk: '=', noRepeat: true });
+C('manipBigger', 'Increase Manipulator Size', () => { App.prefs.manipSize = Math.min(4, (App.prefs.manipSize || 1) * 1.15); for (const v of App.viewports) v.tc.setSize(App.prefs.manipSize); App.savePrefs(); }, { hk: '= / + / Shift++', noRepeat: true });
 C('manipSmaller', 'Decrease Manipulator Size', () => { App.prefs.manipSize = Math.max(0.2, (App.prefs.manipSize || 1) / 1.15); for (const v of App.viewports) v.tc.setSize(App.prefs.manipSize); App.savePrefs(); }, { hk: '-', noRepeat: true });
 C('insertEdgeLoopTool', 'Insert Edge Loop', () => App.setTool('edgeLoop'), { icon: 'edgeLoop', help: 'Click on an edge to insert an edge loop; drag to slide' });
 C('multiCutTool', 'Multi-Cut', () => App.setTool('multiCut'), { icon: 'multiCut', help: 'Click on edges to place cut points; Enter/right-click to complete' });

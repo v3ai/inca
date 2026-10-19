@@ -93,7 +93,7 @@ export class Viewport {
     this.tc.setSize(App.prefs?.manipSize ?? 1);
     this.gizmoScene.add(this.tc.getHelper());
     this.gizmoScene.add(Manip.proxy.parent ? new THREE.Object3D() : Manip.proxy);
-    this.tc.addEventListener('mouseDown', () => { this._tcDown = true; Manip.activeAxis[this.tc.mode] = this.tc.axis; beginDrag(); });
+    this.tc.addEventListener('mouseDown', () => { this._tcDown = true; this._dragPx0 = this._lastPx; Manip.activeAxis[this.tc.mode] = this.tc.axis; beginDrag(); });
     this.tc.addEventListener('objectChange', () => { this.snapDuringDrag(); applyDrag(); App.requestRender(); });
     this.tc.addEventListener('mouseUp', () => { this._tcDown = false; endDrag(); placeProxy(); App.requestRender(); });
     this.tc.addEventListener('change', () => App.requestRender());
@@ -511,17 +511,35 @@ export class Viewport {
     }
     return best;
   }
-  snapDuringDrag() {
-    if (!Manip.dragging || Manip.mode !== 'translate') return;
-    if ((Manip._keyPoint || Manip.snapPoint) && this._lastPx) {
-      const excl = App.compMode ? [] : App.sel;
+  // point snap (V) and grid snap (X) while moving, or while dragging the pivot in Edit Pivot mode. axis = the handle
+  // being dragged; the centre handle with grid snap lands on the ground grid (persp) or the view plane's grid (ortho),
+  // not the nearest point of a 3D lattice
+  snapDuringDrag(axis = this.tc.axis) {
+    if (!Manip.dragging || (Manip.mode !== 'translate' && !Manip.pivotMode) || !this._lastPx) return;
+    const p = Manip.proxy.position;
+    if (Manip._keyPoint || Manip.snapPoint) {
+      // a moved object must not snap to itself, but a pivot snaps to its own object's vertices
+      const excl = App.compMode || Manip.pivotMode ? [] : App.sel;
       const sp = this.snapPointNear(this._lastPx, excl);
       if (sp) {
-        const axis = this.tc.axis;
-        const p = Manip.proxy.position;
         if (axis === 'XYZ' || !axis) p.copy(sp);
         else { if (axis.includes('X')) p.x = sp.x; if (axis.includes('Y')) p.y = sp.y; if (axis.includes('Z')) p.z = sp.z; }
+        return;
       }
+    }
+    if ((Manip.snapGrid || Manip._keyGrid) && (axis === 'XYZ' || !axis) && Manip.start && this._dragPx0) {
+      const s = App.prefs?.grid?.spacing ?? 1; const snap = (x) => Math.round(x / s) * s;
+      // where the centre handle is on screen: its start position plus how far the mouse has moved
+      const a = this.project(Manip.start.pos);
+      const rc = this.raycaster({ x: a.x + this._lastPx.x - this._dragPx0.x, y: a.y + this._lastPx.y - this._dragPx0.y });
+      const out = new THREE.Vector3();
+      if (this.isOrtho) {
+        const { back } = this.camBasis(); const st = Manip.start.pos;
+        if (!rc.ray.intersectPlane(new THREE.Plane().setFromNormalAndCoplanarPoint(back, st), out)) return;
+        // keep the depth along the view axis, snap the other two
+        const d = Math.abs(back.x) >= Math.abs(back.y) && Math.abs(back.x) >= Math.abs(back.z) ? 'x' : Math.abs(back.y) >= Math.abs(back.z) ? 'y' : 'z';
+        for (const c of 'xyz') p[c] = c === d ? st[c] : snap(out[c]);
+      } else if (rc.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), out)) p.set(snap(out.x), 0, snap(out.z));
     }
   }
 
@@ -552,7 +570,8 @@ export class Viewport {
     if (e.ctrlKey && !e.shiftKey) {
       e.stopPropagation();
       const plane = PLANE_OF[ax] || ax; Manip.activeAxis[tc.mode] = plane;
-      tc.axis = plane; tc.pointerDown(tc._getPointer(e));
+      // the drag plane only re-orients to the new axis when drawn: update it now or the first move jumps to the mouse
+      tc.axis = plane; tc._plane.updateMatrixWorld(true); tc.pointerDown(tc._getPointer(e));
       if (tc.dragging) { this.canvas.setPointerCapture(e.pointerId); this.canvas.addEventListener('pointermove', tc._onPointerMove); }
     } else if (e.shiftKey && !e.ctrlKey && ax === 'XYZ') {
       e.stopPropagation(); this._tcDown = true; this.middleDrag(e, { auto: true, done: () => { this._tcDown = false; } });
@@ -603,7 +622,7 @@ export class Viewport {
     if (ax) Manip.activeAxis[mode] = ax;
     ax = ax || Manip.channelManip?.axis || Manip.activeAxis[mode] || (mode === 'rotate' ? 'E' : 'XYZ');
     if (e.shiftKey && !this.tc.axis && mode !== 'rotate') auto = true;
-    const px0 = this.localPx(e);
+    const px0 = this.localPx(e); this._dragPx0 = px0;
     beginDrag();
     const st = Manip.start; const p0 = st.pos.clone(); const cam = this.camera;
     const axisVec = (c) => new THREE.Vector3(c === 'X' ? 1 : 0, c === 'Y' ? 1 : 0, c === 'Z' ? 1 : 0).applyQuaternion(st.quat);
@@ -636,7 +655,7 @@ export class Viewport {
           d.copy(w);
         }
         Manip.proxy.position.copy(p0).add(d);
-        this.snapDuringDrag();
+        this.snapDuringDrag(ax);
       } else if (mode === 'rotate') {
         const s = dragStep('rotate'); const ang = snap(dx * 0.5, s) * D2R; let q;
         if (ax === 'XYZE') q = new THREE.Quaternion().setFromAxisAngle(up, dx * 0.01).multiply(new THREE.Quaternion().setFromAxisAngle(right, dy * 0.01));

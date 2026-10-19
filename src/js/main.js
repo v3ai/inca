@@ -106,6 +106,7 @@ App.hotkeyLabel = (id) => App.hotkeys.comboOf(id) || '';
 
 function editableTarget(t) { return t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName)); }
 let spaceDown = 0, spaceHotbox = false, spaceTimer = 0;
+let pivotHoldCode = ''; // physical key holding Edit Pivot on (D)
 function onKeyDown(e) {
   if (e.defaultPrevented) return;
   const t = e.target;
@@ -116,7 +117,8 @@ function onKeyDown(e) {
   if (inWin && !/^Ctrl\+/.test(combo)) return;
   // holding Space auto-repeats keydown: that must not close a menu opened from the hotbox
   if (combo === 'Space' && e.repeat) { e.preventDefault(); return; }
-  if (menuIsOpen() && e.key !== 'Escape') closeMenus();
+  // a held key (e.g. W for the Move Tool marking menu) auto-repeats keydown: that must not close its submenus
+  if (menuIsOpen() && e.key !== 'Escape' && !e.repeat) closeMenus();
   // tools get first crack (Enter / Escape / Backspace while drawing curves etc.)
   if (App.tools?.handleKey && App.tools.handleKey(e, combo)) { e.preventDefault(); return; }
   if (combo === 'Space') {
@@ -133,7 +135,7 @@ function onKeyDown(e) {
   const heldTool = HELD_TOOL[App.hotkeys.map.get(combo)]; if (heldTool) App.heldToolKey = { tool: heldTool, code: e.code };
   if (e.repeat && !/^(Alt\+[,.]|[,.]|Alt\+V)$/.test(combo)) { if (!['Alt+,', 'Alt+.'].includes(combo)) return; }
   const cmd = App.hotkeys.map.get(combo);
-  if (cmd) { e.preventDefault(); Cmds.run(cmd); return; }
+  if (cmd) { e.preventDefault(); if (cmd === 'pivotEditHold') pivotHoldCode = e.code; Cmds.run(cmd); return; }
   if (combo === 'Escape') { App.tools?.cancel?.(); }
 }
 function onKeyUp(e) {
@@ -141,6 +143,7 @@ function onKeyUp(e) {
   if (HOLD_KEYS[k] && Manip[HOLD_KEYS[k]]) { Manip[HOLD_KEYS[k]] = false; App.dirty('statusline'); }
   if (k === 'J') Manip.stepRotate = false;
   if (App.heldToolKey && e.code === App.heldToolKey.code) App.heldToolKey = null;
+  if (pivotHoldCode && e.code === pivotHoldCode) { pivotHoldCode = ''; App.pivotHoldEnd?.(); }
   if (e.code === 'Space' && spaceDown) {
     const dt = performance.now() - spaceDown; spaceDown = 0; clearTimeout(spaceTimer);
     if (spaceHotbox) { App.ui.hotbox?.(false); spaceHotbox = false; }
@@ -149,7 +152,7 @@ function onKeyUp(e) {
 }
 addEventListener('keydown', onKeyDown);
 addEventListener('keyup', onKeyUp);
-addEventListener('blur', () => { App.heldToolKey = null; for (const k of Object.values(HOLD_KEYS)) Manip[k] = false; if (spaceHotbox) App.ui.hotbox?.(false); spaceDown = 0; spaceHotbox = false; });
+addEventListener('blur', () => { App.heldToolKey = null; pivotHoldCode = ''; App.pivotHoldEnd?.(); for (const k of Object.values(HOLD_KEYS)) Manip[k] = false; if (spaceHotbox) App.ui.hotbox?.(false); spaceDown = 0; spaceHotbox = false; });
 
 // ------------------------------------------------------------------ viewports & layouts
 App.layout = 'single';

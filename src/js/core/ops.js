@@ -74,8 +74,9 @@ export const OPS = {
   planarTrim: { base: 'planarTrimSurface', channels: [int('segments', { min: 1, max: 50 })],
     apply: (_pm, p) => { const cs = (p.curves || []).map(curveOf).filter(Boolean); return { mesh: planar(cs, p) }; } },
 };
+// history node names as in Maya: polyCube1, but makeNurbSphere1 (not nurbsSphere2, which reads as a second object)
 for (const [k, g] of Object.entries(GENERATORS)) {
-  OPS[k] = { base: k, generator: true, nurbs: !!GEN_INFO[k].nurbs, channels: genChannels[k] || [], apply: (_pm, p) => ({ mesh: g(p) }) };
+  OPS[k] = { base: GEN_INFO[k].nurbs ? 'makeNurb' + k.slice(5) : k, generator: true, nurbs: !!GEN_INFO[k].nurbs, channels: genChannels[k] || [], apply: (_pm, p) => ({ mesh: g(p) }) };
 }
 
 export function niceName(k) {

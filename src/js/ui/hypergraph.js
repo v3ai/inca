@@ -5,6 +5,7 @@ import { icon, ICONS } from './icons.js';
 import { dagChildren, dagParent, parentTo, rename, isDag } from '../core/scene.js';
 import { Sel } from '../core/selection.js';
 import { Undo } from '../core/undo.js';
+import { OPS } from '../core/ops.js';
 
 const NW = 112, NH = 46, GX = 16, GY = 34;
 const KIND_ICON = { mesh: 'olMesh', group: 'olGroup', light: 'olLight', camera: 'olCamera', curve: 'olCurve', locator: 'olLocator' };
@@ -33,11 +34,6 @@ export function layoutTree(roots, childrenOf, { w = NW, h: nh = NH, gapX = GX, g
   let x = 0;
   roots.forEach((r, i) => { if (i) x += gapX * 2; measure(r, 0); place(r, x, 0); x += widthOf.get(r); });
   return { pos, width: x, height: maxY };
-}
-// Left-to-right chain layout for the connections view.
-export function layoutChain(n, { w = NW, h: nh = NH, gapX = 60 } = {}) {
-  const out = []; for (let i = 0; i < n; i++) out.push({ x: i * (w + gapX), y: 0, w, h: nh });
-  return out;
 }
 // Fit a bounds rect into a viewport: returns {x, y, s}
 export function frameRect(b, vw, vh, pad = 40, maxS = 1.5) {
@@ -141,30 +137,44 @@ export function openHypergraph(mode) {
       for (const c of kidsOf(o)) { const q = pos.get(c); if (q) line(p.x + NW / 2, p.y + NH, q.x + NW / 2, q.y); }
     }
   };
+  // one row per selected object (history -> shape, its transform above the shape); the shapes line up in one column
+  // and a material shared by several objects is drawn once, with every shape connecting to it
   const buildConnections = () => {
-    const o = Sel.lead ? Sel.lead() : App.sel[App.sel.length - 1];
-    if (!o) { msg.textContent = 'Select an object to display its input and output connections'; bounds = { x0: 0, y0: 0, x1: NW, y1: NH }; return; }
-    const chain = [];
-    for (const hh of o.inca.history || []) chain.push({ rec: hh, label: hh.name, sub: hh.type, iconName: ICONS[hh.type] ? hh.type : 'inputLink', cls: 'hist' });
-    const shapeRec = { _shapeOf: o };
-    chain.push({ rec: shapeRec, label: o.inca.shapeName || (o.inca.name + 'Shape'), sub: o.inca.kind + ' shape', iconName: KIND_ICON[o.inca.kind] || 'olMesh', cls: 'shape' });
-    const mid = o.inca.material || (o.inca.kind === 'mesh' ? App.defaultMatId : null);
-    const mat = mid && App.mats?.get ? App.mats.get(mid) : null;
-    if (mat) chain.push({ rec: mat, label: mat.name, sub: mat.type || 'material', iconName: ICONS[mat.type] ? mat.type : 'olMaterial', cls: 'mat' });
-    const ps = layoutChain(chain.length);
-    const yOff = NH + 50;
-    chain.forEach((c, i) => {
-      const p = { ...ps[i], y: ps[i].y + yOff };
-      makeNode(c.rec, p, c);
-      if (i) { const q = ps[i - 1]; line(q.x + NW, q.y + yOff + NH / 2, p.x - 1, p.y + NH / 2, true, '#2f3a5a'); arrow(p.x - 1, p.y + NH / 2, '#2f3a5a'); }
+    let objs = App.sel.filter(isDag);
+    if (!objs.length && Sel.lead?.()) objs = [Sel.lead()];
+    if (!objs.length) { msg.textContent = 'Select an object to display its input and output connections'; bounds = { x0: 0, y0: 0, x1: NW, y1: NH }; return; }
+    const COL = NW + 60, ROWH = NH * 2 + 50 + 30, yOff = NH + 50;
+    const maxHist = Math.max(...objs.map(o => (o.inca.history || []).length));
+    const shapeX = maxHist * COL, matX = shapeX + COL;
+    const link = (a, b, color = '#2f3a5a') => { line(a.x + NW, a.y + NH / 2, b.x - 1, b.y + NH / 2, true, color); arrow(b.x - 1, b.y + NH / 2, color); };
+    const matUsers = new Map(); // material -> shape positions
+    objs.forEach((o, r) => {
+      const y0 = r * ROWH; const hist = o.inca.history || [];
+      let prev = null;
+      hist.forEach((hh, i) => {
+        const p = { x: (maxHist - hist.length + i) * COL, y: y0 + yOff };
+        makeNode(hh, p, { label: hh.name, sub: hh.type, iconName: ICONS[hh.type] ? hh.type : 'inputLink', cls: 'hist' });
+        if (prev) link(prev, p); prev = p;
+      });
+      const sp = { x: shapeX, y: y0 + yOff };
+      makeNode({ _shapeOf: o }, sp, { label: o.inca.shapeName || (o.inca.name + 'Shape'), sub: OPS[hist[0]?.type]?.nurbs ? 'nurbsSurface' : o.inca.kind + ' shape', iconName: KIND_ICON[o.inca.kind] || 'olMesh', cls: 'shape' });
+      if (prev) link(prev, sp);
+      // transform above its shape
+      makeNode(o, { x: shapeX, y: y0 }, { label: o.inca.name, sub: 'transform', iconName: KIND_ICON[o.inca.kind] || 'olGroup' });
+      line(shapeX + NW / 2, y0 + NH, shapeX + NW / 2, y0 + yOff, false, '#2a2a2a');
+      const mid = o.inca.material || (o.inca.kind === 'mesh' ? App.defaultMatId : null);
+      const mat = mid && App.mats?.get ? App.mats.get(mid) : null;
+      if (mat) { if (!matUsers.has(mat)) matUsers.set(mat, []); matUsers.get(mat).push(sp); }
     });
-    // transform above its shape
-    const si = chain.findIndex(c => c.rec === shapeRec);
-    const tp = { x: ps[si].x, y: 0 };
-    makeNode(o, tp, { label: o.inca.name, sub: 'transform', iconName: KIND_ICON[o.inca.kind] || 'olGroup' });
-    line(tp.x + NW / 2, NH, tp.x + NW / 2, yOff, false, '#2a2a2a');
-    bounds = { x0: 0, y0: 0, x1: ps[ps.length - 1].x + NW, y1: yOff + NH };
-    if (!(o.inca.history || []).length && o.inca.kind === 'mesh') msg.textContent = '';
+    // each material level with the middle of its users, pushed down so materials don't overlap
+    let minY = -Infinity, maxY = (objs.length - 1) * ROWH + yOff + NH;
+    for (const [mat, users] of matUsers) {
+      const y = Math.max(minY, users.reduce((a, u) => a + u.y, 0) / users.length);
+      const p = { x: matX, y }; minY = y + NH + 20; maxY = Math.max(maxY, y + NH);
+      makeNode(mat, p, { label: mat.name, sub: mat.type || 'material', iconName: ICONS[mat.type] ? mat.type : 'olMaterial', cls: 'mat' });
+      for (const u of users) link(u, p);
+    }
+    bounds = { x0: 0, y0: 0, x1: (matUsers.size ? matX : shapeX) + NW, y1: maxY };
   };
   const updateSel = () => {
     const lead = App.sel[App.sel.length - 1];

@@ -19,17 +19,22 @@ export function markingMenu(x, y, radial, list, { title = null } = {}) {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg'); svg.setAttribute('class', 'lines'); root.append(svg);
   const line = document.createElementNS('http://www.w3.org/2000/svg', 'line'); line.setAttribute('stroke', '#ddd'); line.setAttribute('stroke-width', '1.5'); svg.append(line);
   root.append(h('div', { class: 'mm-dot', style: { left: x + 'px', top: y + 'px' } }));
-  const R = 82; const items = [];
+  // Maya's layout: one row per compass row (N, NW/NE, W/E, SW/SE, S); boxes on the left end at the centre column and
+  // boxes on the right start there, so long labels grow outwards instead of over their neighbours
+  const ROW = 27, GAP = 20; const items = [];
   for (const [d, it] of Object.entries(radial || {})) {
     if (!it) continue;
-    const a = DIRS[d] * Math.PI / 180; const ix = x + Math.cos(a) * R * (d === 'E' || d === 'W' ? 1.25 : 1), iy = y + Math.sin(a) * R * (d === 'N' || d === 'S' ? 0.6 : 0.75);
+    const row = d === 'N' ? -2 : d === 'S' ? 2 : d.startsWith('N') ? -1 : d.startsWith('S') ? 1 : 0;
+    const side = d === 'N' || d === 'S' ? 0 : d.endsWith('W') ? -1 : 1;
     const en = it.enabled ? it.enabled() : true;
-    const el = h('div', { class: 'mm-item' + (en ? '' : ' disabled'), style: { left: ix + 'px', top: iy + 'px' } }, chk(it), it.label + (it.sub ? ' ▸' : ''));
-    el._it = it; el._dir = d; el._en = en; root.append(el); items.push(el);
+    const el = h('div', { class: 'mm-item' + (en ? '' : ' disabled'), style: { left: (x + side * GAP) + 'px', top: (y + row * ROW) + 'px', transform: `translate(${side < 0 ? -100 : side > 0 ? 0 : -50}%, -50%)` } },
+      side < 0 && it.sub ? '◂ ' : null, chk(it), it.label + (it.sub && side >= 0 ? ' ▸' : ''));
+    el._it = it; el._dir = d; el._en = en; el._left = side < 0; root.append(el); items.push(el);
   }
+  const R = 2 * ROW + 10;
   let listEl = null; const rows = [];
   if (list && list.length) {
-    listEl = h('div', { class: 'mm-list', style: { left: (x - 85) + 'px', top: (y + R * 0.6 + 22) + 'px' } });
+    listEl = h('div', { class: 'mm-list', style: { left: (x - 85) + 'px', top: (y + R + 12) + 'px' } });
     if (title) listEl.append(h('div', { class: 'mi disabled', text: title, style: { fontStyle: 'italic' } }));
     for (const it of list) {
       if (it === '-') { listEl.append(h('div', { class: 'sep' })); continue; }
@@ -44,7 +49,11 @@ export function markingMenu(x, y, radial, list, { title = null } = {}) {
   const setHot = (el) => {
     if (hot === el) return; hot?.classList.remove('hot'); hot = el; el?.classList.add('hot');
     if (subOpen) { closeMenus(); subOpen = null; }
-    if (el && el._it.sub && el._en) { const r = el.getBoundingClientRect(); subOpen = showMenu(el._it.sub, r.right, r.top, { sub: true }); }
+    if (el && el._it.sub && el._en) {
+      const r = el.getBoundingClientRect(); subOpen = showMenu(closing(el._it.sub), r.right, r.top, { sub: true });
+      // items on the left open their submenu to the left, away from the rest of the menu
+      if (el._left) subOpen.style.left = Math.max(0, r.left - subOpen.offsetWidth + 2) + 'px';
+    }
   };
   const move = (ev) => {
     const dx = ev.clientX - x, dy = ev.clientY - y; const dist = Math.hypot(dx, dy);
@@ -59,12 +68,16 @@ export function markingMenu(x, y, radial, list, { title = null } = {}) {
       setHot(bd < 28 ? best : null);
     } else if (dist <= 28) setHot(null);
   };
+  // picking a submenu item closes the whole marking menu, not just the submenu
+  const closing = (sub) => () => (typeof sub === 'function' ? sub() : sub || []).map(it => !it || typeof it !== 'object' || it.section ? it
+    : it.sub ? { ...it, sub: closing(it.sub) } : { ...it, fn: (e) => { cleanup(); if (it.fn) it.fn(e); else if (it.cmd) App.cmds.run(it.cmd, it.args); } });
   const run = (el) => { const it = el._it; if (!el._en || it.sub) return false; cleanup(); setTimeout(() => { try { if (it.fn) it.fn(); else if (it.cmd) App.cmds.run(it.cmd, it.args); } catch (e) { App.emit('error', String(e.message || e)); } }, 0); return true; };
   const t0 = performance.now(); let sticky = false;
   const up = (ev) => {
     if (ev.target.closest && ev.target.closest('.popup')) return; // let submenu handle
     const quick = performance.now() - t0 < 260 && Math.hypot(ev.clientX - x, ev.clientY - y) < 6;
     if (quick && !sticky) { sticky = true; return; }
+    if (hot && hot._it.sub && subOpen) { sticky = true; return; } // released on a submenu's name: keep it open to pick from
     if (hot && run(hot)) return;
     if (sticky && ev.type === 'mouseup' && !hot) { cleanup(); return; }
     cleanup();
