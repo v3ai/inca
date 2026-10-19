@@ -73,7 +73,7 @@ const COMMON = {
   ],
   Windows: () => [
     sub('Workspaces', () => [...Object.keys(App.ui.workspaces).map(w => ({ label: w, check: () => App.prefs.workspace === w, fn: () => App.ui.applyWorkspace(w) })), '-', { label: 'Reset Current Workspace', fn: () => App.ui.applyWorkspace(App.prefs.workspace) }]),
-    sub('General Editors', [m('scriptEditor'), m('shelfEditor'), m('hypergraph'), m('hypergraphConnections', 'Hypergraph: Connections'), m('componentEditor', 'Component Editor'), m('projectWindow')]),
+    sub('General Editors', [m('scriptEditor'), m('shelfEditor'), m('hypergraph'), m('hypergraphConnections', 'Hypergraph: Connections'), m('connectionEditor'), m('componentEditor', 'Component Editor'), m('projectWindow')]),
     sub('Modeling Editors', [m('modelingToolkit'), m('uvEditor')]),
     sub('Animation Editors', [m('graphEditor'), m('dopeSheet'), m('setDrivenKeyWindow', 'Set Driven Key...')]),
     sub('Rendering Editors', [m('hypershade'), m('renderView'), m('renderSettings'), m('playblast')]),

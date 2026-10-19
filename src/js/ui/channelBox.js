@@ -7,6 +7,7 @@ import { OPS, niceName } from '../core/ops.js';
 import { h, menuBar, showMenu, fmt, iconBtn, colorToCss, promptDialog } from './dom.js';
 import { registerPanel } from './docks.js';
 import { placeProxy, setChannelManip } from '../core/manip.js';
+import { attrConnected, disconnectInput } from '../core/connections.js';
 import '../core/rigging.js'; // rigging: loads the rigging/deformation modules (joints, IK, skin, deformers, constraints)
 
 const XF_LABEL = { translateX: 'Translate X', translateY: 'Translate Y', translateZ: 'Translate Z', rotateX: 'Rotate X', rotateY: 'Rotate Y', rotateZ: 'Rotate Z', scaleX: 'Scale X', scaleY: 'Scale Y', scaleZ: 'Scale Z', visibility: 'Visibility' };
@@ -136,6 +137,7 @@ function build(container) {
       const keyed = !!(rec.isObject3D && App.anim.isKeyed(rec, attr)); const onKey = keyed && App.anim.onKey(rec, attr);
       const locked = S.isLocked(rec, attr);
       inp.classList.toggle('keyed', keyed && !onKey); inp.classList.toggle('onkey', onKey); inp.classList.toggle('locked', locked);
+      inp.classList.toggle('connected', !keyed && attrConnected(rec, attr, 'dst')); // driven by a direct connection (Connection Editor / connectAttr)
       r.classList.toggle('sel', st.selChannels.has(chanId));
     };
     r._upd();
@@ -188,7 +190,7 @@ function build(container) {
       { label: 'Channels', enabled: () => false }, '-',
       { label: 'Key Selected', fn: keySelected }, { label: 'Key All', fn: () => App.cmds.run('setKey') }, { label: 'Breakdown Selected', fn: keySelected },
       '-', { label: 'Cut Selected', fn: deleteKeysSel }, { label: 'Copy Selected', fn: () => App.anim.copyKeys(App.sel) }, { label: 'Paste Selected', fn: () => { Undo.checkpoint('paste keys'); App.anim.pasteKeys(App.sel); App.anim.evaluate(); } }, { label: 'Delete Selected', fn: deleteKeysSel },
-      '-', { label: 'Break Connections', fn: deleteKeysSel },
+      '-', { label: 'Break Connections', fn: breakConnSel },
       '-', { label: 'Select All', fn: () => { for (const k of st.order) st.selChannels.add(k); st.armed = true; syncManip(); refreshValues(); } },
       '-', { label: 'Lock Selected', fn: () => lockSel(true) }, { label: 'Unlock Selected', fn: () => lockSel(false) }, { label: 'Hide Selected', fn: hideSel }, { label: 'Lock and Hide Selected', fn: () => { lockSel(true); hideSel(); } },
       '-', { label: 'Expressions...', fn: () => App.cmds.run('scriptEditor') }, { label: 'Set Driven Key...', fn: () => App.cmds.run('setDrivenKeyWindow') },
@@ -305,6 +307,8 @@ function keySelected() {
   App.dirty('channels', 'timeline', 'graph');
 }
 function deleteKeysSel() { Undo.checkpoint('delete keys'); for (const [rec, a] of targetsFor([...st.selChannels])) if (rec.isObject3D) App.anim.deleteCurve(rec, a); App.dirty('channels', 'timeline', 'graph'); }
+// keys and direct connections driving the selected channels
+function breakConnSel() { Undo.checkpoint('break connections'); for (const [rec, a] of targetsFor([...st.selChannels])) { if (rec.isObject3D) App.anim.deleteCurve(rec, a); disconnectInput(rec, a); } App.dirty('channels', 'timeline', 'graph'); }
 function lockSel(on) { Undo.checkpoint(on ? 'lock' : 'unlock'); for (const [rec, a] of targetsFor([...st.selChannels])) if (rec.isObject3D) rec.inca.locks[a] = on; App.dirty('channels'); }
 function hideSel() { Undo.checkpoint('hide channels'); for (const [rec, a] of targetsFor([...st.selChannels])) if (rec.isObject3D) { rec.inca.hiddenCh = rec.inca.hiddenCh || {}; rec.inca.hiddenCh[a] = true; } st.selChannels.clear(); syncManip(); App.dirty('channels'); }
 

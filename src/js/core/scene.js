@@ -620,6 +620,7 @@ export function serializeScene() {
     format: 'inca-scene', version: App.version, idCounter: App.idCounter,
     nodes, shading: serializeShading(), layers: App.layers.map(l => ({ ...l })),
     anim: App.anim ? App.anim.serialize() : null,
+    conns: (App.conns || []).map(c => ({ ...c })), // direct attribute connections (connections.js)
     time: { ...App.time, playing: false },
     render: App.renderSettings || null,
     sel: App.sel.map(o => o.inca.id),
@@ -628,7 +629,7 @@ export function serializeScene() {
 }
 export function clearScene() {
   for (const o of [...dagChildren(App.world)]) { o.inca.startup = false; deleteNode(o); }
-  App.nodes.clear(); App.names.clear(); App.sel = []; App.hilite = []; App.compMode = null; App.layers = [];
+  App.nodes.clear(); App.names.clear(); App.sel = []; App.hilite = []; App.compMode = null; App.layers = []; App.conns = [];
   if (App.anim) App.anim.clear();
 }
 export function loadScene(data, { keepCameras = false } = {}) {
@@ -641,6 +642,7 @@ export function loadScene(data, { keepCameras = false } = {}) {
   if (!findNode('persp')) createStartupCameras();
   for (const o of byId.values()) if (o.inca.kind === 'mesh') rebuildShape(o);
   if (App.anim && data.anim) App.anim.load(data.anim);
+  App.conns = (data.conns || []).filter(c => App.nodes.has(c.src) && App.nodes.has(c.dst)).map(c => ({ ...c }));
   if (data.time) Object.assign(App.time, data.time, { playing: false });
   if (data.render) App.renderSettings = { ...App.renderSettings, ...data.render };
   App.sel = (data.sel || []).map(id => App.nodes.get(id)).filter(Boolean);

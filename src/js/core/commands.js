@@ -524,6 +524,7 @@ C('graphEditor', 'Graph Editor', () => App.ui.graphEditor(), { icon: 'graphEdito
 C('dopeSheet', 'Dope Sheet', () => App.ui.dopeSheet(), { icon: 'dopeSheet', noRepeat: true });
 C('scriptEditor', 'Script Editor', () => App.ui.scriptEditor(), { icon: 'scriptEditor', noRepeat: true });
 C('hypergraph', 'Hypergraph: Hierarchy', () => App.ui.hypergraph(), { noRepeat: true });
+C('connectionEditor', 'Connection Editor', () => App.ui.connectionEditor(), { noRepeat: true, help: 'Connect attributes of two nodes: click an output on the left, then an input on the right' });
 C('preferences', 'Preferences...', () => App.ui.preferences(), { noRepeat: true });
 C('hotkeyEditor', 'Hotkey Editor...', () => App.ui.hotkeyEditor(), { noRepeat: true });
 C('shelfEditor', 'Shelf Editor...', () => App.ui.shelfEditor(), { noRepeat: true });

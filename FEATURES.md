@@ -108,6 +108,8 @@ Legend: ✅ built · 🟡 partial / simplified · ⏭ planned
 - ✅ MEL-style language: variables, procs, loops, and commands (polyCube, move, rotate, scale, select, setAttr, getAttr, setKeyframe, currentTime, ls, xform, parent, group, duplicate, file, …); `cmds.*` JavaScript API
 - ✅ Every UI action echoes its command; MEL command reference window
 - ✅ Hypergraph (hierarchy and input/output connections of every selected object, shared materials drawn once)
+- ✅ Connection Editor (Windows > General Editors): outputs / inputs side by side, compound attributes expand, incompatible inputs greyed out, Auto Connect or Make / Break, from → to, Reload Left / Right, network navigation arrows, Left / Right Display filters; MMB-drag a node onto another in the Hypergraph's Input/Output view to open it
+- ✅ Direct attribute connections: connectAttr / disconnectAttr / listConnections / isConnected / connectionInfo, live evaluation, saved with the scene, yellow in the Channel Box (Break Connections removes them), arrows in the Hypergraph; texture outColor → material attribute = texture map
 - ⏭ Plug-in API, custom UI from scripts
 
 ## 13. Dynamics & FX

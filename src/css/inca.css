@@ -158,6 +158,7 @@ input[type=range] { accent-color: #9a9a9a; height: 14px; }
 .cb-row input.keyed { background: var(--keyed); color: #111; }
 .cb-row input.onkey { background: #e04d57; color: #111; }
 .cb-row input.locked { background: var(--locked); color: #ddd; }
+.cb-row input.connected { background: #f1f1a5; color: #111; }
 .cb-row input.changed { background: #c9a33d; color: #111; }
 .cb-sect { padding: 6px 6px 2px; font-size: 11px; font-weight: 700; color: #ddd; }
 .cb-node { padding: 2px 10px; color: #ddd; cursor: default; font-size: 11.5px; }

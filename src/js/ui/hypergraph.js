@@ -6,6 +6,7 @@ import { dagChildren, dagParent, parentTo, rename, isDag } from '../core/scene.j
 import { Sel } from '../core/selection.js';
 import { Undo } from '../core/undo.js';
 import { OPS } from '../core/ops.js';
+import { recById } from '../core/connections.js';
 
 const NW = 112, NH = 46, GX = 16, GY = 34;
 const KIND_ICON = { mesh: 'olMesh', group: 'olGroup', light: 'olLight', camera: 'olCamera', curve: 'olCurve', locator: 'olLocator' };
@@ -142,6 +143,12 @@ export function openHypergraph(mode) {
   const buildConnections = () => {
     let objs = App.sel.filter(isDag);
     if (!objs.length && Sel.lead?.()) objs = [Sel.lead()];
+    // objects wired to the selection by direct connections (Connection Editor) get rows too
+    const ownerOf = (r) => r?.isObject3D ? r : r?.kind === 'history' ? App.nodes.get(r.owner) : null;
+    for (const c of App.conns || []) {
+      const a = ownerOf(recById(c.src)), b = ownerOf(recById(c.dst));
+      if (a && b && isDag(a) && isDag(b)) { if (objs.includes(a) && !objs.includes(b)) objs.push(b); else if (objs.includes(b) && !objs.includes(a)) objs.push(a); }
+    }
     if (!objs.length) { msg.textContent = 'Select an object to display its input and output connections'; bounds = { x0: 0, y0: 0, x1: NW, y1: NH }; return; }
     const COL = NW + 60, ROWH = NH * 2 + 50 + 30, yOff = NH + 50;
     const maxHist = Math.max(...objs.map(o => (o.inca.history || []).length));
@@ -175,6 +182,19 @@ export function openHypergraph(mode) {
       for (const u of users) link(u, p);
     }
     bounds = { x0: 0, y0: 0, x1: (matUsers.size ? matX : shapeX) + NW, y1: maxY };
+    // direct connections between nodes on the graph
+    for (const c of App.conns || []) {
+      const a = nodeEls.get(recById(c.src)), b = nodeEls.get(recById(c.dst)); if (!a || !b || a === b) continue;
+      const ax = parseFloat(a.style.left), ay = parseFloat(a.style.top), bx = parseFloat(b.style.left), by = parseFloat(b.style.top);
+      const col = '#4aa3df'; const y1 = ay + NH / 2, y2 = by + NH / 2;
+      // same column: loop out to the left of both nodes; otherwise from one node's facing side to the other's
+      const same = Math.abs(bx - ax) < NW, fwd = same || bx >= ax;
+      const x1 = same ? ax : fwd ? ax + NW : ax, x2 = same ? bx - 1 : fwd ? bx - 1 : bx + NW + 1;
+      if (same) { const q = document.createElementNS('http://www.w3.org/2000/svg', 'path'); const lx = Math.min(ax, bx) - 70; q.setAttribute('d', `M${x1},${y1} C${lx},${y1} ${lx},${y2} ${x2},${y2}`); q.setAttribute('fill', 'none'); q.setAttribute('stroke', col); q.setAttribute('stroke-width', '1.4'); edges.append(q); }
+      else line(x1, y1, x2, y2, true, col);
+      const p = document.createElementNS('http://www.w3.org/2000/svg', 'path'); const d = fwd ? 1 : -1;
+      p.setAttribute('d', `M${x2 - 7 * d},${by + NH / 2 - 4} L${x2},${by + NH / 2} L${x2 - 7 * d},${by + NH / 2 + 4}Z`); p.setAttribute('fill', col); edges.append(p);
+    }
   };
   const updateSel = () => {
     const lead = App.sel[App.sel.length - 1];
@@ -234,6 +254,23 @@ export function openHypergraph(mode) {
     }
     if (e.button === 1) {
       e.preventDefault();
+      // connections view: MMB-drag a node onto another to connect them in the Connection Editor (dragged = outputs)
+      if (nodeEl && st.mode === 'connections') {
+        const src = nodeEl._rec?._shapeOf || nodeEl._rec;
+        const ghost = h('div', { class: 'hg-ghost', text: nodeEl.title }); win.el.append(ghost);
+        let over = null;
+        const mm = (ev) => {
+          ghost.style.left = ev.clientX + 12 + 'px'; ghost.style.top = ev.clientY + 8 + 'px';
+          const t = nodeAt(document.elementFromPoint(ev.clientX, ev.clientY)); const tgt = t && t !== nodeEl ? t : null;
+          if (over !== tgt) { over?.classList.remove('drop'); over = tgt; over?.classList.add('drop'); }
+        };
+        const mu = () => {
+          removeEventListener('mousemove', mm); removeEventListener('mouseup', mu); ghost.remove(); over?.classList.remove('drop');
+          if (over) App.ui.connectionEditor?.({ left: src, right: over._rec?._shapeOf || over._rec });
+        };
+        addEventListener('mousemove', mm); addEventListener('mouseup', mu);
+        return;
+      }
       if (!nodeEl || st.mode !== 'hierarchy' || !isDag(nodeEl._rec)) { // MMB on empty space pans as well
         const x0 = e.clientX, y0 = e.clientY, v0 = { ...st.view };
         const mm = (ev) => { st.view = { ...v0, x: v0.x + ev.clientX - x0, y: v0.y + ev.clientY - y0 }; applyView(); };
@@ -391,7 +428,7 @@ export function openHypergraph(mode) {
 
   // ---- events
   const offs = [
-    App.on('refresh', (flags) => { if (!flags || flags.has?.('outliner') || flags.has?.('hypershade')) build(); }),
+    App.on('refresh', (flags) => { if (!flags || flags.has?.('outliner') || flags.has?.('hypershade') || (st.mode === 'connections' && flags.has?.('connections'))) build(); }),
     App.on('selectionChanged', () => { if (st.mode === 'connections') build(); else updateSel(); }),
     App.on('sceneLoaded', () => { build(); frame(false); }),
   ];

@@ -8,6 +8,7 @@ import { GEN_INFO } from './primitives.js';
 import { createPrimitive, assignMaterial } from './commands.js';
 import { createMaterial, MAT_TYPES } from './materials.js';
 import { Curve } from './curves.js';
+import * as Conn from './connections.js';
 
 // ------------------------------------------------------------------ tokenizer
 function tokenize(src) {
@@ -242,6 +243,7 @@ const FLAG_ARITY = {
   spaceLocator: { p: 3, n: 1 }, circle: { c: 3, nr: 3, r: 1, s: 1, d: 1, n: 1, ch: 1 }, shadingNode: { asShader: 0, asTexture: 0, n: 1, name: 1 }, hyperShade: { assign: 1 },
   file: { new: 0, f: 0, force: 0, open: 0, o: 0, save: 0, s: 0, rename: 1, type: 1, i: 0, import: 0, sn: 0, q: 0 },
   directionalLight: { i: 1, intensity: 1, rgb: 3, rotation: 3, n: 1 }, pointLight: { i: 1, intensity: 1, rgb: 3, n: 1, position: 3 }, spotLight: { i: 1, intensity: 1, rgb: 3, ca: 1, coneAngle: 1, n: 1 }, ambientLight: { i: 1, intensity: 1, n: 1 }, areaLight: { i: 1, n: 1 },
+  connectAttr: { f: 0, force: 0 }, disconnectAttr: {}, isConnected: {}, listConnections: { s: 1, source: 1, d: 1, destination: 1, p: 1, plugs: 1, c: 1, connections: 1 }, connectionInfo: { sfd: 0, sourceFromDestination: 0, dfs: 0, destinationFromSource: 0, id: 0, isDestination: 0, is: 0, isSource: 0 },
   camera: { fl: 1, focalLength: 1, n: 1 }, keyframe: { q: 0, kc: 0, tc: 0, vc: 0, at: 1 }, cutKey: { t: 1, at: 1, cl: 0 }, curve: { d: 1, p: 3, n: 1 },
 };
 
@@ -360,6 +362,32 @@ export const MEL = {
     App.anim.autoKey(node, [attr]);
   },
   getAttr: (F, pos) => { const { node, attr } = splitAttr(pos[0]); const v = S.getAttr(node, attr); if (v === undefined) throw new Error(`No attribute '${attr}' on ${nm(node)}`); return Array.isArray(v) ? v.slice() : (typeof v === 'boolean' ? +v : v); },
+  // ---- direct connections (connections.js)
+  connectAttr: (F, pos) => { const a = splitAttr(pos[0]), b = splitAttr(pos[1]); ck('connectAttr'); Conn.connectAttr(a.node, a.attr, b.node, b.attr, { force: !!(F.f || F.force), quiet: true }); return `Connected ${pos[0]} to ${pos[1]}.`; },
+  disconnectAttr: (F, pos) => { const a = splitAttr(pos[0]), b = splitAttr(pos[1]); ck('disconnectAttr'); Conn.disconnectAttr(a.node, a.attr, b.node, b.attr, { quiet: true }); return `Disconnect ${pos[0]} from ${pos[1]}.`; },
+  isConnected: (F, pos) => { const a = splitAttr(pos[0]), b = splitAttr(pos[1]); return Conn.isConnected(a.node, S.resolveAttr(a.node, a.attr), b.node, S.resolveAttr(b.node, b.attr)) ? 1 : 0; },
+  listConnections: (F, pos) => {
+    const [name, attr] = String(pos[0] ?? nm(Sel.lead())).split('.'); const node = S.findNode(name); if (!node) throw new Error('No object matches name: ' + name);
+    const wantS = +(F.s ?? F.source ?? 1) !== 0, wantD = +(F.d ?? F.destination ?? 1) !== 0, plugs = +(F.p ?? F.plugs ?? 0), pairs = +(F.c ?? F.connections ?? 0);
+    const out = []; const id = Conn.recId(node); const at = attr && S.resolveAttr(node, attr);
+    for (const c of Conn.allConnections()) {
+      const asSrc = wantD && c.src === id && (!at || c.srcAttr === at), asDst = wantS && c.dst === id && (!at || c.dstAttr === at);
+      if (!asSrc && !asDst) continue;
+      const [mine, mineAttr, other, otherAttr] = asSrc ? [node, c.srcAttr, Conn.recById(c.dst), c.dstAttr] : [node, c.dstAttr, Conn.recById(c.src), c.srcAttr];
+      if (pairs) out.push(nm(mine) + '.' + mineAttr);
+      out.push(plugs ? nm(other) + '.' + otherAttr : nm(other));
+    }
+    return out;
+  },
+  connectionInfo: (F, pos) => {
+    const { node, attr } = splitAttr(pos[0]); const at = S.resolveAttr(node, attr); const id = Conn.recId(node);
+    const cs = Conn.allConnections(); const input = cs.find(c => c.dst === id && c.dstAttr === at); const outs = cs.filter(c => c.src === id && c.srcAttr === at);
+    if (F.sfd || F.sourceFromDestination) return input ? nm(Conn.recById(input.src)) + '.' + input.srcAttr : '';
+    if (F.dfs || F.destinationFromSource) return outs.map(c => nm(Conn.recById(c.dst)) + '.' + c.dstAttr);
+    if (F.id || F.isDestination) return input ? 1 : 0;
+    if (F.is || F.isSource) return outs.length ? 1 : 0;
+    return '';
+  },
   rename: (F, pos) => { const [a, b] = pos.length === 1 ? [nm(Sel.lead()), pos[0]] : pos; const o = S.findNode(a); if (!o) throw new Error('No object matches name: ' + a); ck('rename'); S.rename(o, b); return nm(o); },
   parent: (F, pos) => { const ns = nodesFrom(pos); ck('parent'); if (F.w || F.world) { for (const o of ns) S.parentTo(o, null, true); return; } const p = ns[ns.length - 1]; for (const c of ns.slice(0, -1)) S.parentTo(c, p, true); },
   delete: (F, pos) => { const ns = nodesFrom(pos); if (F.ch) { ck('delete history'); for (const o of ns) if (o.inca.kind === 'mesh') S.deleteHistory(o); return; } if (F.channels) { for (const o of ns) App.anim.removeNode(o.inca.id); return; } ck('delete'); for (const o of ns) { App.anim.removeNode(o.inca.id); S.deleteNode(o); } App.emit('selectionChanged'); },

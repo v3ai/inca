@@ -20,6 +20,8 @@ import './ui/dopeSheet.js';
 import './ui/scriptEditor.js';
 import './ui/shelfEditor.js';
 import './ui/hypergraph.js';
+import './core/connections.js';
+import './ui/connectionEditor.js';
 import './ui/about.js';
 import './ui/hypershade.js';
 import './ui/renderView.js';
