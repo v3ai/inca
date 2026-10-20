@@ -8,6 +8,7 @@ import { syncCamera, updateXform, findNode, worldBBox, allDag, WIRE_MATS, COLORS
 import { edgeCullNormals } from '../core/polymesh.js';
 import { Sel } from '../core/selection.js';
 import { Manip, placeProxy, manipVisible, beginDrag, applyDrag, endDrag, softWeights, dragStep } from '../core/manip.js';
+import { affectedBy } from '../core/connections.js';
 
 THREE.BufferGeometry.prototype.computeBoundsTree = computeBoundsTree;
 THREE.BufferGeometry.prototype.disposeBoundsTree = disposeBoundsTree;
@@ -76,7 +77,14 @@ export class Viewport {
     this.hudR = h('div', { class: 'panel-hud-right' });
     this.msg = h('div', { class: 'panel-msg' });
     this.gate = h('div', { style: { position: 'absolute', pointerEvents: 'none', inset: 0 } });
-    this.view.append(this.canvas, this.gate, this.label, this.hud, this.hudR, this.msg);
+    // manipulator size readout, shown for a moment after + / - (with a reset to the default size)
+    this.sizeVal = h('span', { class: 'v' }); this.sizeBar = h('span', { class: 'bar' });
+    this.sizeHud = h('div', { class: 'panel-manipsize' }, h('span', { text: 'Manipulator size' }), h('span', { class: 'meter' }, this.sizeBar), this.sizeVal,
+      h('button', { text: 'Reset', title: 'Back to the default size (1)', onclick: (e) => { e.stopPropagation(); App.cmds.run('manipResetSize'); } }));
+    this.sizeHud.addEventListener('mousedown', (e) => e.stopPropagation());
+    this.sizeHud.addEventListener('mouseenter', () => clearTimeout(this._st));
+    this.sizeHud.addEventListener('mouseleave', () => this.showManipSize(1200));
+    this.view.append(this.canvas, this.gate, this.label, this.hud, this.hudR, this.msg, this.sizeHud);
     this.el.append(this.menubar, this.toolbar, this.view);
     host.append(this.el);
     this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true, preserveDrawingBuffer: true, powerPreference: 'high-performance' });
@@ -91,6 +99,7 @@ export class Viewport {
     this.tc = new TransformControls(new THREE.PerspectiveCamera(), this.canvas);
     this.tc.attach(Manip.proxy);
     this.tc.setSize(App.prefs?.manipSize ?? 1);
+    this.setupGizmo();
     this.gizmoScene.add(this.tc.getHelper());
     this.gizmoScene.add(Manip.proxy.parent ? new THREE.Object3D() : Manip.proxy);
     this.tc.addEventListener('mouseDown', () => { this._tcDown = true; this._dragPx0 = this._lastPx; Manip.activeAxis[this.tc.mode] = this.tc.axis; beginDrag(); });
@@ -178,6 +187,7 @@ export class Viewport {
     this._saved = [];
     const hidden = [];
     let anySky = null;
+    const aff = o.show.selectionHighlight && App.sel.length ? affectedBy(App.sel) : null;
     App.world.traverse((n) => {
       if (!n.inca) return;
       const inc = n.inca; const ud = n.userData;
@@ -186,7 +196,7 @@ export class Viewport {
       if (inc.startup) { if (ud.icon) ud.icon.visible = false; return; }
       const sel = App.sel.includes(n); const lead = sel && App.sel[App.sel.length - 1] === n; const hl = App.hilite.includes(n);
       const lmode = inc.layer ? App.layers.find(l => l.id === inc.layer) : null; const ltemp = lmode && lmode.mode === 'template';
-      const wireMat = (inc.template || ltemp) ? WIRE_MATS.template : (lead && o.show.selectionHighlight) ? WIRE_MATS.lead : (sel && o.show.selectionHighlight) ? WIRE_MATS.sel : hl ? WIRE_MATS.hilite : null;
+      const wireMat = (inc.template || ltemp) ? WIRE_MATS.template : (lead && o.show.selectionHighlight) ? WIRE_MATS.lead : (sel && o.show.selectionHighlight) ? WIRE_MATS.sel : aff?.has(n) ? WIRE_MATS.affected : hl ? WIRE_MATS.hilite : null;
       if (inc.kind === 'mesh') {
         const show = inc.nurbs ? o.show.nurbsSurfaces : o.show.polymeshes;
         ud.mesh.visible = show && o.shading !== 'wire' && o.shading !== 'bbox';
@@ -255,6 +265,49 @@ export class Viewport {
     this.hudR.textContent = r;
   }
   flash(text) { this.msg.textContent = text; this.msg.style.opacity = '1'; clearTimeout(this._mt); this._mt = setTimeout(() => this.msg.style.opacity = '0', 900); }
+  showManipSize(ms = 2500) {
+    const v = App.prefs?.manipSize ?? 1;
+    this.sizeVal.textContent = v.toFixed(2); this.sizeBar.style.width = Math.round((v - 0.2) / 3.8 * 100) + '%';
+    this.sizeHud.classList.add('on'); clearTimeout(this._st); this._st = setTimeout(() => this.sizeHud.classList.remove('on'), ms);
+  }
+
+  // ---------------------------------------------------------------- manipulator look
+  // Tag the move / scale handles once (plane handles, the arrows pointing down the negative axes, arrow tips) and add
+  // the Edit Pivot centre ring; styleGizmo() then hides what doesn't apply after three.js lays the handles out
+  setupGizmo() {
+    const gz = this.tc._gizmo; if (!gz) return;
+    const bb = new THREE.Box3(), c = new THREE.Vector3(), sz = new THREE.Vector3();
+    for (const mode of ['translate', 'scale']) for (const grp of [gz.gizmo[mode], gz.picker[mode]]) for (const k of grp.children) {
+      const u = k.userData; const ai = 'XYZ'.indexOf(k.name);
+      if (k.name === 'XY' || k.name === 'YZ' || k.name === 'XZ') u.plane = true;
+      else if (k.name === 'XYZ') u.center = grp === gz.gizmo[mode];
+      else if (ai >= 0 && k.geometry) {
+        k.geometry.computeBoundingBox(); bb.copy(k.geometry.boundingBox); bb.getCenter(c); bb.getSize(sz);
+        if (c.getComponent(ai) < -0.1) u.neg = true;
+        if (mode === 'translate' && grp === gz.gizmo[mode] && Math.max(...[0, 1, 2].filter(i => i !== ai).map(i => sz.getComponent(i))) > 0.05) u.tip = true;
+      }
+    }
+    // Edit Pivot: a ring at the centre instead of the solid handle, and the axes without arrow heads (like Maya)
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.075, 0.095, 40), new THREE.MeshBasicMaterial({ color: 0x5fd3ff, side: THREE.DoubleSide, depthTest: false, depthWrite: false, transparent: true, toneMapped: false, fog: false }));
+    ring.name = 'XYZ'; ring.userData.pivotRing = true; ring.renderOrder = Infinity;
+    gz.gizmo.translate.add(ring); this._pivotRing = ring;
+    const upd = gz.updateMatrixWorld.bind(gz);
+    gz.updateMatrixWorld = (force) => { upd(force); this.styleGizmo(); };
+  }
+  styleGizmo() {
+    const tc = this.tc, gz = tc._gizmo, mode = tc.mode;
+    if (mode !== 'translate' && mode !== 'scale') return;
+    const pivot = Manip.pivotMode && mode === 'translate';
+    const planes = !pivot && App.prefs?.manipPlaneHandles !== false, negs = !pivot && App.prefs?.manipNegativeHandles !== false;
+    // while dragging one axis (or plane), only that handle stays: the yellow one
+    const only = tc.dragging && tc.axis && tc.axis !== 'XYZ' ? tc.axis : null;
+    for (const grp of [gz.gizmo[mode], gz.picker[mode]]) for (const k of grp.children) {
+      const u = k.userData;
+      if ((u.plane && !planes) || (u.neg && !negs) || (u.tip && pivot) || (u.center && pivot) || (u.pivotRing && !pivot)) k.visible = false;
+      else if (only && grp === gz.gizmo[mode] && k.name !== only && !(only.length === 2 && k.name.length === 1 && only.includes(k.name))) k.visible = false;
+    }
+    if (pivot && this._pivotRing.visible) { tc.camera.getWorldQuaternion(this._pivotRing.quaternion); this._pivotRing.updateMatrixWorld(true); }
+  }
 
   // ---------------------------------------------------------------- camera navigation
   camBasis() {
@@ -501,13 +554,14 @@ export class Viewport {
     if (Manip._keyPoint) { const sp = this.snapPointNear(px); if (sp) p.copy(sp); }
     return p;
   }
-  snapPointNear(px, exclude = []) {
-    let best = null, bd = 18;
+  snapPointNear(px, exclude = [], radius = 18, skip = null) {
+    let best = null, bd = radius;
     for (const n of this.visibleNodes()) {
       if (exclude.includes(n)) continue;
       const pts = n.inca.kind === 'mesh' ? n.inca.mesh.v : n.inca.kind === 'curve' ? n.inca.curve.cvs : null; if (!pts) continue;
-      n.updateWorldMatrix(true, false);
-      for (const p of pts) { const w = new THREE.Vector3(...p).applyMatrix4(n.matrixWorld); const s = this.project(w); const d = Math.hypot(s.x - px.x, s.y - px.y); if (d < bd) { bd = d; best = w; } }
+      n.updateWorldMatrix(true, false); const sk = skip?.get(n);
+      for (let i = 0; i < pts.length; i++) {
+        if (sk?.has(i)) continue; const p = pts[i]; const w = new THREE.Vector3(...p).applyMatrix4(n.matrixWorld); const s = this.project(w); if (s.z > 1) continue; const d = Math.hypot(s.x - px.x, s.y - px.y); if (d < bd) { bd = d; best = w; } }
     }
     return best;
   }
@@ -520,10 +574,18 @@ export class Viewport {
     if (Manip._keyPoint || Manip.snapPoint) {
       // a moved object must not snap to itself, but a pivot snaps to its own object's vertices
       const excl = App.compMode || Manip.pivotMode ? [] : App.sel;
-      const sp = this.snapPointNear(this._lastPx, excl);
+      // always the point nearest the mouse (no radius), so the manipulator stays on it until another point is closer
+      // moved components never snap onto themselves
+      const skip = App.compMode && Manip.start ? new Map(Manip.start.comps.map(c => [c.o, new Set(c.verts)])) : null;
+      const sp = this.snapPointNear(this._lastPx, excl, Infinity, skip);
       if (sp) {
-        if (axis === 'XYZ' || !axis) p.copy(sp);
-        else { if (axis.includes('X')) p.x = sp.x; if (axis.includes('Y')) p.y = sp.y; if (axis.includes('Z')) p.z = sp.z; }
+        if (axis === 'XYZ' || !axis || !Manip.start) p.copy(sp);
+        else {
+          // the manipulator lands where the point projects onto the dragged axis (or plane)
+          const st = Manip.start.pos, d = sp.clone().sub(st), dir = (i) => new THREE.Vector3().setComponent(i, 1).applyQuaternion(Manip.start.quat);
+          if (axis.length === 1) { const a = dir('XYZ'.indexOf(axis)); p.copy(st).addScaledVector(a, d.dot(a)); }
+          else { const n = dir([0, 1, 2].find(i => !axis.includes('XYZ'[i]))); p.copy(sp).addScaledVector(n, -d.dot(n)); }
+        }
         return;
       }
     }

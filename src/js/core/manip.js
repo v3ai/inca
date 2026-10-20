@@ -102,9 +102,16 @@ export function beginDrag() {
       st.comps.push({ o, verts, world, orig: verts.map(i => pts[i].slice()), inv: o.matrixWorld.clone().invert(), weights, mirror });
     }
   } else {
-    for (const o of topSelected()) st.objs.push({ o, wm: worldMatrix(o), piv: worldPivot(o), t: o.inca.t.slice(), r: o.inca.r.slice(), s: o.inca.s.slice(), pinv: parentWorld(o).invert() });
+    for (const o of topSelected()) st.objs.push({ o, wm: worldMatrix(o), piv: worldPivot(o), t: o.inca.t.slice(), r: o.inca.r.slice(), s: o.inca.s.slice(), pinv: parentWorld(o).invert(), held: heldChannels(o, Manip.mode) });
   }
   Manip.start = st;
+}
+
+// channels (0-2) of translate / rotate / scale the manipulator must leave alone: locked ones, and ones driven by a
+// connection (the Connection Editor), which would only snap back on the next evaluation
+function heldChannels(o, mode) {
+  if (!['translate', 'rotate', 'scale'].includes(mode)) return [];
+  return [0, 1, 2].filter(i => { const a = mode + 'XYZ'[i]; return o.inca.locks[a] || (App.conns || []).some(c => c.dst === o.inca.id && (c.dstAttr === a || c.dstAttr === mode)); });
 }
 
 // Right after Extrude, translating the new faces edits the polyExtrudeFace node (translate / localTranslateZ),
@@ -165,6 +172,7 @@ export function applyDrag() {
   }
   for (const s of st.objs) {
     const o = s.o;
+    if (s.held.length === 3) continue;
     if (Manip.mode === 'translate') {
       // transform the world delta vector by the parent inverse (linear part only)
       const pl = s.pinv.clone().setPosition(0, 0, 0);
@@ -179,6 +187,7 @@ export function applyDrag() {
       o.inca.s = [s.s[0] * sc.x, s.s[1] * sc.y, s.s[2] * sc.z].map(x => +x.toFixed(6));
       updateXform(o);
     }
+    if (s.held.length) { const k = Manip.mode[0]; for (const i of s.held) o.inca[k][i] = s[k][i]; updateXform(o); }
   }
   App.dirty('channels');
 }
@@ -198,7 +207,7 @@ export function endDrag() {
     if (Manip.mode === 'translate' && st.comps.length) App.emit('echo', `move -r ${fx(d.x)} ${fx(d.y)} ${fx(d.z)} ;`);
   } else if (!Manip.pivotMode) {
     const attrs = Manip.mode === 'translate' ? ['translateX', 'translateY', 'translateZ'] : Manip.mode === 'rotate' ? ['rotateX', 'rotateY', 'rotateZ'] : ['scaleX', 'scaleY', 'scaleZ'];
-    for (const s of st.objs) App.anim.autoKey(s.o, attrs);
+    for (const s of st.objs) { const free = attrs.filter((_, i) => !s.held.includes(i)); if (free.length) App.anim.autoKey(s.o, free); }
     const lead = st.objs[st.objs.length - 1];
     if (lead) {
       const o = lead.o;

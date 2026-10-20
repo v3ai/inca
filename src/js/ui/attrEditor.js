@@ -280,10 +280,10 @@ function buildAE(container) {
     nameIn.value = c.rec.isObject3D ? (c.tab === 'shape' ? c.rec.inca.shapeName : c.rec.inca.name) : c.rec.name;
     panel = attrPanel(holder, c.rec, { tab: c.tab, openRec: (r) => { if (aeTabs(AE.target).some(t => t.rec === r)) { AE.tab = r.id; render(true); } else App.ui.showAttr(r); } });
   }
-  App.ui.showAttr = (rec) => {
+  App.ui.showAttr = (rec, tab = null) => {
     if (!rec) return;
     if (rec.kind === 'history') { AE.target = S.historyOwner(rec); AE.tab = rec.id; }
-    else if (rec.isObject3D) { AE.target = rec; AE.tab = 'xf'; }
+    else if (rec.isObject3D) { AE.target = rec; AE.tab = tab === 'shape' && rec.inca.shapeName ? 'shape' : 'xf'; AE.lastTabKind = AE.tab === 'shape' ? 'shape' : null; }
     else { const lead = Sel.lead(); if (lead && aeTabs(lead).some(t => t.rec === rec)) { AE.target = lead; } else AE.target = rec; AE.tab = rec.id; AE.explicit = true; }
     App.ui.showRightPanel('attr'); render(true);
   };
@@ -292,6 +292,9 @@ function buildAE(container) {
   return { refresh(d) { if (d.has('all') || d.has('selection')) follow(); else if (d.has('attr') || d.has('channels') || d.has('hypershade') || d.has('outliner')) render(); }, show() { follow(); render(true); } };
 }
 registerPanel('attr', 'Attribute Editor', buildAE, { short: 'Attribute Editor' });
+// until the Attribute Editor is first opened its showAttr doesn't exist yet: open (build) it, then show the node
+const showAttrStub = (rec, tab) => { App.ui.showRightPanel('attr'); if (App.ui.showAttr !== showAttrStub) App.ui.showAttr(rec, tab); };
+App.ui.showAttr = App.ui.showAttr || showAttrStub;
 
 // ------------------------------------------------------------------ Tool Settings
 function buildToolSettings(container) {

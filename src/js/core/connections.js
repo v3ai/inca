@@ -18,7 +18,7 @@ const nm = (rec) => S.nodeName(rec);
 // types: float int bool enum (scalars), double3 / float3 (vectors, children X Y Z / R G B), texColor (texture outColor)
 const SCALAR = new Set(['float', 'int', 'bool', 'enum']);
 const VECTOR = new Set(['double3', 'float3']);
-const vec = (name, type, kids, o = {}) => ({ name, type, keyable: true, readable: true, writable: true, ...o, children: kids.map(k => ({ name: name + k, type: type === 'float3' ? 'float' : 'float', keyable: o.keyable !== false, readable: true, writable: true, parent: name })) });
+const vec = (name, type, kids, o = {}) => ({ name, type, keyable: true, readable: true, writable: true, ...o, children: kids.map(k => ({ name: name + k, type: 'float', keyable: o.keyable !== false, readable: true, writable: o.writable !== false, parent: name })) });
 const sc = (name, type = 'float', o = {}) => ({ name, type, keyable: true, readable: true, writable: true, ...o });
 // a value bag (light / camera / material / texture attrs) -> attribute list
 function bagAttrs(bag, { keyable = () => true, mappable = [] } = {}) {
@@ -33,9 +33,14 @@ function bagAttrs(bag, { keyable = () => true, mappable = [] } = {}) {
 export function listAttrs(rec) {
   if (!rec) return [];
   if (rec.isObject3D) {
-    const inc = rec.inca; const out = [];
-    out.push(vec('translate', 'double3', ['X', 'Y', 'Z']), vec('rotate', 'double3', ['X', 'Y', 'Z']), vec('scale', 'double3', ['X', 'Y', 'Z']), sc('visibility', 'bool'));
-    out.push(vec('rotatePivot', 'double3', ['X', 'Y', 'Z'], { keyable: false }));
+    const inc = rec.inca; const out = []; const XYZ = ['X', 'Y', 'Z'];
+    // read-only outputs (Maya's boundingBox / center), then the transform's own attributes in Maya's order
+    const ro = { keyable: false, writable: false };
+    out.push(vec('boundingBoxMin', 'double3', XYZ, ro), vec('boundingBoxMax', 'double3', XYZ, ro), vec('boundingBoxSize', 'double3', XYZ, ro), vec('center', 'double3', XYZ, ro));
+    out.push(sc('visibility', 'bool'), sc('template', 'bool', { keyable: false }));
+    out.push(vec('translate', 'double3', XYZ), vec('rotate', 'double3', XYZ), vec('scale', 'double3', XYZ));
+    out.push(vec('rotatePivot', 'double3', XYZ, { keyable: false }), vec('rotatePivotTranslate', 'double3', XYZ, { keyable: false }));
+    if (inc.kind === 'joint') out.push(vec('jointOrient', 'double3', XYZ, { keyable: false }), sc('radius', 'float', { keyable: false }));
     for (const [k, v] of Object.entries(inc.extraAttrs || {})) if (typeof v === 'number' || typeof v === 'boolean') out.push(sc(k, typeof v === 'boolean' ? 'bool' : 'float'));
     if (inc.light) out.push(...bagAttrs(inc.light));
     if (inc.cam) out.push(...bagAttrs(inc.cam, { keyable: (k) => k === 'focalLength' }));
@@ -61,6 +66,8 @@ export function attrInfo(rec, attr) {
   return null;
 }
 export const attrLabel = (a) => a.label || niceName(a.name);
+// Hypergraph line colours, as in Maya: green = triple (vector / colour), dark blue = single
+export const attrWidth = (a) => !a ? 1 : VECTOR.has(a.type) || a.type === 'texColor' ? 3 : 1;
 // can src (an output) drive dst (an input)?
 export function compatible(sa, da) {
   if (!sa || !da) return false;
@@ -160,6 +167,19 @@ export function evaluateConnections() {
 Rig.addPass(5, (ctx) => { if (App.conns.length && evaluateConnections()) ctx.changed = true; });
 // again after constraints / IK, for sources they move
 Rig.addPass(65, (ctx) => { if (App.conns.length && evaluateConnections()) ctx.changed = true; });
+
+// DAG objects driven by `objs` through connections or constraints, followed downstream (Maya draws them purple)
+export function affectedBy(objs) {
+  const owner = (r) => r?.isObject3D ? r : r?.kind === 'history' ? S.historyOwner(r) : null;
+  const edges = [];
+  for (const c of App.conns) { const a = owner(recById(c.src)), b = owner(recById(c.dst)); if (a && b && a !== b) edges.push([a, b]); }
+  for (const o of S.allDag()) if (o.inca.kind === 'constraint' && o.inca.rig?.targets) { const d = S.dagParent(o); if (d) for (const t of o.inca.rig.targets) { const a = App.nodes.get(t); if (a && a !== d) edges.push([a, d]); } }
+  const out = new Set(); if (!edges.length) return out;
+  const todo = [...objs]; const seen = new Set(objs);
+  while (todo.length) { const a = todo.pop(); for (const [x, y] of edges) if (x === a && !seen.has(y)) { seen.add(y); out.add(y); todo.push(y); } }
+  for (const o of objs) out.delete(o);
+  return out;
+}
 
 App.on('nodeDeleted', (o) => {
   const ids = new Set([o.inca.id, ...(o.inca.history || []).map(h => h.id)]);

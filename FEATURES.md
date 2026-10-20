@@ -47,7 +47,7 @@ Legend: ✅ built · 🟡 partial / simplified · ⏭ planned
 
 ## 4. Selection & transforms
 - ✅ Click/Shift/Ctrl/Ctrl+Shift, marquee, lasso, paint selection, select all/inverse/by type/hierarchy/similar/by name
-- ✅ Move/Rotate/Scale manipulators (world/object space), MMB drag along the active handle (click a handle to make it active; Ctrl+click an axis to lock it and work in the other two, Ctrl+click the centre for the view plane; Shift+MMB picks the axis from the drag direction), Discrete Move/Rotate/Scale with step size, grid snap (X; the centre handle snaps onto the ground grid in persp), point snap (V), discrete rotate (J), manipulator size +/-
+- ✅ Move/Rotate/Scale manipulators (world/object space), MMB drag along the active handle (click a handle to make it active; Ctrl+click an axis to lock it and work in the other two, Ctrl+click the centre for the view plane; Shift+MMB picks the axis from the drag direction), Discrete Move/Rotate/Scale with step size, grid snap (X; the centre handle snaps onto the ground grid in persp), point snap (V; the manipulator stays on the nearest point, projected onto the dragged axis), discrete rotate (J), manipulator size +/- (with a size readout and Reset), only the dragged axis shown while dragging, Edit Pivot manipulator without arrow heads and with a centre ring, Preferences to hide plane / negative-axis handles, locked and connected channels are left alone
 - ✅ Hold W / E / R + LMB: tool marking menus (axis orientation, edit pivot, soft select, discrete step, symmetry, tool settings)
 - ✅ Selecting translate/rotate/scale channels in the Channel Box shows that manipulator with those axes active; an LMB click in a viewport ends the MMB channel drag and restores the tool
 - ✅ Pivot edit (hold D, Insert toggles; snaps to grid and to the object's own vertices), Center Pivot, Freeze, Reset, Match transforms, Snap to ground
@@ -107,9 +107,9 @@ Legend: ✅ built · 🟡 partial / simplified · ⏭ planned
 - ✅ Script Editor (MEL & JavaScript tabs, history, save to shelf, load/save scripts)
 - ✅ MEL-style language: variables, procs, loops, and commands (polyCube, move, rotate, scale, select, setAttr, getAttr, setKeyframe, currentTime, ls, xform, parent, group, duplicate, file, …); `cmds.*` JavaScript API
 - ✅ Every UI action echoes its command; MEL command reference window
-- ✅ Hypergraph (hierarchy and input/output connections of every selected object, shared materials drawn once)
-- ✅ Connection Editor (Windows > General Editors): outputs / inputs side by side, compound attributes expand, incompatible inputs greyed out, Auto Connect or Make / Break, from → to, Reload Left / Right, network navigation arrows, Left / Right Display filters; MMB-drag a node onto another in the Hypergraph's Input/Output view to open it
-- ✅ Direct attribute connections: connectAttr / disconnectAttr / listConnections / isConnected / connectionInfo, live evaluation, saved with the scene, yellow in the Channel Box (Break Connections removes them), arrows in the Hypergraph; texture outColor → material attribute = texture map
+- ✅ Hypergraph (hierarchy and input/output connections of every selected object, shared materials drawn once; the I/O graph is kept until graphed again, Maya's row layout and yellow selection, clicking a node shows its Attribute Editor tab, Freeform / Automatic layout, toolbar, connection lines coloured by type with attribute tooltips)
+- ✅ Connection Editor (Windows > General Editors): outputs / inputs side by side, compound attributes expand, incompatible inputs greyed out, Auto Connect or Make / Break, from → to, Reload Left / Right, network navigation arrows, Left / Right Display filters, bounding box / center outputs, template, rotate pivot translate, joint orient; MMB-drag a node onto another in the Hypergraph's Input/Output view to open it
+- ✅ Direct attribute connections: connectAttr / disconnectAttr / listConnections / isConnected / connectionInfo, live evaluation, saved with the scene, yellow in the Channel Box (Break Connections removes them), arrows in the Hypergraph, driven objects drawn purple when the driver is selected (also constraints); texture outColor → material attribute = texture map
 - ⏭ Plug-in API, custom UI from scripts
 
 ## 13. Dynamics & FX

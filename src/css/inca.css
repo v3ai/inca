@@ -135,6 +135,12 @@ input[type=range] { accent-color: #9a9a9a; height: 14px; }
 .panel-hud { position: absolute; top: 6px; left: 8px; color: #e8e8e8; font: 11px Consolas, "Courier New", monospace; pointer-events: none; white-space: pre; text-shadow: 0 0 3px rgba(0,0,0,.8); }
 .panel-hud-right { position: absolute; top: 6px; right: 8px; color: #e8e8e8; font: 11px Consolas, monospace; pointer-events: none; white-space: pre; text-align: right; text-shadow: 0 0 3px rgba(0,0,0,.8); }
 .panel-hud-bottom { position: absolute; bottom: 6px; right: 8px; color: #e8e8e8; font: 11px Consolas, monospace; pointer-events: none; white-space: pre; text-align: right; }
+.panel-manipsize { position: absolute; right: 8px; bottom: 8px; display: flex; align-items: center; gap: 6px; padding: 3px 4px 3px 8px; background: rgba(40,40,40,.88); border: 1px solid #1d1d1d; border-radius: 3px; font-size: 11px; color: #ddd; opacity: 0; pointer-events: none; transition: opacity .3s; }
+.panel-manipsize.on { opacity: 1; pointer-events: auto; }
+.panel-manipsize .meter { width: 64px; height: 6px; background: #222; border: 1px solid #555; }
+.panel-manipsize .meter .bar { display: block; height: 100%; background: #e6c54a; }
+.panel-manipsize .v { min-width: 30px; text-align: right; font-variant-numeric: tabular-nums; color: #fff; }
+.panel-manipsize button { height: 18px; padding: 0 6px; font-size: 11px; }
 .panel-msg { position: absolute; top: 40%; left: 0; right: 0; text-align: center; font-size: 22px; color: rgba(255,255,255,.85); pointer-events: none; text-shadow: 0 0 6px #000; transition: opacity .4s; }
 .marquee { position: absolute; border: 1px dashed #fff; background: rgba(255,255,255,0.04); pointer-events: none; z-index: 3; }
 .panel-embed { position: absolute; inset: 0; display: flex; flex-direction: column; background: var(--bg); }
@@ -278,7 +284,7 @@ input[type=range] { accent-color: #9a9a9a; height: 14px; }
 .hotbox .hb-center { position: absolute; transform: translate(-50%, -50%); background: rgba(70,70,70,.94); border: 1px solid #222; padding: 3px 14px; pointer-events: auto; color: #fff; font-weight: 700; }
 .mm { position: fixed; inset: 0; z-index: 9500; }
 .mm svg.lines { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-.mm .mm-item { position: absolute; background: rgba(82,82,82,.97); border: 1px solid #1f1f1f; padding: 2px 9px; white-space: nowrap; color: #eee; transform: translate(-50%, -50%); box-shadow: 1px 2px 4px rgba(0,0,0,.4); font-size: 12px; }
+.mm .mm-item { position: absolute; background: rgba(82,82,82,.97); border: 1px solid #1f1f1f; padding: 3px 12px; white-space: nowrap; color: #eee; transform: translate(-50%, -50%); box-shadow: 1px 2px 4px rgba(0,0,0,.4); font-size: 12px; }
 .mm .mm-item.hot { background: var(--hi); color: #fff; }
 .mm .mm-item.disabled { color: #8a8a8a; }
 .mm .mm-chk { display: inline-block; width: 10px; height: 10px; margin-right: 5px; border: 1px solid #aaa; font-size: 10px; line-height: 10px; text-align: center; vertical-align: -1px; flex: none; }

@@ -21,13 +21,14 @@ export function markingMenu(x, y, radial, list, { title = null } = {}) {
   root.append(h('div', { class: 'mm-dot', style: { left: x + 'px', top: y + 'px' } }));
   // Maya's layout: one row per compass row (N, NW/NE, W/E, SW/SE, S); boxes on the left end at the centre column and
   // boxes on the right start there, so long labels grow outwards instead of over their neighbours
-  const ROW = 27, GAP = 20; const items = [];
+  // W / E sit furthest out, the diagonal rows a little less, so the columns don't crowd the centre
+  const ROW = 31, GAP = { side: 46, diag: 30 }; const items = [];
   for (const [d, it] of Object.entries(radial || {})) {
     if (!it) continue;
     const row = d === 'N' ? -2 : d === 'S' ? 2 : d.startsWith('N') ? -1 : d.startsWith('S') ? 1 : 0;
     const side = d === 'N' || d === 'S' ? 0 : d.endsWith('W') ? -1 : 1;
     const en = it.enabled ? it.enabled() : true;
-    const el = h('div', { class: 'mm-item' + (en ? '' : ' disabled'), style: { left: (x + side * GAP) + 'px', top: (y + row * ROW) + 'px', transform: `translate(${side < 0 ? -100 : side > 0 ? 0 : -50}%, -50%)` } },
+    const el = h('div', { class: 'mm-item' + (en ? '' : ' disabled'), style: { left: (x + side * (row ? GAP.diag : GAP.side)) + 'px', top: (y + row * ROW) + 'px', transform: `translate(${side < 0 ? -100 : side > 0 ? 0 : -50}%, -50%)` } },
       side < 0 && it.sub ? '◂ ' : null, chk(it), it.label + (it.sub && side >= 0 ? ' ▸' : ''));
     el._it = it; el._dir = d; el._en = en; el._left = side < 0; root.append(el); items.push(el);
   }

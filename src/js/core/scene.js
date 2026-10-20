@@ -13,6 +13,7 @@ RectAreaLightUniformsLib.init();
 
 export const COLORS = {
   wire: 0x10106e, lead: 0x5cf5a2, sel: 0xffffff, hilite: 0x86c7ff, template: 0x8c8c8c, icon: 0x101010, curve: 0x0d0d66, locator: 0x10106e,
+  affected: 0xc83cd2, // objects driven by the selection (connections, constraints), like Maya's purple highlight
 };
 export const WIRE_MATS = {};
 for (const [k, c] of Object.entries(COLORS)) WIRE_MATS[k] = new THREE.LineBasicMaterial({ color: c, depthTest: true });
@@ -407,7 +408,17 @@ export function flushDependents() {
 export const XF_ATTRS = {
   translateX: ['t', 0], translateY: ['t', 1], translateZ: ['t', 2], rotateX: ['r', 0], rotateY: ['r', 1], rotateZ: ['r', 2], scaleX: ['s', 0], scaleY: ['s', 1], scaleZ: ['s', 2],
   rotatePivotX: ['p', 0], rotatePivotY: ['p', 1], rotatePivotZ: ['p', 2],
+  rotatePivotTranslateX: ['pt', 0], rotatePivotTranslateY: ['pt', 1], rotatePivotTranslateZ: ['pt', 2],
 };
+const XF_VECTORS = { translate: 't', rotate: 'r', scale: 's', rotatePivot: 'p', rotatePivotTranslate: 'pt' };
+// read-only outputs: the object's bounding box in world space
+const BBOX_ATTRS = { boundingBoxMin: (b) => b.min, boundingBoxMax: (b) => b.max, boundingBoxSize: (b) => b.getSize(new THREE.Vector3()), center: (b) => b.getCenter(new THREE.Vector3()) };
+function bboxAttr(o, attr) {
+  const m = attr.match(/^(boundingBoxMin|boundingBoxMax|boundingBoxSize|center)([XYZ])?$/); if (!m) return undefined;
+  let b = worldBBox(o); if (b.isEmpty()) { const w = new THREE.Vector3().setFromMatrixPosition(o.matrixWorld); b = new THREE.Box3(w, w.clone()); }
+  const v = BBOX_ATTRS[m[1]](b).toArray().map(x => +x.toFixed(6));
+  return m[2] ? v['XYZ'.indexOf(m[2])] : v;
+}
 export const ALIAS = { tx: 'translateX', ty: 'translateY', tz: 'translateZ', rx: 'rotateX', ry: 'rotateY', rz: 'rotateZ', sx: 'scaleX', sy: 'scaleY', sz: 'scaleZ', v: 'visibility', vis: 'visibility', rpx: 'rotatePivotX', rpy: 'rotatePivotY', rpz: 'rotatePivotZ', fl: 'focalLength', i: 'intensity' };
 export const CHANNELS = ['translateX', 'translateY', 'translateZ', 'rotateX', 'rotateY', 'rotateZ', 'scaleX', 'scaleY', 'scaleZ', 'visibility'];
 const COLOR_SUFFIX = { R: 0, G: 1, B: 2 };
@@ -422,8 +433,10 @@ export function getAttr(rec, attr) {
   if (rec.isObject3D) {
     const inc = rec.inca;
     if (XF_ATTRS[attr]) { const [k, i] = XF_ATTRS[attr]; return inc[k][i]; }
-    if (attr === 'translate' || attr === 'rotate' || attr === 'scale') return inc[attr[0]].slice();
+    if (XF_VECTORS[attr]) return inc[XF_VECTORS[attr]].slice();
     if (attr === 'visibility') return inc.visible ? 1 : 0;
+    if (attr === 'template') return inc.template ? 1 : 0;
+    const bb = bboxAttr(rec, attr); if (bb !== undefined) return bb;
     if (attr === 'rotateOrder') return inc.ro;
     const sub = inc.light || inc.cam;
     if (sub) {
@@ -448,8 +461,9 @@ export function setAttr(rec, attr, value, opts = {}) {
   if (rec.isObject3D) {
     const inc = rec.inca;
     if (XF_ATTRS[attr]) { const [k, i] = XF_ATTRS[attr]; inc[k][i] = +value; updateXform(rec); }
-    else if (attr === 'translate' || attr === 'rotate' || attr === 'scale') { inc[attr[0]] = value.map(Number); updateXform(rec); }
+    else if (XF_VECTORS[attr]) { inc[XF_VECTORS[attr]] = value.map(Number); updateXform(rec); }
     else if (attr === 'visibility') { inc.visible = !!(+value); applyVisibility(rec); }
+    else if (attr === 'template') { inc.template = !!(+value); }
     else if (attr === 'rotateOrder') { inc.ro = value; updateXform(rec); }
     else if (inc.kind === 'mesh' && attr === 'smoothLevel') { inc.smoothLevel = value; rebuildShape(rec); }
     else if (App.rig?.setAttr && App.rig.setAttr(rec, attr, value)) { /* rigging: extraAttrs / jointOrient */ }

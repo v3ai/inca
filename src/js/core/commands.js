@@ -233,8 +233,11 @@ C('pivotEditHold', 'Edit Pivot (Hold)', () => {
   App.pivotHoldEnd = () => { App.pivotHoldEnd = null; if (Manip.dragging) addEventListener('mouseup', () => setTimeout(end, 0), { once: true }); else end(); };
 }, { hk: 'D', noRepeat: true, help: 'Hold to edit the pivot of the selection; release to go back' });
 C('softSelect', 'Soft Select', () => { Manip.soft.on = !Manip.soft.on; for (const o of App.hilite) o.userData.compDirty = true; App.activeViewport?.flash('Soft Select: ' + (Manip.soft.on ? 'ON' : 'OFF')); App.dirty('toolSettings'); }, { hk: 'B', icon: 'softSelect', noRepeat: true });
-C('manipBigger', 'Increase Manipulator Size', () => { App.prefs.manipSize = Math.min(4, (App.prefs.manipSize || 1) * 1.15); for (const v of App.viewports) v.tc.setSize(App.prefs.manipSize); App.savePrefs(); }, { hk: '= / + / Shift++', noRepeat: true });
-C('manipSmaller', 'Decrease Manipulator Size', () => { App.prefs.manipSize = Math.max(0.2, (App.prefs.manipSize || 1) / 1.15); for (const v of App.viewports) v.tc.setSize(App.prefs.manipSize); App.savePrefs(); }, { hk: '-', noRepeat: true });
+// the active view shows the new size for a moment, with a button back to the default
+const setManipSize = (v) => { App.prefs.manipSize = +v.toFixed(4); for (const vp of App.viewports) vp.tc.setSize(App.prefs.manipSize); App.savePrefs(); (App.activeViewport || App.viewports[0])?.showManipSize?.(); App.requestRender(); };
+C('manipBigger', 'Increase Manipulator Size', () => setManipSize(Math.min(4, (App.prefs.manipSize || 1) * 1.15)), { hk: '= / + / Shift++', noRepeat: true });
+C('manipSmaller', 'Decrease Manipulator Size', () => setManipSize(Math.max(0.2, (App.prefs.manipSize || 1) / 1.15)), { hk: '-', noRepeat: true });
+C('manipResetSize', 'Reset Manipulator Size', () => setManipSize(1), { help: 'Set the manipulator back to its default size (1)' });
 C('insertEdgeLoopTool', 'Insert Edge Loop', () => App.setTool('edgeLoop'), { icon: 'edgeLoop', help: 'Click on an edge to insert an edge loop; drag to slide' });
 C('multiCutTool', 'Multi-Cut', () => App.setTool('multiCut'), { icon: 'multiCut', help: 'Click on edges to place cut points; Enter/right-click to complete' });
 C('targetWeldTool', 'Target Weld', () => App.setTool('targetWeld'), { icon: 'targetWeld', help: 'Drag from a vertex to a target vertex to weld them' });

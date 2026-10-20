@@ -50,6 +50,8 @@ export const CATEGORIES = [
     { section: 'Manipulators' },
     { key: 'manipSize', label: 'Global scale', type: 'range', def: 1, min: 0.2, max: 4, step: 0.05 },
     { key: 'manipActiveOnly', label: 'Show manipulator in active view only', type: 'bool', def: false },
+    { key: 'manipPlaneHandles', label: 'Show plane handles', type: 'bool', def: true },
+    { key: 'manipNegativeHandles', label: 'Show negative axis handles', type: 'bool', def: true },
   ] },
   { name: 'Animation', fields: [
     { section: 'Tangents' },
