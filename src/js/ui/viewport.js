@@ -76,6 +76,7 @@ export class Viewport {
     this.hud = h('div', { class: 'panel-hud' });
     this.hudR = h('div', { class: 'panel-hud-right' });
     this.msg = h('div', { class: 'panel-msg' });
+    this.toolLabel = h('div', { class: 'panel-tool-label' });
     this.gate = h('div', { style: { position: 'absolute', pointerEvents: 'none', inset: 0 } });
     // manipulator size readout, shown for a moment after + / - (with a reset to the default size)
     this.sizeVal = h('span', { class: 'v' }); this.sizeBar = h('span', { class: 'bar' });
@@ -84,7 +85,7 @@ export class Viewport {
     this.sizeHud.addEventListener('mousedown', (e) => e.stopPropagation());
     this.sizeHud.addEventListener('mouseenter', () => clearTimeout(this._st));
     this.sizeHud.addEventListener('mouseleave', () => this.showManipSize(1200));
-    this.view.append(this.canvas, this.gate, this.label, this.hud, this.hudR, this.msg, this.sizeHud);
+    this.view.append(this.canvas, this.gate, this.label, this.hud, this.hudR, this.msg, this.sizeHud, this.toolLabel);
     this.el.append(this.menubar, this.toolbar, this.view);
     host.append(this.el);
     this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, antialias: true, preserveDrawingBuffer: true, powerPreference: 'high-performance' });

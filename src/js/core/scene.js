@@ -537,7 +537,7 @@ export function localBBox(o, includeChildren = true) {
   o.traverse(c => {
     let pts = null;
     if (c.inca && c.inca.kind === 'mesh' && c.inca.mesh) pts = c.inca.mesh.v;
-    else if (c.inca && c.inca.kind === 'curve') pts = c.inca.curve.cvs;
+    else if (c.inca && c.inca.kind === 'curve') pts = c.inca.curve.kind === 'arc' ? c.inca.curve.sample(8) : c.inca.curve.cvs;
     if (!pts || (!includeChildren && c !== o)) return;
     const m = inv.clone().multiply(c.matrixWorld);
     for (const p of pts) box.expandByPoint(_v.set(p[0], p[1], p[2]).applyMatrix4(m));
@@ -549,7 +549,7 @@ export function worldBBox(o) {
   o.traverse(c => {
     let pts = null;
     if (c.inca && c.inca.kind === 'mesh' && c.inca.mesh) pts = c.inca.mesh.v;
-    else if (c.inca && c.inca.kind === 'curve') pts = c.inca.curve.cvs;
+    else if (c.inca && c.inca.kind === 'curve') pts = c.inca.curve.kind === 'arc' ? c.inca.curve.sample(8) : c.inca.curve.cvs;
     if (c.inca && !pts) box.expandByPoint(_v.setFromMatrixPosition(c.matrixWorld));
     if (!pts || !c.visible) return;
     for (const p of pts) box.expandByPoint(_v.set(p[0], p[1], p[2]).applyMatrix4(c.matrixWorld));

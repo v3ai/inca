@@ -25,7 +25,7 @@ function deBoor(cvs, p, kv, u) {
 
 export class Curve {
   constructor(cvs = [], degree = 3, form = 'open', kind = 'cv') {
-    this.cvs = cvs; this.degree = degree; this.form = form; this.kind = kind; // kind 'cv' | 'ep'
+    this.cvs = cvs; this.degree = degree; this.form = form; this.kind = kind; // kind 'cv' | 'ep' | 'arc'
   }
   clone() { return new Curve(this.cvs.map(c => c.slice()), this.degree, this.form, this.kind); }
   toJSON() { return { cvs: this.cvs, degree: this.degree, form: this.form, kind: this.kind }; }
@@ -33,6 +33,7 @@ export class Curve {
   get spans() { return Math.max(1, this.form === 'periodic' ? this.cvs.length : this.cvs.length - (this.kind === 'ep' ? 1 : this.degree)); }
   sample(segPerSpan = 12) {
     const c = this.cvs; if (c.length < 2) return c.map(x => x.slice());
+    if (this.kind === 'arc') return arcThroughPoints(c[0], c[2], c[1], Math.PI / Math.max(6, segPerSpan * 2)) || c.map(x => x.slice());
     if (this.kind === 'ep' || this.degree === 1) {
       if (this.degree === 1) { const pts = c.map(x => x.slice()); if (this.form === 'periodic') pts.push(c[0].slice()); return pts; }
       return catmull(c, segPerSpan, this.form === 'periodic');
@@ -83,6 +84,38 @@ function orient(p, n) {
   if (n[1] === 1 || (Math.abs(n[1]) > 0.99)) return p;
   if (Math.abs(n[0]) > 0.99) return [p[1], p[0], p[2]];
   return [p[0], -p[2], p[1]];
+}
+
+// circle through three points: the circular arc from start to end that passes through `through`.
+// `data` is the result of arcData, when the caller already computed it.
+export function arcData(start, end, through) {
+  const u = V3.sub(end, start), v = V3.sub(through, start);
+  const n = V3.cross(u, v);
+  if (V3.len(n) <= 1e-9 * V3.len(u) * V3.len(v)) return null; // collinear: no circumcircle
+  const n2 = V3.dot(n, n);
+  const center = V3.add(start, V3.mul(V3.add(V3.mul(V3.cross(v, n), V3.dot(u, u)), V3.mul(V3.cross(n, u), V3.dot(v, v))), 1 / (2 * n2)));
+  const radius = V3.len(V3.sub(start, center));
+  if (radius < 1e-12) return null;
+  const e1 = V3.mul(V3.sub(start, center), 1 / radius);
+  const e2 = V3.norm(V3.cross(n, e1));
+  const ang = (p) => Math.atan2(V3.dot(V3.sub(p, center), e2), V3.dot(V3.sub(p, center), e1));
+  const TAU = Math.PI * 2, a0 = ang(start), a1 = ang(end);
+  const ccw = ((a1 - a0) % TAU + TAU) % TAU;
+  const via = ((ang(through) - a0) % TAU + TAU) % TAU;
+  const sweep = via <= ccw ? ccw : ccw - TAU; // pick the arc that contains the third point
+  return { center, radius, normal: n, e1, e2, a0, sweep };
+}
+export function arcThroughPoints(start, end, through, step = Math.PI / 18, data = null) {
+  const d = data || arcData(start, end, through);
+  if (!d) return null;
+  const N = Math.max(2, Math.ceil(Math.abs(d.sweep) / step));
+  const out = [];
+  for (let i = 0; i <= N; i++) {
+    const a = d.a0 + d.sweep * (i / N);
+    out.push(V3.add(d.center, V3.add(V3.mul(d.e1, Math.cos(a) * d.radius), V3.mul(d.e2, Math.sin(a) * d.radius))));
+  }
+  out[0] = start.slice(); out[N] = end.slice();
+  return out;
 }
 
 // Surfaces ------------------------------------------------------------------

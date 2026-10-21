@@ -5,14 +5,15 @@ import { App } from '../core/app.js';
 import * as S from '../core/scene.js';
 import { Sel } from '../core/selection.js';
 import { Undo } from '../core/undo.js';
-import { Curve } from '../core/curves.js';
+import { Curve, arcData, arcThroughPoints } from '../core/curves.js';
 import { PolyMesh, edgeRing, ekey } from '../core/polymesh.js';
 import { Manip, placeProxy } from '../core/manip.js';
 import { toolLineMat, toolPtMat } from './viewport.js';
+import { fmt } from './dom.js';
 
 const C = App.cmds.register;
-const INTERACTIVE = new Set(['cvCurve', 'epCurve', 'pencilCurve', 'createPoly', 'edgeLoop', 'multiCut', 'targetWeld', 'lasso', 'paint', 'sculpt', 'jointTool']);
-const ICONS = { cvCurve: 'cvCurve', epCurve: 'epCurve', pencilCurve: 'pencilCurve', createPoly: 'planar', edgeLoop: 'edgeLoop', multiCut: 'multiCut', targetWeld: 'targetWeld', lasso: 'lasso', paint: 'paintSelect', sculpt: 'softSelect', jointTool: 'joint' };
+const INTERACTIVE = new Set(['cvCurve', 'epCurve', 'pencilCurve', 'arc', 'createPoly', 'edgeLoop', 'multiCut', 'targetWeld', 'lasso', 'paint', 'sculpt', 'jointTool']);
+const ICONS = { cvCurve: 'cvCurve', epCurve: 'epCurve', pencilCurve: 'pencilCurve', arc: 'arcCurve', createPoly: 'planar', edgeLoop: 'edgeLoop', multiCut: 'multiCut', targetWeld: 'targetWeld', lasso: 'lasso', paint: 'paintSelect', sculpt: 'softSelect', jointTool: 'joint' };
 const opt = (k, d) => (App.prefs.opt.tools?.[k] ?? d);
 const setOpt = (k, v) => { (App.prefs.opt.tools ||= {})[k] = v; App.savePrefs(); };
 let st = null; // active tool state
@@ -29,8 +30,76 @@ const lineObj = (pts, mat = toolLineMat, closed = false) => { if (pts.length < 2
 const ptsObj = (pts, mat = toolPtMat) => { if (!pts.length) return null; const g = new THREE.BufferGeometry().setFromPoints(pts.map(p => p.isVector3 ? p : new THREE.Vector3(...p))); return new THREE.Points(g, mat); };
 const solidLine = new THREE.LineBasicMaterial({ color: 0xffe14a, depthTest: false });
 const greenLine = new THREE.LineBasicMaterial({ color: 0x5cff5c, depthTest: false });
+const greyLine = new THREE.LineDashedMaterial({ color: 0xa0a0a0, dashSize: 0.08, gapSize: 0.05, depthTest: false });
 const bluePts = new THREE.PointsMaterial({ size: 7, sizeAttenuation: false, color: 0x4ab8ff, depthTest: false });
+const centerPt = new THREE.PointsMaterial({ size: 6, sizeAttenuation: false, color: 0xd0d0d0, depthTest: false });
 const redPts = new THREE.PointsMaterial({ size: 9, sizeAttenuation: false, color: 0xff3a3a, depthTest: false });
+
+// ---- three point circular arc ------------------------------------------------
+function arcInfoFor(start, through, end) { return arcData(start.toArray(), end.toArray(), through.toArray()); }
+function arcCurrentInfo() { return st && st.pts?.length >= 3 ? arcInfoFor(st.pts[0], st.pts[1], st.pts[2]) : null; }
+function arcPreview() {
+  if (!st || st.pts.length < 2) return null;
+  const start = st.pts[0], through = st.pts[1], end = st.pts[2] || st.hoverPt;
+  if (!end) return null;
+  const info = arcInfoFor(start, through, end);
+  if (!info) return null;
+  return { info, start, through, end, pts: arcThroughPoints(start.toArray(), end.toArray(), through.toArray(), Math.PI / 36, info) };
+}
+function arcLabel(info) {
+  for (const vp of App.viewports) {
+    const el = vp.toolLabel; if (!el) continue;
+    if (!info || !vp._w || !vp._h) { el.style.display = 'none'; continue; }
+    const s = vp.project(new THREE.Vector3(...info.center));
+    if (s.z > 1) { el.style.display = 'none'; continue; }
+    el.textContent = `R = ${fmt(info.radius)} cm`;
+    el.style.left = `${s.x + 12}px`;
+    el.style.top = `${s.y - 10}px`;
+    el.style.display = 'block';
+  }
+}
+function arcHelp(info, editing) {
+  const r = info ? ` (R = ${fmt(info.radius)} cm)` : '';
+  if (editing) App.help('Three Point Circular Arc: drag points, click the arc to flip, Enter to finish' + r);
+  else if (st?.pts?.length === 2) App.help('Three Point Circular Arc: click the end point' + r);
+  else if (st?.pts?.length === 1) App.help('Three Point Circular Arc: click a point on the arc');
+  else App.help('Three Point Circular Arc: click the start point');
+}
+function arcSegDist(p, a, b) {
+  const dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy;
+  const t = l2 ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / l2)) : 0;
+  return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
+}
+function arcHitHandle(vp, px) {
+  if (!st?.edit || st.pts.length < 3) return -1;
+  let best = -1, bd = 10;
+  for (let i = 0; i < 3; i++) {
+    const s = vp.project(st.pts[i]); const d = Math.hypot(s.x - px.x, s.y - px.y);
+    if (d < bd) { bd = d; best = i; }
+  }
+  const info = arcCurrentInfo();
+  if (info) {
+    const s = vp.project(new THREE.Vector3(...info.center)); const d = Math.hypot(s.x - px.x, s.y - px.y);
+    if (d < bd) best = 3;
+  }
+  return best;
+}
+function arcHitCurve(vp, px) {
+  const info = arcCurrentInfo(); if (!info) return false;
+  const pts = arcThroughPoints(st.pts[0].toArray(), st.pts[2].toArray(), st.pts[1].toArray(), Math.PI / 36, info);
+  if (!pts) return false;
+  let prev = vp.project(new THREE.Vector3(...pts[0])), best = Infinity;
+  for (let i = 1; i < pts.length; i++) {
+    const cur = vp.project(new THREE.Vector3(...pts[i]));
+    best = Math.min(best, arcSegDist(px, prev, cur)); prev = cur;
+  }
+  return best <= 8;
+}
+function arcReflect(a, b, c) {
+  const ab = b.clone().sub(a);
+  const t = c.clone().sub(a).dot(ab) / ab.lengthSq();
+  return a.clone().addScaledVector(ab, t).multiplyScalar(2).sub(c);
+}
 
 function worldVerts(o) { o.updateWorldMatrix(true, false); return o.inca.mesh.v.map(p => new THREE.Vector3(...p).applyMatrix4(o.matrixWorld)); }
 function meshTargets() { const s = new Set([...App.hilite, ...App.sel].filter(o => o.inca.kind === 'mesh')); if (!s.size) for (const o of S.allDag()) if (o.inca.kind === 'mesh' && o.visible) s.add(o); return [...s]; }
@@ -69,6 +138,108 @@ const TOOLS = {
       const mu = () => { removeEventListener('mousemove', mm); removeEventListener('mouseup', mu); overlay(null); if (pts.length < 2) return; Undo.checkpoint('pencil curve'); const keep = simplify(pts, vp.worldPerPixel() * 4); const o = S.createCurve(new Curve(keep.map(p => p.toArray()), 3, 'open', 'ep'), { name: 'curve1' }); Sel.select([o]); App.emit('echo', `curve -d 3 -ep ${keep.length} points;`); };
       addEventListener('mousemove', mm); addEventListener('mouseup', mu); return true;
     },
+  },
+  // ---------------- three point circular arc
+  arc: {
+    help: 'Three Point Circular Arc: click the start point, a point on the arc, then the end point',
+    start() { st.pts = []; st.hoverPt = null; st.edit = false; st.drag = null; st.hoverHandle = -1; arcLabel(null); App.help('Three Point Circular Arc: click the start point'); },
+    down(vp, e, px) {
+      if (st.edit) {
+        const h = arcHitHandle(vp, px);
+        if (h >= 0) { this.startDrag(vp, h, px); return true; }
+        if (arcHitCurve(vp, px)) { st.pts[1] = arcReflect(st.pts[0], st.pts[2], st.pts[1]); this.draw(); }
+        return true;
+      }
+      const g = vp.groundPoint(px); if (!g) return true;
+      if (st.pts.length === 2) {
+        if (g.distanceTo(st.pts[0]) < 1e-6 || g.distanceTo(st.pts[1]) < 1e-6) { App.help('Three Point Circular Arc: points must not overlap'); return true; }
+        const info = arcInfoFor(st.pts[0], st.pts[1], g);
+        if (!info) { App.help('Three Point Circular Arc: the three points must not be in line'); return true; }
+        st.pts.push(g); st.edit = true; st.hoverPt = null; st.hoverHandle = -1; this.draw(); return true;
+      }
+      if (st.pts.length === 1 && g.distanceTo(st.pts[0]) < 1e-6) { App.help('Three Point Circular Arc: points must not overlap'); return true; }
+      st.pts.push(g); st.hoverPt = null; this.draw(); return true;
+    },
+    hover(vp, e, px) {
+      if (!st || st.drag) return true;
+      st.hoverPt = vp.groundPoint(px);
+      st.hoverHandle = st.edit ? arcHitHandle(vp, px) : -1;
+      this.draw(); return true;
+    },
+    draw() {
+      if (!st) return;
+      if (st.pts.length < 3) st.edit = false;
+      const preview = arcPreview();
+      const info = preview?.info || null;
+      const start = st.pts[0], through = st.pts[1], end = preview?.end || null;
+      overlay(() => {
+        const out = [];
+        if (preview?.pts) out.push(lineObj(preview.pts, solidLine));
+        if (info && start && through) {
+          const c = new THREE.Vector3(...info.center);
+          out.push(lineObj([c, start], greyLine), lineObj([c, through], greyLine));
+          if (end) out.push(lineObj([c, end], greyLine));
+          out.push(ptsObj([c], centerPt));
+        }
+        const handles = st.pts.slice(0, 3).map(p => p.clone());
+        if (handles.length) out.push(ptsObj(handles, bluePts));
+        if (st.edit) {
+          if (st.hoverHandle >= 0 && st.hoverHandle < 3) out.push(ptsObj([handles[st.hoverHandle]], redPts));
+          else if (st.hoverHandle === 3 && info) out.push(ptsObj([new THREE.Vector3(...info.center)], redPts));
+        } else {
+          if (st.hoverPt) out.push(ptsObj([st.hoverPt], redPts));
+          if (!info && st.pts.length >= 2 && end) out.push(lineObj([...st.pts, end], toolLineMat));
+          else if (!info && st.pts.length === 1 && st.hoverPt) out.push(lineObj([st.pts[0], st.hoverPt], toolLineMat));
+        }
+        return out;
+      });
+      arcLabel(info);
+      arcHelp(info, st.edit);
+    },
+    startDrag(vp, index, px) {
+      const drag = { index, pts: st.pts.map(p => p.clone()), center: null };
+      if (index === 3) { const info = arcCurrentInfo(); if (!info) return; drag.center = new THREE.Vector3(...info.center); }
+      st.drag = drag;
+      const mm = (ev) => {
+        if (!st || st.drag !== drag) return;
+        const g = vp.groundPoint(vp.localPx(ev)); if (!g) return;
+        if (index < 3) {
+          const old = st.pts[index].clone();
+          st.pts[index] = g;
+          if (!arcCurrentInfo()) st.pts[index] = old;
+        } else {
+          const delta = g.clone().sub(drag.center);
+          st.pts = drag.pts.map(p => p.clone().add(delta));
+        }
+        this.draw();
+      };
+      const mu = () => {
+        removeEventListener('mousemove', mm); removeEventListener('mouseup', mu);
+        if (st && st.drag === drag) { st.drag = null; st.hoverHandle = -1; this.draw(); }
+      };
+      addEventListener('mousemove', mm); addEventListener('mouseup', mu);
+    },
+    back() {
+      if (!st) return;
+      const p = st.pts.pop();
+      st.edit = false; st.hoverPt = p || null; st.hoverHandle = -1;
+      this.draw();
+    },
+    complete() {
+      if (!st) return;
+      if (st.pts.length < 3) { arcHelp(null, false); return; }
+      const info = arcCurrentInfo();
+      if (!info) { App.help('Three Point Circular Arc: the three points must not be in line'); return; }
+      Undo.checkpoint('three point arc');
+      const cvs = st.pts.map(p => p.toArray());
+      const o = S.createCurve(new Curve(cvs, 3, 'open', 'arc'), { name: 'curve1' });
+      Sel.select([o]);
+      App.emit('echo', `// three point circular arc: R = ${fmt(info.radius)} cm`);
+      App.emit('result', o.inca.name);
+      st.pts = []; st.hoverPt = null; st.edit = false; st.drag = null; st.hoverHandle = -1;
+      arcLabel(null); this.draw();
+    },
+    end() { if (st?.pts?.length === 3 && st.edit) this.complete(); else arcLabel(null); },
   },
   // ---------------- create polygon
   createPoly: {
@@ -341,6 +512,7 @@ addEventListener('mousedown', (e) => { if (e.button === 2 && !e.altKey && st && 
 
 // ------------------------------------------------------------------ commands
 C('pencilCurveTool', 'Pencil Curve Tool', () => App.setTool('pencilCurve'), { icon: 'pencilCurve' });
+C('arcTool', 'Three Point Circular Arc', () => App.setTool('arc'), { icon: 'arcCurve', help: 'Click to place the start point, a point on the arc, then the end point' });
 C('sculptTool', 'Sculpt Tool', () => { setOpt('sculptBrush', 'sculpt'); App.setTool('sculpt'); App.ui.toggleToolSettings(true); }, { icon: 'softSelect' });
 for (const [b, l] of [['smooth', 'Smooth'], ['relax', 'Relax'], ['grab', 'Grab'], ['pinch', 'Pinch'], ['flatten', 'Flatten'], ['inflate', 'Inflate']]) C(b + 'SculptTool', l + ' Sculpt Tool', () => { setOpt('sculptBrush', b); App.setTool('sculpt'); App.dirty('toolSettings'); }, { icon: 'softSelect' });
 C('makeLive', 'Make Live', () => { const o = Sel.lead(); App.liveSurface = App.liveSurface === o ? null : (o?.inca.kind === 'mesh' ? o : null); App.help(App.liveSurface ? 'Live surface: ' + o.inca.name : 'No live surface'); App.dirty('statusline'); }, { noRepeat: true });

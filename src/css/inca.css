@@ -142,6 +142,7 @@ input[type=range] { accent-color: #9a9a9a; height: 14px; }
 .panel-manipsize .v { min-width: 30px; text-align: right; font-variant-numeric: tabular-nums; color: #fff; }
 .panel-manipsize button { height: 18px; padding: 0 6px; font-size: 11px; }
 .panel-msg { position: absolute; top: 40%; left: 0; right: 0; text-align: center; font-size: 22px; color: rgba(255,255,255,.85); pointer-events: none; text-shadow: 0 0 6px #000; transition: opacity .4s; }
+.panel-tool-label { position: absolute; display: none; padding: 1px 5px; color: #e8e8e8; background: rgba(0,0,0,.45); border-radius: 2px; font: 11px Consolas, monospace; pointer-events: none; white-space: nowrap; text-shadow: 0 0 3px #000; }
 .marquee { position: absolute; border: 1px dashed #fff; background: rgba(255,255,255,0.04); pointer-events: none; z-index: 3; }
 .panel-embed { position: absolute; inset: 0; display: flex; flex-direction: column; background: var(--bg); }
 
