@@ -2,6 +2,8 @@
 
 A free, open-source 3D modeling, animation and rendering application for the desktop
 
+Website and downloads: **https://incacad.com**
+
 ## Contributing
 
 Write an issue on the gh issues page
