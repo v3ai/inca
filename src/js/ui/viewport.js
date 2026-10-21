@@ -287,10 +287,15 @@ export class Viewport {
         if (mode === 'translate' && grp === gz.gizmo[mode] && Math.max(...[0, 1, 2].filter(i => i !== ai).map(i => sz.getComponent(i))) > 0.05) u.tip = true;
       }
     }
-    // Edit Pivot: a ring at the centre instead of the solid handle, and the axes without arrow heads (like Maya)
-    const ring = new THREE.Mesh(new THREE.RingGeometry(0.075, 0.095, 40), new THREE.MeshBasicMaterial({ color: 0x5fd3ff, side: THREE.DoubleSide, depthTest: false, depthWrite: false, transparent: true, toneMapped: false, fog: false }));
+    // Edit Pivot: a ring at the centre instead of the solid handle, and the axes without arrow heads (like Maya).
+    // The outer ring stays visible while an axis is dragged; the smaller inner ring marks point snap (V).
+    const ringMat = new THREE.MeshBasicMaterial({ color: 0x5fd3ff, side: THREE.DoubleSide, depthTest: false, depthWrite: false, transparent: true, toneMapped: false, fog: false });
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.075, 0.095, 40), ringMat);
     ring.name = 'XYZ'; ring.userData.pivotRing = true; ring.renderOrder = Infinity;
     gz.gizmo.translate.add(ring); this._pivotRing = ring;
+    const snapRing = new THREE.Mesh(new THREE.RingGeometry(0.034, 0.050, 40), ringMat);
+    snapRing.name = 'XYZ'; snapRing.userData.pivotRing = true; snapRing.userData.pivotSnapRing = true; snapRing.renderOrder = Infinity;
+    gz.gizmo.translate.add(snapRing); this._pivotSnapRing = snapRing;
     const upd = gz.updateMatrixWorld.bind(gz);
     gz.updateMatrixWorld = (force) => { upd(force); this.styleGizmo(); };
   }
@@ -298,15 +303,19 @@ export class Viewport {
     const tc = this.tc, gz = tc._gizmo, mode = tc.mode;
     if (mode !== 'translate' && mode !== 'scale') return;
     const pivot = Manip.pivotMode && mode === 'translate';
+    const pointSnap = Manip.snapPoint || Manip._keyPoint;
     const planes = !pivot && App.prefs?.manipPlaneHandles !== false, negs = !pivot && App.prefs?.manipNegativeHandles !== false;
-    // while dragging one axis (or plane), only that handle stays: the yellow one
+    // while dragging one axis (or plane), only that handle stays: the yellow one. Edit Pivot rings stay visible.
     const only = tc.dragging && tc.axis && tc.axis !== 'XYZ' ? tc.axis : null;
     for (const grp of [gz.gizmo[mode], gz.picker[mode]]) for (const k of grp.children) {
       const u = k.userData;
-      if ((u.plane && !planes) || (u.neg && !negs) || (u.tip && pivot) || (u.center && pivot) || (u.pivotRing && !pivot)) k.visible = false;
+      if (u.pivotRing) { k.visible = pivot && (!u.pivotSnapRing || pointSnap); continue; }
+      if ((u.plane && !planes) || (u.neg && !negs) || (u.tip && pivot) || (u.center && pivot)) k.visible = false;
       else if (only && grp === gz.gizmo[mode] && k.name !== only && !(only.length === 2 && k.name.length === 1 && only.includes(k.name))) k.visible = false;
     }
-    if (pivot && this._pivotRing.visible) { tc.camera.getWorldQuaternion(this._pivotRing.quaternion); this._pivotRing.updateMatrixWorld(true); }
+    if (pivot) for (const r of [this._pivotRing, this._pivotSnapRing]) {
+      if (r?.visible) { tc.camera.getWorldQuaternion(r.quaternion); r.updateMatrixWorld(true); }
+    }
   }
 
   // ---------------------------------------------------------------- camera navigation

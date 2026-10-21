@@ -35,7 +35,7 @@ function buildStatusline() {
   const snaps = grp(
     T('snapGrid', 'Snap to grids (hold X)', () => Manip.snapGrid || Manip._keyGrid, () => { Manip.snapGrid = !Manip.snapGrid; }),
     T('snapCurve', 'Snap to curves (hold C)', () => Manip.snapCurve || Manip._keyCurve, () => { Manip.snapCurve = !Manip.snapCurve; }),
-    T('snapPoint', 'Snap to points (hold V)', () => Manip.snapPoint || Manip._keyPoint, () => { Manip.snapPoint = !Manip.snapPoint; }),
+    T('snapPoint', 'Snap to points (hold V)', () => Manip.snapPoint || Manip._keyPoint, () => { Manip.snapPoint = !Manip.snapPoint; App.requestRender(); }),
     T('snapSurface', 'Make the selected object live (draw curves on its surface)', () => !!App.liveSurface, () => { const o = Sel.lead(); App.liveSurface = App.liveSurface ? null : (o && o.inca.kind === 'mesh' ? o : null); if (!App.liveSurface && !o) App.help('Select a polygon object to make live'); App.requestRender(); }),
   );
   const hist = T('deleteHistory', 'Construction history on/off', () => App.prefs.constructionHistory !== false, () => { App.prefs.constructionHistory = App.prefs.constructionHistory === false; App.savePrefs(); App.help('Construction history ' + (App.prefs.constructionHistory === false ? 'off' : 'on')); });

@@ -130,7 +130,7 @@ function onKeyDown(e) {
     return;
   }
   if (!e.ctrlKey && !e.altKey && HOLD_KEYS[combo.replace('Shift+', '')] && !App.hotkeys.map.has(combo + '__never')) {
-    const k = HOLD_KEYS[combo.replace('Shift+', '')]; if (!Manip[k]) { Manip[k] = true; App.dirty('statusline'); } e.preventDefault(); return;
+    const k = HOLD_KEYS[combo.replace('Shift+', '')]; if (!Manip[k]) { Manip[k] = true; App.dirty('statusline'); if (k === '_keyPoint') App.requestRender(); } e.preventDefault(); return;
   }
   if (combo === 'J') { Manip.stepRotate = true; return; }
   // W / E / R held: LMB in a viewport opens the tool's marking menu
@@ -142,7 +142,7 @@ function onKeyDown(e) {
 }
 function onKeyUp(e) {
   const k = (e.code || '').replace(/^Key/, '');
-  if (HOLD_KEYS[k] && Manip[HOLD_KEYS[k]]) { Manip[HOLD_KEYS[k]] = false; App.dirty('statusline'); }
+  if (HOLD_KEYS[k] && Manip[HOLD_KEYS[k]]) { Manip[HOLD_KEYS[k]] = false; App.dirty('statusline'); if (k === 'V') App.requestRender(); }
   if (k === 'J') Manip.stepRotate = false;
   if (App.heldToolKey && e.code === App.heldToolKey.code) App.heldToolKey = null;
   if (pivotHoldCode && e.code === pivotHoldCode) { pivotHoldCode = ''; App.pivotHoldEnd?.(); }
@@ -154,7 +154,7 @@ function onKeyUp(e) {
 }
 addEventListener('keydown', onKeyDown);
 addEventListener('keyup', onKeyUp);
-addEventListener('blur', () => { App.heldToolKey = null; pivotHoldCode = ''; App.pivotHoldEnd?.(); for (const k of Object.values(HOLD_KEYS)) Manip[k] = false; if (spaceHotbox) App.ui.hotbox?.(false); spaceDown = 0; spaceHotbox = false; });
+addEventListener('blur', () => { App.heldToolKey = null; pivotHoldCode = ''; App.pivotHoldEnd?.(); const wasPoint = Manip._keyPoint; for (const k of Object.values(HOLD_KEYS)) Manip[k] = false; if (wasPoint) App.requestRender(); if (spaceHotbox) App.ui.hotbox?.(false); spaceDown = 0; spaceHotbox = false; });
 
 // ------------------------------------------------------------------ viewports & layouts
 App.layout = 'single';
