@@ -302,6 +302,7 @@ export class Viewport {
   }
   styleGizmo() {
     const tc = this.tc, gz = tc._gizmo, mode = tc.mode;
+    if (App.prefs?.manipGuides === false && gz.helper) for (const h of Object.values(gz.helper)) h.visible = false;
     if (mode !== 'translate' && mode !== 'scale') return;
     const pivot = Manip.pivotMode && mode === 'translate';
     const pointSnap = Manip.snapPoint || Manip._keyPoint;

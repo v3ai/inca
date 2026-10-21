@@ -52,6 +52,7 @@ export const CATEGORIES = [
     { key: 'manipActiveOnly', label: 'Show manipulator in active view only', type: 'bool', def: false },
     { key: 'manipPlaneHandles', label: 'Show plane handles', type: 'bool', def: true },
     { key: 'manipNegativeHandles', label: 'Show negative axis handles', type: 'bool', def: true },
+    { key: 'manipGuides', label: 'Show manipulator guides', type: 'bool', def: true },
   ] },
   { name: 'Animation', fields: [
     { section: 'Tangents' },
