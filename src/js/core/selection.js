@@ -183,13 +183,14 @@ function convertComp(o, from, to) {
 }
 export function edgeLoopIds(pm, ei) {
   const t = pm.topo; const out = new Set([ei]);
+  const border = t.edgeFaces[ei].length === 1; // like Maya's edgeLoopOrBorder: a border edge follows the whole connected border
   const walk = (e, from) => {
     let cur = e, v = from, guard = 0;
     while (guard++ < 100000) {
       const [a, b] = t.edges[cur]; const nv = a === v ? b : a; // continue through nv
-      const es = t.vertEdges[nv]; if (es.length !== 4) break;
+      const es = t.vertEdges[nv]; if (!border && es.length !== 4) break;
       const curFaces = new Set(t.edgeFaces[cur]);
-      const cand = es.filter(x => x !== cur && !t.edgeFaces[x].some(f => curFaces.has(f)));
+      const cand = border ? es.filter(x => x !== cur && t.edgeFaces[x].length === 1) : es.filter(x => x !== cur && !t.edgeFaces[x].some(f => curFaces.has(f)));
       if (cand.length !== 1) break;
       const nx = cand[0]; if (out.has(nx)) break;
       out.add(nx); cur = nx; v = nv;
