@@ -200,7 +200,8 @@ export function openHypergraph(mode) {
       makeNode(mat, p, { label: mat.name, sub: mat.type || 'material', iconName: ICONS[mat.type] ? mat.type : 'olMaterial', cls: 'mat', key: mat.id });
       for (const u of users) link(u, p);
     }
-    // direct connections between nodes on the graph, one line per pair of nodes; hover it for the attributes
+    // direct connections between nodes on the graph: one line per connection, with links between the same pair of
+    // nodes stacked in parallel (like Maya); hover a line for its attributes
     const pairs = new Map();
     for (const c of App.conns || []) {
       const a = nodeEls.get(recById(c.src)), b = nodeEls.get(recById(c.dst)); if (!a || !b || a === b) continue;
@@ -209,19 +210,23 @@ export function openHypergraph(mode) {
     }
     for (const { a, b, list } of pairs.values()) {
       const { x: ax, y: ay } = nodeRect(a), { x: bx, y: by } = nodeRect(b);
-      const col = list.some(c => attrWidth(attrInfo(recById(c.src), c.srcAttr)) === 3) ? TRIPLE : SINGLE;
-      const y1 = ay + NH / 2, y2 = by + NH / 2;
+      const n = list.length, gap = n > 1 ? Math.min(9, (NH - 12) / (n - 1)) : 0;
       // same column: loop out to the left of both nodes; otherwise from one node's facing side to the other's
       const same = Math.abs(bx - ax) < NW, fwd = same || bx >= ax;
       const x1 = same ? ax : fwd ? ax + NW : ax, x2 = same ? bx - 1 : fwd ? bx - 1 : bx + NW + 1;
       const lx = Math.min(ax, bx) - 45; if (same) loopX = Math.min(loopX, lx - 6);
-      const d = same ? `M${x1},${y1} C${lx},${y1} ${lx},${y2} ${x2},${y2}` : `M${x1},${y1} C${(x1 + x2) / 2},${y1} ${(x1 + x2) / 2},${y2} ${x2},${y2}`;
-      const path = (stroke, w, cls) => { const q = document.createElementNS(svgNS, 'path'); q.setAttribute('d', d); q.setAttribute('fill', 'none'); q.setAttribute('stroke', stroke); q.setAttribute('stroke-width', w); if (cls) q.setAttribute('class', cls); edges.append(q); return q; };
-      path(col, '1.6');
-      const hit = path('transparent', '9', 'hit');
-      const t = document.createElementNS(svgNS, 'title'); t.textContent = list.map(c => `${a.title.split(' (')[0]}.${c.srcAttr} → ${b.title.split(' (')[0]}.${c.dstAttr}`).join('\n'); hit.append(t);
-      const p = document.createElementNS(svgNS, 'path'); const dd = fwd ? 1 : -1;
-      p.setAttribute('d', `M${x2 - 7 * dd},${y2 - 4} L${x2},${y2} L${x2 - 7 * dd},${y2 + 4}Z`); p.setAttribute('fill', col); edges.append(p);
+      list.forEach((c, i) => {
+        const dy = (i - (n - 1) / 2) * gap;
+        const col = attrWidth(attrInfo(recById(c.src), c.srcAttr)) === 3 ? TRIPLE : SINGLE;
+        const y1 = ay + NH / 2 + dy, y2 = by + NH / 2 + dy;
+        const d = same ? `M${x1},${y1} C${lx},${y1} ${lx},${y2} ${x2},${y2}` : `M${x1},${y1} C${(x1 + x2) / 2},${y1} ${(x1 + x2) / 2},${y2} ${x2},${y2}`;
+        const path = (stroke, w, cls) => { const q = document.createElementNS(svgNS, 'path'); q.setAttribute('d', d); q.setAttribute('fill', 'none'); q.setAttribute('stroke', stroke); q.setAttribute('stroke-width', w); if (cls) q.setAttribute('class', cls); edges.append(q); return q; };
+        path(col, '1.6');
+        const hit = path('transparent', '9', 'hit');
+        const t = document.createElementNS(svgNS, 'title'); t.textContent = `${a.title.split(' (')[0]}.${c.srcAttr} → ${b.title.split(' (')[0]}.${c.dstAttr}`; hit.append(t);
+        const p = document.createElementNS(svgNS, 'path'); const dd = fwd ? 1 : -1;
+        p.setAttribute('d', `M${x2 - 7 * dd},${y2 - 4} L${x2},${y2} L${x2 - 7 * dd},${y2 + 4}Z`); p.setAttribute('fill', col); edges.append(p);
+      });
     }
   };
   // graph the selected objects' input and output connections (Graph menu / toolbar)
