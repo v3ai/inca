@@ -10,7 +10,7 @@
     "start": "electron .",
     "dist:win": "node scripts/vendor.js && electron-builder --win zip --x64 --publish never",
     "dist:linux": "node scripts/vendor.js && electron-builder --linux AppImage --x64 --publish never",
-    "dist:mac": "node scripts/vendor.js && electron-builder --mac --publish never",
+    "dist:mac": "node scripts/vendor.js && electron-builder --mac dmg --x64 --arm64 --publish never",
     "test": "node test/mesh.test.mjs && node test/editors.test.mjs && node test/curves.test.mjs",
     "postinstall": "node scripts/vendor.js",
     "dist:win-installer": "node scripts/vendor.js && electron-builder --win nsis --x64 --publish never",
@@ -73,8 +73,7 @@
     },
     "mac": {
       "target": [
-        "dmg",
-        "zip"
+        "dmg"
       ],
       "category": "public.app-category.graphics-design",
       "icon": "build/icon.png"
@@ -84,6 +83,7 @@
       "buildResources": "build"
     },
     "artifactName": "${productName}-${version}-${os}-${arch}.${ext}",
+    "afterPack": "scripts/adhoc-sign.js",
     "generateUpdatesFilesForAllChannels": false,
     "publish": [
       {

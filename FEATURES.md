@@ -121,4 +121,4 @@ Legend: ✅ built · 🟡 partial / simplified · ⏭ planned
 - ⏭ nCloth, fluids, hair
 
 ## Packaging
-- ✅ Windows (portable `.exe` and `.zip`), Linux (`.AppImage`); macOS build script (`npm run dist:mac`, build on a Mac)
+- ✅ Windows (portable `.exe` and `.zip`), Linux (`.AppImage`), macOS (`.dmg` for Apple Silicon and Intel, ad-hoc signed, not notarized); every release builds all three in GitHub Actions

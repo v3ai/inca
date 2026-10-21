@@ -45,14 +45,19 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            args: --linux AppImage
+            args: --linux AppImage --x64
             files: dist/*.AppImage
           - os: windows-latest
-            args: --win zip portable
+            args: --win zip portable --x64
             files: dist/*.zip dist/*-portable.exe
+          # unsigned apart from an ad-hoc signature (scripts/adhoc-sign.js); there is no Apple Developer account
+          - os: macos-latest
+            args: --mac dmg --x64 --arm64
+            files: dist/*.dmg
     runs-on: ${{ matrix.os }}
     env:
       GH_TOKEN: ${{ github.token }}
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -65,7 +70,7 @@ jobs:
       - name: Build
         shell: bash
         run: >
-          npx electron-builder ${{ matrix.args }} --x64 --publish never
+          npx electron-builder ${{ matrix.args }} --publish never
           '-c.portable.artifactName=${productName}-${version}-win-x64-portable.${ext}'
       - name: Upload
         shell: bash

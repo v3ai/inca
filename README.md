@@ -37,7 +37,13 @@ If it doesn't open, start it from a terminal so you can see the error:
 On Ubuntu 22.04 or newer, if you get an error about **FUSE**, run `sudo apt install libfuse2` once. On Ubuntu 24.04 the package is called `libfuse2t64`.
 
 ### macOS
-There's no ready-made Mac download yet. Follow **Run from source** below. It takes about five minutes.
+1. Download **`Inca-<version>-mac-arm64.dmg`** for Apple Silicon Macs (M1 and newer), or **`Inca-<version>-mac-x64.dmg`** for older Intel Macs.
+   To check which you have, open the Apple menu → **About This Mac**: "Chip: Apple M…" means Apple Silicon.
+2. Open the `.dmg` and drag **Inca** into **Applications**.
+3. The first time, macOS says it can't check Inca for malware, because Inca isn't registered with Apple (that costs $99 a year).
+   Click **Done**, then open **System Settings → Privacy & Security**, scroll down and click **Open Anyway** next to the message about Inca.
+   On macOS 14 or older you can instead right-click Inca in Applications and choose **Open**.
+   You only need to do this once.
 
 ## Run from source
 
