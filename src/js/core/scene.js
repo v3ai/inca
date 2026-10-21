@@ -12,7 +12,7 @@ import { getThreeMaterial, serializeShading, loadShading, initDefaultMaterials }
 RectAreaLightUniformsLib.init();
 
 export const COLORS = {
-  wire: 0x10106e, lead: 0x5cf5a2, sel: 0xffffff, hilite: 0x86c7ff, template: 0x8c8c8c, icon: 0x101010, curve: 0x0d0d66, locator: 0x10106e,
+  wire: 0x10106e, lead: 0x5cf5a2, sel: 0xffffff, hilite: 0x86c7ff, template: 0x8c8c8c, templateSel: 0xff9999, icon: 0x101010, curve: 0x0d0d66, locator: 0x10106e,
   affected: 0xc83cd2, // objects driven by the selection (connections, constraints), like Maya's purple highlight
 };
 export const WIRE_MATS = {};

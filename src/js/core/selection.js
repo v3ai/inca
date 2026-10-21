@@ -9,7 +9,8 @@ export const Sel = {
   lead() { return App.sel[App.sel.length - 1] || null; },
   meshes() { return App.sel.filter(o => o.inca.kind === 'mesh'); },
   select(list, mode = 'replace', { echo = true } = {}) {
-    list = (list || []).filter(o => isDag(o) && !(o.inca.template) && o.inca.selectable !== false);
+    // Template objects stay selectable via the Outliner, Hypergraph and commands; only viewport picking skips them.
+    list = (list || []).filter(o => isDag(o) && o.inca.selectable !== false);
     if (mode === 'replace') App.sel = [...new Set(list)];
     else if (mode === 'add') { for (const o of list) { App.sel = App.sel.filter(s => s !== o); App.sel.push(o); } }
     else if (mode === 'toggle') { for (const o of list) { if (App.sel.includes(o)) App.sel = App.sel.filter(s => s !== o); else App.sel.push(o); } }

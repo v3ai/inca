@@ -197,13 +197,14 @@ export class Viewport {
       if (inc.startup) { if (ud.icon) ud.icon.visible = false; return; }
       const sel = App.sel.includes(n); const lead = sel && App.sel[App.sel.length - 1] === n; const hl = App.hilite.includes(n);
       const lmode = inc.layer ? App.layers.find(l => l.id === inc.layer) : null; const ltemp = lmode && lmode.mode === 'template';
-      const wireMat = (inc.template || ltemp) ? WIRE_MATS.template : (lead && o.show.selectionHighlight) ? WIRE_MATS.lead : (sel && o.show.selectionHighlight) ? WIRE_MATS.sel : aff?.has(n) ? WIRE_MATS.affected : hl ? WIRE_MATS.hilite : null;
+      const template = inc.template || ltemp;
+      const wireMat = template ? (sel && o.show.selectionHighlight ? WIRE_MATS.templateSel : WIRE_MATS.template) : (lead && o.show.selectionHighlight) ? WIRE_MATS.lead : (sel && o.show.selectionHighlight) ? WIRE_MATS.sel : aff?.has(n) ? WIRE_MATS.affected : hl ? WIRE_MATS.hilite : null;
       if (inc.kind === 'mesh') {
         const show = inc.nurbs ? o.show.nurbsSurfaces : o.show.polymeshes;
         ud.mesh.visible = show && o.shading !== 'wire' && o.shading !== 'bbox';
         ud.mesh.material = o.textured ? ud.mesh.userData.matsT : ud.mesh.userData.matsU;
         ud.wire.visible = show && (o.shading === 'wire' || o.wireOnShaded || !!wireMat || inc.template);
-        if (ltemp) ud.mesh.visible = false;
+        if (template) ud.mesh.visible = false; // templates are wireframe-only; other objects keep the viewport shading mode
         ud.wire.material = wireMat || WIRE_MATS.wire;
         if (ud.comp) ud.comp.visible = show && hl;
         if (o.xray || inc.xray) for (const m of ud.mesh.material) { this._saved.push([m, m.transparent, m.opacity, m.depthWrite]); m.transparent = true; m.opacity = Math.min(m.opacity, 0.5); m.depthWrite = false; }
