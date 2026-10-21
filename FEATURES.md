@@ -66,6 +66,7 @@ Legend: ✅ built · 🟡 partial / simplified · ⏭ planned
 ## 6. NURBS & curves
 - ✅ NURBS primitives (tessellated, with isoparm display); circle & square curves
 - ✅ CV / EP / Pencil curve tools; Revolve, Loft, Extrude along path, Planar — all with live history from the curves
+- ✅ Three Point Circular Arc tool (Create ▸ Curve Tools, Curves/Surfaces shelf): click the start, a point on the arc and the end; drag any point or the centre, click the arc to flip it, live radius readout; the arc stays an exact circle until rebuilt
 - ✅ Rebuild, Reverse, Open/Close curve; polygon edges → curve; NURBS → polygons
 - ⏭ Birail, Boundary, Attach/Detach, true NURBS evaluation with trims
 
