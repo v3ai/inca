@@ -1194,7 +1194,7 @@ impl Scene {
     // ------------------------------------------------------------ attributes
     /// Get an attribute of a named node (`pCube1.translateX`, `polyCube1.width`, `lambert1.color`).
     pub fn get_attr(&self, r: &NodeRef, attr: &str) -> Option<Value> {
-        let attr = alias(attr);
+        let attr = if matches!(r, NodeRef::Dag(_)) { alias(attr) } else { attr };
         match r {
             NodeRef::Dag(id) => {
                 let n = self.nodes.get(id)?;
@@ -1246,7 +1246,8 @@ impl Scene {
 
     /// `refresh` = re-evaluate meshes that depend on the node (off while batching).
     pub fn set_attr_ex(&mut self, r: &NodeRef, attr: &str, v: Value, refresh: bool) -> bool {
-        let attr = alias(attr).to_string();
+        // short names (t, r, s...) are transform aliases; history params keep their own keys
+        let attr = if matches!(r, NodeRef::Dag(_)) { alias(attr) } else { attr }.to_string();
         let attr = attr.as_str();
         match r {
             NodeRef::Dag(id) => {
@@ -2021,6 +2022,19 @@ pub const LIGHT_TYPES: &[(&str, &str)] = &[
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn history_params_are_not_aliased() {
+        let mut s = Scene::new();
+        let id = s.create_mesh("polyCube", &Params::new(), None);
+        let mut p = Params::new();
+        p.insert("edge".into(), json!([0, 1]));
+        p.insert("t".into(), json!(0.5));
+        s.apply_op(&id, "polySplitRing", p, true);
+        let r = NodeRef::History(id.clone(), 1);
+        assert!(s.set_attr(&r, "t", json!(0.25)));
+        assert_eq!(s.get_attr(&r, "t"), Some(json!(0.25)));
+    }
 
     #[test]
     fn names_increment_like_maya() {

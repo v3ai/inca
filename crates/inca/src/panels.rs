@@ -1152,7 +1152,13 @@ fn tool_settings(app: &mut IncaApp, ui: &mut egui::Ui) {
         Tool::Arc => "Three Point Circular Arc",
         Tool::Polygon => "Create Polygon Tool",
         Tool::Joint => "Joint Tool",
+        Tool::EdgeLoop => "Insert Edge Loop Tool",
+        Tool::MultiCut => "Multi-Cut Tool",
+        Tool::TargetWeld => "Target Weld Tool",
+        Tool::Sculpt => "Sculpt Tool",
+        Tool::QuadDraw => "Quad Draw Tool",
     });
+    crate::mesh_tools::settings(app, ui);
     if app.tool.is_creation() {
         ui.label("Click in a viewport to place points (on the ground grid in perspective, on the view plane in orthographic views). Enter completes, Backspace removes the last point, Esc cancels.");
         ui.checkbox(&mut app.snap_grid, "Snap to grid");

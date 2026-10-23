@@ -20,6 +20,11 @@ pub enum Tool {
     Arc,
     Polygon,
     Joint,
+    EdgeLoop,
+    MultiCut,
+    TargetWeld,
+    Sculpt,
+    QuadDraw,
 }
 
 impl Tool {
@@ -40,6 +45,11 @@ impl Tool {
             Tool::Rotate => "rotate",
             Tool::Scale => "scale",
             Tool::Select => "select",
+            Tool::EdgeLoop => "edgeLoop",
+            Tool::MultiCut => "multiCut",
+            Tool::TargetWeld => "targetWeld",
+            Tool::Sculpt => "softSelect",
+            Tool::QuadDraw => "planar",
         }
     }
     pub fn is_creation(self) -> bool {
@@ -196,6 +206,8 @@ pub struct IncaApp {
     pub overlay_border: HashSet<String>,
     /// measured redraw rate for the fps HUD
     pub fps_measured: f32,
+    pub mesh_tool: crate::mesh_tools::MeshToolState,
+    pub mesh_opts: crate::mesh_tools::MeshToolOpts,
     /// (sources, duplicates) of the last Shift+D, to repeat its offset
     pub last_dup: Option<(Vec<String>, Vec<String>)>,
     /// viewport background (Alt+B cycles viewport::BG_MODES)
@@ -299,6 +311,8 @@ impl IncaApp {
             overlay_normals: HashSet::new(),
             overlay_border: HashSet::new(),
             fps_measured: 0.0,
+            mesh_tool: Default::default(),
+            mesh_opts: cc.storage.and_then(|s| eframe::get_value(s, "meshTools")).unwrap_or_default(),
             last_dup: None,
             bg_mode: cc.storage.and_then(|s| eframe::get_value(s, "bgMode")).unwrap_or(0),
             hotbox: None,
@@ -422,6 +436,11 @@ impl IncaApp {
         }
         if self.tool != t {
             self.vp_state.tool_pts.clear();
+            if self.tool == Tool::MultiCut {
+                crate::mesh_tools::multi_cut_complete(self);
+            }
+            self.mesh_tool.cut.clear();
+            self.mesh_tool.cut_obj = None;
         }
         self.tool = t;
         self.help = match t {
@@ -436,6 +455,11 @@ impl IncaApp {
             Tool::Arc => "Three Point Circular Arc: click the start, a point on the arc and the end",
             Tool::Polygon => "Create Polygon Tool: click to place vertices, Enter to create the face",
             Tool::Joint => "Joint Tool: click to place joints (each new joint is parented to the last), Enter to finish the chain",
+            Tool::EdgeLoop => "Insert Edge Loop Tool: click and drag on an edge to insert an edge loop and slide it. Set multiple loops in Tool Settings",
+            Tool::MultiCut => "Multi-Cut Tool: click on edges/vertices to cut. Shift snaps to 10% steps, Ctrl+click inserts an edge loop. Enter or right-click completes, Backspace undoes the last point",
+            Tool::TargetWeld => "Target Weld Tool: drag from a vertex onto another vertex to weld them together",
+            Tool::Sculpt => "Sculpt: drag on a mesh to sculpt. Ctrl inverts, Shift smooths. Brush and size in Tool Settings",
+            Tool::QuadDraw => "Quad Draw: click to place dots on the live surface, Shift+click to fill a quad, drag to slide, Enter to finish",
         }
         .into();
     }
@@ -519,6 +543,12 @@ impl IncaApp {
     // ------------------------------------------------------------ frame
 
     fn hotkeys(&mut self, ctx: &egui::Context) {
+        // clicked buttons and the viewport take keyboard focus in egui; only text fields should keep it
+        if let Some(id) = ctx.memory(|m| m.focused()) {
+            if egui::text_edit::TextEditState::load(ctx, id).is_none() {
+                ctx.memory_mut(|m| m.surrender_focus(id));
+            }
+        }
         if ctx.egui_wants_keyboard_input() {
             return;
         }
@@ -634,6 +664,7 @@ impl eframe::App for IncaApp {
         eframe::set_value(storage, "autosave", &self.autosave);
         eframe::set_value(storage, "dupOpts", &self.dup_opts);
         eframe::set_value(storage, "hud", &self.hud);
+        eframe::set_value(storage, "meshTools", &self.mesh_opts);
         if let Some(p) = &self.s.project {
             eframe::set_value(storage, "lastProject", p);
         }

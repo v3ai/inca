@@ -201,6 +201,18 @@ pub static ACTIONS: &[(&str, &str, &str)] = &[
     ("pivotEdit", "Edit Pivot", "Insert / hold D"),
     ("insertEdgeLoop", "Insert Edge Loop (on selected edge)", ""),
     ("cleanup", "Cleanup", ""),
+    ("insertEdgeLoopTool", "Insert Edge Loop Tool", "Ctrl+K"),
+    ("multiCutTool", "Multi-Cut", "Ctrl+Shift+X"),
+    ("targetWeldTool", "Target Weld", ""),
+    ("quadDrawTool", "Quad Draw", "Ctrl+Shift+Q"),
+    ("sculptTool", "Sculpt Tool", ""),
+    ("smoothSculptTool", "Smooth Sculpt Tool", ""),
+    ("relaxSculptTool", "Relax Sculpt Tool", ""),
+    ("grabSculptTool", "Grab Sculpt Tool", ""),
+    ("pinchSculptTool", "Pinch Sculpt Tool", ""),
+    ("flattenSculptTool", "Flatten Sculpt Tool", ""),
+    ("inflateSculptTool", "Inflate Sculpt Tool", ""),
+    ("makeLive", "Make Live", ""),
     ("collapse", "Collapse", ""),
     ("connect", "Connect", ""),
     ("chamferVertex", "Chamfer Vertices", ""),
@@ -531,6 +543,18 @@ pub fn builtin(app: &mut IncaApp, id: &str) {
         "selectAllCameras" => crate::edit_cmds::select_by_type(app, "camera"),
         "selectAllCurves" => crate::edit_cmds::select_by_type(app, "curve"),
         "selectSimilar" => crate::edit_cmds::select_similar(app),
+        "insertEdgeLoopTool" => app.set_tool(Tool::EdgeLoop),
+        "multiCutTool" => app.set_tool(Tool::MultiCut),
+        "targetWeldTool" => app.set_tool(Tool::TargetWeld),
+        "quadDrawTool" => app.set_tool(Tool::QuadDraw),
+        "sculptTool" | "smoothSculptTool" | "relaxSculptTool" | "grabSculptTool" | "pinchSculptTool" | "flattenSculptTool" | "inflateSculptTool" => {
+            let b = id.trim_end_matches("SculptTool").trim_end_matches("Tool");
+            app.mesh_opts.brush = crate::mesh_tools::BRUSHES.iter().position(|x| *x == b).unwrap_or(0);
+            app.set_tool(Tool::Sculpt);
+            app.right_tab = crate::app::RightTab::ToolSettings;
+            app.show_right = true;
+        }
+        "makeLive" => crate::mesh_tools::make_live(app),
         "showLastHidden" => crate::edit_cmds::show_last_hidden(app),
         "hideUnselected" => crate::edit_cmds::hide_unselected(app),
         "hideAllLights" => crate::edit_cmds::show_type(app, "light", false),
@@ -656,12 +680,24 @@ pub fn builtin(app: &mut IncaApp, id: &str) {
             app.select_names(&[], SelMode::Replace);
             app.set_tool(Tool::Joint);
         }
-        "finishTool" => crate::vp_ui::finish_creation(app),
+        "finishTool" => match app.tool {
+            Tool::MultiCut => crate::mesh_tools::multi_cut_complete(app),
+            Tool::QuadDraw => crate::mesh_tools::quad_complete(app),
+            _ => crate::vp_ui::finish_creation(app),
+        },
         "toolUndoPoint" => {
             app.vp_state.tool_pts.pop();
+            if app.mesh_tool.cut.pop().is_some() && app.mesh_tool.cut.is_empty() {
+                app.mesh_tool.cut_obj = None;
+            }
+            if app.tool == Tool::QuadDraw {
+                app.mesh_tool.dots.pop();
+            }
         }
         "cancelTool" => {
             app.vp_state.tool_pts.clear();
+            app.mesh_tool.cut.clear();
+            app.mesh_tool.cut_obj = None;
             app.set_tool(Tool::Select);
         }
         "snapToGround" => {
@@ -820,6 +856,14 @@ pub fn builtin(app: &mut IncaApp, id: &str) {
 /// Maya default hotkeys.
 pub fn hotkey(key: Key, m: Modifiers, app: &IncaApp) -> Option<&'static str> {
     let ctrl = m.command || m.ctrl;
+    if crate::mesh_tools::is_mesh_tool(app.tool) {
+        match key {
+            Key::Enter => return Some("finishTool"),
+            Key::Backspace if !app.mesh_tool.cut.is_empty() || !app.mesh_tool.dots.is_empty() => return Some("toolUndoPoint"),
+            Key::Escape => return Some("cancelTool"),
+            _ => {}
+        }
+    }
     if app.tool.is_creation() {
         match key {
             Key::Enter => return Some("finishTool"),
@@ -835,12 +879,15 @@ pub fn hotkey(key: Key, m: Modifiers, app: &IncaApp) -> Option<&'static str> {
         (Key::S, true, false, true) => "incrementAndSave",
         (Key::S, true, false, _) => "saveScene",
         (Key::S, true, true, _) => "saveSceneAs",
-        (Key::Q, true, _, _) => "quit",
+        (Key::Q, true, false, _) => "quit",
         (Key::Z, true, false, _) => "undo",
         (Key::Z, true, true, _) | (Key::Y, true, _, _) => "redo",
         (Key::C, true, _, _) => "copy",
         (Key::V, true, _, _) => "paste",
         (Key::D, true, true, _) => "duplicateSpecial",
+        (Key::K, true, false, _) => "insertEdgeLoopTool",
+        (Key::X, true, true, _) => "multiCutTool",
+        (Key::Q, true, true, _) => "quadDrawTool",
         (Key::D, true, false, _) => "duplicate",
         (Key::D, false, true, false) => "duplicateWithTransform",
         (Key::X, true, false, false) => "cut",

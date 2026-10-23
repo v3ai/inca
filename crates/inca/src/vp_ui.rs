@@ -467,7 +467,11 @@ fn interact(app: &mut IncaApp, ui: &mut egui::Ui, idx: usize, resp: &egui::Respo
     if mods.alt {
         return;
     }
-    // ---- creation tools take the clicks
+    // ---- mesh tools and creation tools take the clicks
+    if crate::mesh_tools::is_mesh_tool(app.tool) {
+        crate::mesh_tools::interact(app, idx, resp, cv, painter);
+        return;
+    }
     if app.tool.is_creation() {
         creation_tool(app, idx, resp, cv, painter);
         return;
@@ -884,9 +888,11 @@ fn place_point(cv: &CamView, rect: Rect, p: Pos2, snap: Option<f64>) -> Option<D
 fn creation_tool(app: &mut IncaApp, idx: usize, resp: &egui::Response, cv: &CamView, painter: &egui::Painter) {
     let rect = app.vps[idx].rect;
     let snap = app.snap_grid.then_some(app.vp_state.snap_step);
+    // a live surface takes the points (Make Live)
+    let live = |app: &IncaApp, p: Pos2| crate::mesh_tools::live_point(app, cv, rect, p).or_else(|| place_point(cv, rect, p, snap));
     if app.tool == Tool::Joint {
         if resp.clicked_by(egui::PointerButton::Primary) {
-            if let Some(p) = resp.interact_pointer_pos().and_then(|p| place_point(cv, rect, p, snap)) {
+            if let Some(p) = resp.interact_pointer_pos().and_then(|p| live(app, p)) {
                 let f = inca_core::math::fmt_num;
                 let _ = app.run_mel("joint", &format!("joint -p {} {} {};", f(p.x), f(p.y), f(p.z)));
             }
@@ -894,7 +900,7 @@ fn creation_tool(app: &mut IncaApp, idx: usize, resp: &egui::Response, cv: &CamV
         return;
     }
     if resp.clicked_by(egui::PointerButton::Primary) {
-        if let Some(p) = resp.interact_pointer_pos().and_then(|p| place_point(cv, rect, p, snap)) {
+        if let Some(p) = resp.interact_pointer_pos().and_then(|p| live(app, p)) {
             app.vp_state.tool_pts.push(p);
             if app.tool == Tool::Arc && app.vp_state.tool_pts.len() == 3 {
                 finish_creation(app);
@@ -907,7 +913,7 @@ fn creation_tool(app: &mut IncaApp, idx: usize, resp: &egui::Response, cv: &CamV
     // preview
     let pts = app.vp_state.tool_pts.clone();
     let mut preview = pts.clone();
-    if let Some(h) = resp.hover_pos().and_then(|p| place_point(cv, rect, p, snap)) {
+    if let Some(h) = resp.hover_pos().and_then(|p| live(app, p)) {
         preview.push(h);
     }
     let line: Vec<DVec3> = match app.tool {

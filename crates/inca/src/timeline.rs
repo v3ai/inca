@@ -56,6 +56,9 @@ pub fn time_slider(app: &mut IncaApp, ui: &mut egui::Ui) {
     });
 }
 
+/// Time Slider drag: (mode, frame at press, range selection at press).
+type DragState = (i32, f64, Option<(f64, f64)>);
+
 /// The Time Slider strip: ticks, keys, range selection, current time; scrub / Shift-select / MMB / RMB.
 fn slider_canvas(app: &mut IncaApp, ui: &mut egui::Ui, rect: Rect, resp: &egui::Response) {
     let p = ui.painter_at(rect);
@@ -132,7 +135,7 @@ fn slider_canvas(app: &mut IncaApp, ui: &mut egui::Ui, rect: Rect, resp: &egui::
             ui.data_mut(|d| d.insert_temp(state_id, (mode, f, app.range_sel)));
         }
     }
-    let state: Option<(i32, f64, Option<(f64, f64)>)> = ui.data(|d| d.get_temp(state_id));
+    let state: Option<DragState> = ui.data(|d| d.get_temp(state_id));
     if let (Some((mode, f0, sel0)), Some(f)) = (state, at) {
         match mode {
             0 if f != app.s.time.current => app.s.set_time(f),
@@ -168,7 +171,7 @@ fn slider_canvas(app: &mut IncaApp, ui: &mut egui::Ui, rect: Rect, resp: &egui::
                 _ => {}
             }
         }
-        ui.data_mut(|d| d.remove::<(i32, f64, Option<(f64, f64)>)>(state_id));
+        ui.data_mut(|d| d.remove::<DragState>(state_id));
     }
     resp.context_menu(|ui| time_menu(app, ui));
 }

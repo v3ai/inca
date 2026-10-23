@@ -158,7 +158,7 @@ pub fn set_menus(ms: MenuSet) -> Vec<(&'static str, Vec<M>)> {
         MenuSet::Modeling => vec![
             ("Mesh", vec![Sub("Booleans", vec![A("booleanUnion"), A("booleanDifference"), A("booleanIntersection")]), A("combine"), A("separate"), Sep, A("fillHole"), A("smooth"), A("triangulate"), A("quadrangulate"), Sep, A("mirror"), Sep, A("cleanup")]),
             ("Edit Mesh", vec![A("addDivisions"), A("bevel"), A("bridge"), A("collapse"), A("connect"), A("chamferVertex"), A("extrude"), A("merge"), A("mergeToCenter"), A("poke"), Sep, A("deleteEdgeVertex"), Sep, A("extract"), A("duplicateFaces"), Sep, A("curveFromEdges")]),
-            ("Mesh Tools", vec![A("createPolygonTool"), A("insertEdgeLoop")]),
+            ("Mesh Tools", vec![A("createPolygonTool"), A("insertEdgeLoopTool"), A("multiCutTool"), A("quadDrawTool"), A("targetWeldTool"), A("sculptTool"), Sub("Sculpt Brushes", vec![A("smoothSculptTool"), A("relaxSculptTool"), A("grabSculptTool"), A("pinchSculptTool"), A("flattenSculptTool"), A("inflateSculptTool")]), A("makeLive"), Sep, A("insertEdgeLoop")]),
             ("Mesh Display", vec![A("softenEdge"), A("hardenEdge"), A("softHardAngle"), Sep, A("reverseNormals"), Sep, A("toggleNormals"), A("toggleBorderEdges"), Sep, A("smoothOff"), A("smoothOn")]),
             ("UV", vec![A("planarMap"), A("cylindricalMap"), A("sphericalMap"), A("automaticMap")]),
             ("Surfaces", vec![A("revolve"), A("loft"), A("extrudeCurve"), A("planarSurface")]),

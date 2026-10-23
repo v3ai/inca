@@ -6,6 +6,7 @@ mod edit_cmds;
 mod icons;
 mod icons_svg;
 mod menus;
+mod mesh_tools;
 mod panels;
 mod project;
 mod scripting;

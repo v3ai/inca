@@ -1,7 +1,8 @@
 //! Drive the real app from a script and capture a screenshot (the JS app's INCA_TEST/INCA_SHOTS):
 //!
 //! `INCA_TEST=script.mel INCA_SHOT=out.png inca` runs the MEL script once the window is up,
-//! saves a screenshot of the whole window and exits.
+//! saves a screenshot of the whole window and exits. With `INCA_SHOT_WAIT=<file>` it stays open
+//! (for driving it with xdotool) and takes the screenshot once that file appears.
 
 use crate::app::IncaApp;
 
@@ -27,7 +28,15 @@ pub fn step(app: &mut IncaApp, ctx: &egui::Context) {
         }
     }
     let t = app.test.as_mut().unwrap();
-    let shot_frame: u32 = std::env::var("INCA_SHOT_FRAME").ok().and_then(|v| v.parse().ok()).unwrap_or(12);
+    let wait = std::env::var("INCA_SHOT_WAIT").ok();
+    let shot_frame: u32 = match &wait {
+        Some(f) if std::path::Path::new(f).exists() => {
+            let _ = std::fs::remove_file(f);
+            t.frame
+        }
+        Some(_) => u32::MAX,
+        None => std::env::var("INCA_SHOT_FRAME").ok().and_then(|v| v.parse().ok()).unwrap_or(12),
+    };
     if t.frame == shot_frame {
         match &t.shot {
             Some(_) => ctx.send_viewport_cmd(egui::ViewportCommand::Screenshot(egui::UserData::default())),
@@ -53,7 +62,7 @@ pub fn step(app: &mut IncaApp, ctx: &egui::Context) {
         }
         ctx.send_viewport_cmd(egui::ViewportCommand::Close);
     }
-    if t.frame > shot_frame + 400 {
+    if wait.is_none() && t.frame > shot_frame + 400 {
         eprintln!("INCA_SHOT: no screenshot event, giving up");
         ctx.send_viewport_cmd(egui::ViewportCommand::Close);
     }
