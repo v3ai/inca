@@ -11,3 +11,6 @@ pub mod primitives;
 pub mod anim;
 pub mod materials;
 pub mod scene;
+pub mod io;
+pub mod commands;
+pub mod mel;

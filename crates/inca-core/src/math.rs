@@ -177,3 +177,17 @@ pub fn fmt_num(x: f64) -> String {
         s.to_string()
     }
 }
+
+/// Format a number for MEL output (up to 6 decimals, trailing zeros trimmed).
+pub fn fmt_num_long(x: f64) -> String {
+    if x.is_finite() && x == x.trunc() && x.abs() < 1e15 {
+        return format!("{}", x as i64);
+    }
+    let s = format!("{:.6}", x);
+    let s = s.trim_end_matches('0').trim_end_matches('.');
+    if s == "-0" {
+        "0".into()
+    } else {
+        s.to_string()
+    }
+}
