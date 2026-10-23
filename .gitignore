@@ -4,3 +4,6 @@ dist/
 vendor/
 .claude/
 *.pdf
+
+# Rust
+/target/

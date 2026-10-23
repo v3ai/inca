@@ -1,0 +1,23 @@
+[workspace]
+resolver = "2"
+members = ["crates/inca-core", "crates/inca"]
+
+[workspace.package]
+version = "0.2.0"
+edition = "2021"
+license = "MIT"
+
+[workspace.dependencies]
+glam = { version = "0.32", features = ["serde", "mint"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+indexmap = { version = "2", features = ["serde"] }
+
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
+
+[profile.release]
+lto = "thin"

@@ -1,0 +1,20 @@
+[package]
+name = "inca-core"
+description = "Inca engine: scene graph, construction history, polygon kernel, animation, IO, renderer (no GUI)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+glam.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+indexmap.workspace = true
+earcutr = "0.5"
+tobj = "4"
+stl_io = "0.8"
+gltf = { version = "1.4", features = ["import"] }
+boolmesh = { version = "0.2", default-features = false }
+rayon = "1"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "hdr"] }
+rapier3d = "0.30"

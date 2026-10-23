@@ -1,0 +1,13 @@
+//! Inca engine: scene graph with construction history, polygon kernel, curves, materials,
+//! animation, undo, MEL, file IO and a CPU path tracer. No GUI code lives here.
+
+pub mod booleans;
+pub mod curves;
+pub mod math;
+pub mod mesh;
+pub mod ops;
+pub mod params;
+pub mod primitives;
+pub mod anim;
+pub mod materials;
+pub mod scene;
