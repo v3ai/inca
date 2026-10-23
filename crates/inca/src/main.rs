@@ -1,1 +1,30 @@
-fn main(){}
+//! Inca — a free 3D modeling, animation and rendering application (Rust edition).
+
+mod actions;
+mod app;
+mod icons;
+mod menus;
+mod panels;
+mod scripting;
+mod test_hook;
+mod theme;
+mod timeline;
+mod toolbar;
+mod viewport;
+mod vp_ui;
+mod windows;
+
+fn icon() -> Option<egui::IconData> {
+    let img = image::load_from_memory(include_bytes!("../../../build/icon256.png")).ok()?.to_rgba8();
+    let (w, h) = img.dimensions();
+    Some(egui::IconData { rgba: img.into_raw(), width: w, height: h })
+}
+
+fn main() -> eframe::Result {
+    let mut viewport = egui::ViewportBuilder::default().with_inner_size([1600.0, 1000.0]).with_min_inner_size([900.0, 600.0]).with_title("Inca");
+    if let Some(i) = icon() {
+        viewport = viewport.with_icon(i);
+    }
+    let options = eframe::NativeOptions { viewport, renderer: eframe::Renderer::Wgpu, ..Default::default() };
+    eframe::run_native("Inca", options, Box::new(|cc| Ok(Box::new(app::IncaApp::new(cc)))))
+}

@@ -14,3 +14,5 @@ pub mod scene;
 pub mod io;
 pub mod commands;
 pub mod mel;
+pub mod render;
+pub mod selection;
