@@ -26,7 +26,7 @@ registry, menus, UI modules and a 0.1.12 screenshot.
 - [x] B4. Display: HUD toggles (poly count, fps, frame, camera names, view axis), Hide Unselected / Show Selection / Show Last Hidden, Hide/Show lights/cameras/geometry, Template / Untemplate / Untemplate All, Face Normals, Border Edges, Toggle Background, Frame Selection/All in all views
 - [x] B5. Mesh: Cleanup, Collapse, Connect, Chamfer Vertices, Polygon Edges to Curve, Soften/Harden (30°) (Reduce / Conform / Conform Normals are menu-only placeholders in the JS too)
 - [x] B6. Mesh Tools: Insert Edge Loop tool (interactive), Multi-Cut, Target Weld, Quad Draw, Sculpt tool (brushes), Make Live
-- [ ] B7. Curves / Surfaces: Pencil Curve tool, Open/Close, Attach, Detach, Birail, Boundary
+- [x] B7. Curves / Surfaces: Pencil Curve tool, Open/Close (Attach / Detach / Birail / Boundary are menu-only placeholders in the JS too)
 - [ ] B8. UV: UV Editor (select / move / rotate / scale UVs, flip, rotate 90, normalize, layout, unfold/relax), UV component mode (F12)
 - [ ] B9. Selection: (Lasso and Paint done) Soft Select (B) with falloff display, Symmetry (object X, world X/Y/Z), cycle component type, pre-selection highlight
 - [ ] B10. Manipulators: Ctrl+click axis lock, MMB drag along active handle, point snap (V), discrete rotate (J), hold W/E/R marking menus, manipulator size readout + reset

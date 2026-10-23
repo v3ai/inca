@@ -1157,6 +1157,7 @@ fn tool_settings(app: &mut IncaApp, ui: &mut egui::Ui) {
         Tool::TargetWeld => "Target Weld Tool",
         Tool::Sculpt => "Sculpt Tool",
         Tool::QuadDraw => "Quad Draw Tool",
+        Tool::Pencil => "Pencil Curve Tool",
     });
     crate::mesh_tools::settings(app, ui);
     if app.tool.is_creation() {

@@ -108,7 +108,7 @@ pub const CORE_COMMANDS: &[&str] = &[
     "polyCBoolOp", "polyBoolOp", "polyBridgeEdge", "polySoftEdge", "polyProjection", "polySplitRing", "polyChipOff", "polyDuplicateAndConnect", "revolve", "loft", "extrude", "planarSrf",
     "rebuildCurve", "reverseCurve", "file", "undo", "redo", "connectAttr", "disconnectAttr", "listConnections", "isConnected", "warning", "error", "about", "selectMode", "selectType",
     "polyCreateFacet", "polyBevel", "nonLinear", "emitter", "fireEffect", "smokeEffect", "gravity", "drag", "turbulence", "radial", "vortex", "air", "rigidBody", "joint", "skinCluster", "parentConstraint", "pointConstraint", "orientConstraint", "scaleConstraint", "aimConstraint", "assignMaterial", "nurbsToPoly", "displaySmoothness", "toggle", "layerEditor", "createDisplayLayer", "editDisplayLayerMembers", "help", "whatIs",
-    "matchTransform", "addAttr", "deleteAttr", "polyChamferVtx", "polyConnectComponents", "polyCollapseEdge", "polyCollapseFacet", "polyToCurve", "polyCleanup",
+    "matchTransform", "addAttr", "deleteAttr", "polyChamferVtx", "polyConnectComponents", "polyCollapseEdge", "polyCollapseFacet", "polyToCurve", "polyCleanup", "closeCurve", "openCurve",
 ];
 
 pub fn exists(name: &str) -> bool {
@@ -494,6 +494,7 @@ pub fn run(s: &mut Scene, h: &mut dyn Host, name: &str, raw: &[Val]) -> Result<V
         "polyChamferVtx" => &[("w|width", 1), ("ch|constructionHistory", 1)],
         "polyConnectComponents" | "polyCollapseEdge" | "polyCollapseFacet" | "polyCleanup" => &[("ch|constructionHistory", 1)],
         "polyToCurve" => &[("form", 1), ("degree", 1), ("n|name", 1)],
+        "closeCurve" | "openCurve" => &[("ps|preserveShape", 1), ("ch|constructionHistory", 1), ("rpo|replaceOriginal", 1)],
         "addAttr" => &[("ln|longName", 1), ("sn|shortName", 1), ("at|attributeType", 1), ("dt|dataType", 1), ("dv|defaultValue", 1), ("min|minValue", 1), ("max|maxValue", 1), ("k|keyable", 1)],
         "deleteAttr" => &[("at|attribute", 1)],
         "group" => &[("em|empty", 0), ("w|world", 0), ("n|name", 1), ("p|parent", 1), ("a|absolute", 0), ("r|relative", 0)],
@@ -1364,6 +1365,25 @@ pub fn run(s: &mut Scene, h: &mut dyn Host, name: &str, raw: &[Val]) -> Result<V
         "loft" => curve_surface(s, &a, "loft"),
         "extrude" => curve_surface(s, &a, "extrude"),
         "planarSrf" => curve_surface(s, &a, "planarTrim"),
+        "closeCurve" | "openCurve" => {
+            let form = if name == "closeCurve" { "periodic" } else { "open" };
+            let mut out = vec![];
+            for id in targets(s, &a) {
+                if let Some(Shape::Curve(c)) = s.nodes.get_mut(&id).map(|n| &mut n.shape) {
+                    c.form = form.into();
+                    out.push(id.clone());
+                }
+                if let Some(n) = s.nodes.get_mut(&id) {
+                    n.rev += 1;
+                }
+                s.refresh_dependents(&id);
+            }
+            if out.is_empty() {
+                return Err(format!("{name}: select a curve"));
+            }
+            s.touch();
+            Ok(strs(out.iter().map(|i| s.name_of(i)).collect()))
+        }
         "rebuildCurve" | "reverseCurve" => {
             for id in targets(s, &a) {
                 if let Some(Shape::Curve(c)) = s.node(&id).map(|n| n.shape.clone()) {
@@ -2202,6 +2222,16 @@ mod tests {
         let r = mel(&mut s, "polyCube -n g; select -r g.e[0] g.e[1]; polyToCurve -form 2 -degree 1;").unwrap();
         let cv = s.find(&r.str()).unwrap();
         assert!(matches!(&s.node(&cv).unwrap().shape, Shape::Curve(_)));
+    }
+
+    #[test]
+    fn open_close_curve() {
+        let mut s = Scene::new();
+        mel(&mut s, "curve -n c -d 3 -p 0 0 0 -p 1 0 0 -p 1 0 1 -p 0 0 1; closeCurve c;").unwrap();
+        let id = s.find("c").unwrap();
+        assert!(matches!(&s.node(&id).unwrap().shape, Shape::Curve(c) if c.form == "periodic"));
+        mel(&mut s, "openCurve c;").unwrap();
+        assert!(matches!(&s.node(&id).unwrap().shape, Shape::Curve(c) if c.form == "open"));
     }
 
     #[test]

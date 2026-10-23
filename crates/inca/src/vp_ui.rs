@@ -890,6 +890,29 @@ fn creation_tool(app: &mut IncaApp, idx: usize, resp: &egui::Response, cv: &CamV
     let snap = app.snap_grid.then_some(app.vp_state.snap_step);
     // a live surface takes the points (Make Live)
     let live = |app: &IncaApp, p: Pos2| crate::mesh_tools::live_point(app, cv, rect, p).or_else(|| place_point(cv, rect, p, snap));
+    if app.tool == Tool::Pencil {
+        // freehand: collect points while dragging, simplify and make an EP curve on release
+        let wpp = cv.units_per_px();
+        if resp.dragged_by(egui::PointerButton::Primary) || resp.drag_started_by(egui::PointerButton::Primary) {
+            if let Some(w) = resp.interact_pointer_pos().and_then(|p| live(app, p)) {
+                if app.vp_state.tool_pts.last().is_none_or(|l| l.distance(w) > wpp * 6.0) {
+                    app.vp_state.tool_pts.push(w);
+                }
+            }
+        }
+        let sp: Vec<Pos2> = app.vp_state.tool_pts.iter().filter_map(|p| cv.project(*p, rect)).collect();
+        painter.add(egui::Shape::line(sp, Stroke::new(1.5, Color32::from_rgb(255, 225, 74))));
+        if resp.drag_stopped() {
+            let pts = std::mem::take(&mut app.vp_state.tool_pts);
+            let keep = simplify(&pts, wpp * 4.0);
+            if keep.len() >= 2 {
+                let f = inca_core::math::fmt_num;
+                let eps: Vec<String> = keep.iter().map(|p| format!("-ep {} {} {}", f(p.x), f(p.y), f(p.z))).collect();
+                let _ = app.run_mel("pencil curve", &format!("curve -d 3 {};", eps.join(" ")));
+            }
+        }
+        return;
+    }
     if app.tool == Tool::Joint {
         if resp.clicked_by(egui::PointerButton::Primary) {
             if let Some(p) = resp.interact_pointer_pos().and_then(|p| live(app, p)) {
@@ -934,6 +957,27 @@ fn creation_tool(app: &mut IncaApp, idx: usize, resp: &egui::Response, cv: &CamV
             painter.rect_filled(Rect::from_center_size(q, vec2(6.0, 6.0)), 0.0, Color32::from_rgb(92, 255, 92));
         }
     }
+}
+
+/// Ramer–Douglas–Peucker: drop points closer than `tol` to the simplified polyline.
+fn simplify(pts: &[DVec3], tol: f64) -> Vec<DVec3> {
+    if pts.len() < 3 {
+        return pts.to_vec();
+    }
+    let (a, b) = (pts[0], pts[pts.len() - 1]);
+    let ab = b - a;
+    let dist = |p: DVec3| {
+        let t = if ab.length_squared() > 0.0 { ((p - a).dot(ab) / ab.length_squared()).clamp(0.0, 1.0) } else { 0.0 };
+        (a + ab * t - p).length()
+    };
+    let (i, d) = pts.iter().enumerate().skip(1).take(pts.len() - 2).map(|(i, p)| (i, dist(*p))).fold((0, 0.0), |m, x| if x.1 > m.1 { x } else { m });
+    if d <= tol {
+        return vec![a, b];
+    }
+    let mut left = simplify(&pts[..=i], tol);
+    left.pop();
+    left.extend(simplify(&pts[i..], tol));
+    left
 }
 
 /// Complete the active creation tool (Enter).

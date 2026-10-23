@@ -67,7 +67,7 @@ pub fn common(name: &str) -> Vec<M> {
             Sub("Lights", LIGHT_TYPES.iter().map(|l| A(l.0)).collect()),
             Sub("Cameras", vec![A("createCamera")]),
             Sep,
-            Sub("Curve Tools", vec![A("cvCurveTool"), A("epCurveTool"), A("arcTool")]),
+            Sub("Curve Tools", vec![A("cvCurveTool"), A("epCurveTool"), A("pencilCurveTool"), A("arcTool")]),
             A("createPolygonTool"),
             Sep,
             A("createEmptyGroup"),
@@ -162,7 +162,7 @@ pub fn set_menus(ms: MenuSet) -> Vec<(&'static str, Vec<M>)> {
             ("Mesh Display", vec![A("softenEdge"), A("hardenEdge"), A("softHardAngle"), Sep, A("reverseNormals"), Sep, A("toggleNormals"), A("toggleBorderEdges"), Sep, A("smoothOff"), A("smoothOn")]),
             ("UV", vec![A("planarMap"), A("cylindricalMap"), A("sphericalMap"), A("automaticMap")]),
             ("Surfaces", vec![A("revolve"), A("loft"), A("extrudeCurve"), A("planarSurface")]),
-            ("Curves", vec![A("rebuildCurve"), A("reverseCurve"), Sep, A("curveFromEdges")]),
+            ("Curves", vec![A("cvCurveTool"), A("epCurveTool"), A("pencilCurveTool"), Sep, A("reverseCurve"), A("rebuildCurve"), A("openCloseCurve"), Sep, A("curveFromEdges")]),
         ],
         MenuSet::Rigging => vec![
             ("Skeleton", vec![A("jointTool"), Todo("Create IK Handle")]),

@@ -25,6 +25,7 @@ pub enum Tool {
     TargetWeld,
     Sculpt,
     QuadDraw,
+    Pencil,
 }
 
 impl Tool {
@@ -50,10 +51,11 @@ impl Tool {
             Tool::TargetWeld => "targetWeld",
             Tool::Sculpt => "softSelect",
             Tool::QuadDraw => "planar",
+            Tool::Pencil => "pencilCurve",
         }
     }
     pub fn is_creation(self) -> bool {
-        matches!(self, Tool::CvCurve | Tool::EpCurve | Tool::Arc | Tool::Polygon | Tool::Joint)
+        matches!(self, Tool::CvCurve | Tool::EpCurve | Tool::Arc | Tool::Polygon | Tool::Joint | Tool::Pencil)
     }
 }
 
@@ -459,6 +461,7 @@ impl IncaApp {
             Tool::MultiCut => "Multi-Cut Tool: click on edges/vertices to cut. Shift snaps to 10% steps, Ctrl+click inserts an edge loop. Enter or right-click completes, Backspace undoes the last point",
             Tool::TargetWeld => "Target Weld Tool: drag from a vertex onto another vertex to weld them together",
             Tool::Sculpt => "Sculpt: drag on a mesh to sculpt. Ctrl inverts, Shift smooths. Brush and size in Tool Settings",
+            Tool::Pencil => "Pencil Curve Tool: drag to draw a curve freehand",
             Tool::QuadDraw => "Quad Draw: click to place dots on the live surface, Shift+click to fill a quad, drag to slide, Enter to finish",
         }
         .into();

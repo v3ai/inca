@@ -213,6 +213,8 @@ pub static ACTIONS: &[(&str, &str, &str)] = &[
     ("flattenSculptTool", "Flatten Sculpt Tool", ""),
     ("inflateSculptTool", "Inflate Sculpt Tool", ""),
     ("makeLive", "Make Live", ""),
+    ("pencilCurveTool", "Pencil Curve Tool", ""),
+    ("openCloseCurve", "Open/Close", ""),
     ("collapse", "Collapse", ""),
     ("connect", "Connect", ""),
     ("chamferVertex", "Chamfer Vertices", ""),
@@ -555,6 +557,23 @@ pub fn builtin(app: &mut IncaApp, id: &str) {
             app.show_right = true;
         }
         "makeLive" => crate::mesh_tools::make_live(app),
+        "pencilCurveTool" => app.set_tool(Tool::Pencil),
+        "openCloseCurve" => {
+            let mel: String = app
+                .s
+                .sel
+                .iter()
+                .filter_map(|i| match &app.s.node(i)?.shape {
+                    inca_core::scene::Shape::Curve(c) => Some(format!("{} {};\n", if c.form == "periodic" { "openCurve" } else { "closeCurve" }, app.s.name_of(i))),
+                    _ => None,
+                })
+                .collect();
+            if mel.is_empty() {
+                app.last_result = "// Warning: Select a curve".into();
+            } else {
+                let _ = app.run_mel("open/close", &mel);
+            }
+        }
         "showLastHidden" => crate::edit_cmds::show_last_hidden(app),
         "hideUnselected" => crate::edit_cmds::hide_unselected(app),
         "hideAllLights" => crate::edit_cmds::show_type(app, "light", false),
