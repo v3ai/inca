@@ -487,6 +487,15 @@ pub fn icon_lines(s: &Scene, id: &str, col: [f32; 4]) -> Vec<LineVertex> {
             circle(&mut o, DVec3::ZERO, DVec3::Y, DVec3::Z, r, col);
             circle(&mut o, DVec3::ZERO, DVec3::Z, DVec3::X, r, col);
         }
+        Shape::Locator if n.kind == "emitter" && n.extra["emitterType"].as_str() == Some("particles") => {
+            // particle object: a small diamond at its pivot
+            let d = [DVec3::X, DVec3::Z, -DVec3::X, -DVec3::Z].map(|v| v * 0.25);
+            for i in 0..4 {
+                push_line(&mut o, d[i], d[(i + 1) % 4], col);
+                push_line(&mut o, d[i], DVec3::Y * 0.25, col);
+                push_line(&mut o, d[i], -DVec3::Y * 0.25, col);
+            }
+        }
         Shape::Locator if n.kind == "emitter" => {
             for ax in [DVec3::X, DVec3::Y, DVec3::Z, DVec3::new(1.0, 1.0, 0.0).normalize(), DVec3::new(0.0, 1.0, 1.0).normalize(), DVec3::new(1.0, 0.0, 1.0).normalize()] {
                 push_line(&mut o, -ax * 0.4, ax * 0.4, col);

@@ -179,8 +179,8 @@ pub fn set_menus(ms: MenuSet) -> Vec<(&'static str, Vec<M>)> {
             ("Visualize", vec![A("graphEditor"), A("dopeSheet"), Sep, A("createGhost"), A("unghostAll"), A("motionTrail")]),
         ],
         MenuSet::Fx => vec![
-            ("Particles", vec![A("createEmitter"), A("createDirectionalEmitter"), A("emitFromObject")]),
-            ("Fields/Solvers", vec![A("gravityField"), A("dragField"), A("turbulenceField"), A("radialField"), A("vortexField"), A("airField"), Sep, A("createActiveRigidBody"), A("createPassiveRigidBody")]),
+            ("Particles", vec![A("createEmitter"), A("createDirectionalEmitter"), A("createParticles"), A("emitFromObject")]),
+            ("Fields/Solvers", vec![A("gravityField"), A("dragField"), A("turbulenceField"), A("radialField"), A("vortexField"), A("airField"), Sep, A("affectSelected"), Sep, A("createActiveRigidBody"), A("createPassiveRigidBody"), A("removeRigidBody"), Sep, A("dynamicsReset")]),
             ("Effects", vec![A("createFire"), A("createSmoke")]),
         ],
         MenuSet::Rendering => vec![

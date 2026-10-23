@@ -1103,9 +1103,26 @@ fn shape_tab(app: &mut IncaApp, ui: &mut egui::Ui, id: &str) {
             _ => "Extra Attributes",
         };
         if theme::fold(ui, title) {
-            let keys: Vec<String> = e.keys().filter(|k| *k != "source").cloned().collect();
+            let keys: Vec<String> = e.keys().filter(|k| !matches!(k.as_str(), "source" | "affects" | "initial")).cloned().collect();
             attr_map_editor(app, ui, &r, &keys);
         }
+    }
+    if kind == "field" && theme::fold(ui, "Connections") {
+        // per-field connections: an empty list means the field affects everything
+        let aff: Vec<String> = extra.get("affects").and_then(|v| v.as_array()).map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default();
+        if aff.is_empty() {
+            ui.label(RichText::new("Affects all particles and rigid bodies").color(theme::TEXT_DIM));
+        }
+        let fname = app.s.name_of(id);
+        for o in aff {
+            ui.horizontal(|ui| {
+                ui.label(app.s.name_of(&o));
+                if ui.small_button("Disconnect").clicked() {
+                    let _ = app.run_mel("disconnect field", &format!("connectDynamic -d -f {fname} {};", app.s.name_of(&o)));
+                }
+            });
+        }
+        ui.label(RichText::new("Select objects and the field, then Fields > Affect Selected Object(s)").color(theme::TEXT_DIM));
     }
     let Some(n) = app.s.node(id) else { return };
     match &n.shape {

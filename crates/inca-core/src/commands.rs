@@ -109,7 +109,7 @@ pub const CORE_COMMANDS: &[&str] = &[
     "rebuildCurve", "reverseCurve", "file", "undo", "redo", "connectAttr", "disconnectAttr", "listConnections", "isConnected", "warning", "error", "about", "selectMode", "selectType",
     "polyCreateFacet", "polyBevel", "nonLinear", "emitter", "fireEffect", "smokeEffect", "gravity", "drag", "turbulence", "radial", "vortex", "air", "rigidBody", "joint", "skinCluster", "parentConstraint", "pointConstraint", "orientConstraint", "scaleConstraint", "aimConstraint", "assignMaterial", "nurbsToPoly", "displaySmoothness", "toggle", "layerEditor", "createDisplayLayer", "editDisplayLayerMembers", "help", "whatIs",
     "matchTransform", "addAttr", "deleteAttr", "polyChamferVtx", "polyConnectComponents", "polyCollapseEdge", "polyCollapseFacet", "polyToCurve", "polyCleanup", "closeCurve", "openCurve",
-    "ikHandle", "insertJoint", "mirrorJoint", "cluster", "softMod", "lattice", "blendShape", "poleVectorConstraint", "setDrivenKeyframe", "pathAnimation", "removeConstraints", "deleteDeformers",
+    "particle", "connectDynamic", "deleteRigidBody", "ikHandle", "insertJoint", "mirrorJoint", "cluster", "softMod", "lattice", "blendShape", "poleVectorConstraint", "setDrivenKeyframe", "pathAnimation", "removeConstraints", "deleteDeformers",
 ];
 
 pub fn exists(name: &str) -> bool {
@@ -517,6 +517,8 @@ pub fn run(s: &mut Scene, h: &mut dyn Host, name: &str, raw: &[Val]) -> Result<V
         "polyProjection" => &[("t|type", 1), ("md|mapDirection", 1), ("ch", 1)],
         "emitter" | "fireEffect" | "smokeEffect" => &[("pos|position", 3), ("type", 1), ("r|rate", 1), ("spd|speed", 1), ("sp|spread", 1), ("lsp|lifespan", 1), ("dx", 1), ("dy", 1), ("dz", 1), ("n|name", 1)],
         "gravity" | "drag" | "turbulence" | "radial" | "vortex" | "air" => &[("pos|position", 3), ("m|magnitude", 1), ("dx", 1), ("dy", 1), ("dz", 1), ("mxd|maxDistance", 1), ("att|attenuation", 1), ("f|frequency", 1)],
+        "particle" => &[("ll|lowerLeft", 3), ("ur|upperRight", 3), ("grs|gridSpacing", 1), ("c|conserve", 1), ("p|position", 3), ("n|name", 1)],
+        "connectDynamic" => &[("f|fields", 1), ("d|delete", 0)],
         "rigidBody" => &[("active", 0), ("passive", 0), ("pas", 0), ("m|mass", 1), ("b|bounciness", 1), ("sf|staticFriction", 1)],
         "joint" => &[("p|position", 3), ("n|name", 1), ("rad|radius", 1), ("a|absolute", 0), ("e|edit", 0), ("oj|orientJoint", 1), ("sao|secondaryAxisOrient", 1), ("ch|children", 0), ("zso|zeroScaleOrient", 0)],
         "ikHandle" => &[("sj|startJoint", 1), ("ee|endEffector", 1), ("sol|solver", 1), ("n|name", 1)],
@@ -1460,6 +1462,7 @@ pub fn run(s: &mut Scene, h: &mut dyn Host, name: &str, raw: &[Val]) -> Result<V
                     }
                     let t = s.create_field("turbulence");
                     s.nodes.get_mut(&t).unwrap().extra["magnitude"] = json!(3.0);
+                    s.connect_dynamic(&t, std::slice::from_ref(&id), true);
                 }
                 "smokeEffect" => {
                     for (k, v) in [("rate", json!(120.0)), ("speed", json!(1.0)), ("spread", json!(0.25)), ("lifespan", json!(4.0)), ("color", json!([0.55, 0.55, 0.55])), ("endColor", json!([0.25, 0.25, 0.25])), ("size", json!(7.0))] {
@@ -1467,6 +1470,7 @@ pub fn run(s: &mut Scene, h: &mut dyn Host, name: &str, raw: &[Val]) -> Result<V
                     }
                     let t = s.create_field("turbulence");
                     s.nodes.get_mut(&t).unwrap().extra["magnitude"] = json!(1.0);
+                    s.connect_dynamic(&t, std::slice::from_ref(&id), true);
                 }
                 _ => {}
             }
@@ -1474,8 +1478,41 @@ pub fn run(s: &mut Scene, h: &mut dyn Host, name: &str, raw: &[Val]) -> Result<V
             s.dynamics.frame = None;
             Ok(Val::Str(s.name_of(&id)))
         }
+        "particle" => {
+            let sp = a.f(&["grs", "gridSpacing"]).unwrap_or(0.5);
+            let lo = a.v3(&["ll", "lowerLeft"]).map(DVec3::from_array).unwrap_or(DVec3::new(-2.25, 5.0, -2.25));
+            let hi = a.v3(&["ur", "upperRight"]).map(DVec3::from_array).unwrap_or(DVec3::new(2.25, 5.0, 2.25));
+            let id = s.create_particle_grid(lo.min(hi), lo.max(hi), sp);
+            if let Some(n) = a.s(&["n", "name"]) {
+                rename(s, &id, &n);
+            }
+            s.select(std::slice::from_ref(&id), SelMode::Replace);
+            s.dynamics.frame = None;
+            Ok(Val::Str(s.name_of(&id)))
+        }
+        "connectDynamic" => {
+            let f = a.s(&["f", "fields"]).and_then(|n| s.find(&n)).ok_or("connectDynamic: -f field required")?;
+            let objs: Vec<Id> = targets(s, &a).into_iter().filter(|i| *i != f).collect();
+            if objs.is_empty() {
+                return Err("connectDynamic: name the particle objects / rigid bodies".into());
+            }
+            s.connect_dynamic(&f, &objs, !a.has(&["d", "delete"]));
+            Ok(strs(objs.iter().map(|o| s.name_of(o)).collect()))
+        }
+        "deleteRigidBody" => {
+            let mut n = 0;
+            for t in targets(s, &a) {
+                n += s.remove_rigid(&t) as i64;
+            }
+            Ok(Val::Int(n))
+        }
         "gravity" | "drag" | "turbulence" | "radial" | "vortex" | "air" => {
+            // like Maya: selected particle objects / rigid bodies get connected to the new field
+            let dynsel: Vec<Id> = s.sel.iter().filter(|i| s.node(i).is_some_and(|n| n.kind == "emitter" || n.extra.get("rigidBody").is_some())).cloned().collect();
             let id = s.create_field(name);
+            if !dynsel.is_empty() {
+                s.connect_dynamic(&id, &dynsel, true);
+            }
             if let Some(m) = a.f(&["m", "magnitude"]) {
                 s.nodes.get_mut(&id).unwrap().extra["magnitude"] = json!(m);
             }

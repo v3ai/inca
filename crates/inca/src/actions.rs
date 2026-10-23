@@ -107,6 +107,10 @@ pub static ACTIONS: &[(&str, &str, &str)] = &[
     ("radialField", "Radial", ""),
     ("vortexField", "Vortex", ""),
     ("airField", "Air", ""),
+    ("createParticles", "Create Particles", ""),
+    ("affectSelected", "Affect Selected Object(s)", ""),
+    ("removeRigidBody", "Remove Rigid Body", ""),
+    ("dynamicsReset", "Rewind Simulation", ""),
     ("createActiveRigidBody", "Create Active Rigid Body", ""),
     ("createPassiveRigidBody", "Create Passive Rigid Body", ""),
     ("createFire", "Fire", ""),
@@ -423,6 +427,20 @@ pub fn mel_for(app: &IncaApp, id: &str) -> Option<String> {
             "radialField" => "radial -m 5 -mxd 5;".into(),
             "vortexField" => "vortex -m 5;".into(),
             "airField" => "air -m 4 -dx 1;".into(),
+            "createParticles" => {
+                let (n, sp, y) = (opt("createParticles", "count").max(1.0), opt("createParticles", "spacing").max(0.01), opt("createParticles", "height"));
+                let h = (n - 1.0) * sp / 2.0;
+                format!("particle -ll {} {} {} -ur {} {} {} -grs {} -c 1;", f(-h), f(y), f(-h), f(h), f(y), f(h), f(sp))
+            }
+            "affectSelected" => {
+                let field = app.s.sel.iter().rev().find(|i| app.s.node(i).is_some_and(|n| n.kind == "field"))?;
+                let objs: Vec<String> = app.s.sel.iter().filter(|i| *i != field && app.s.node(i).is_some_and(|n| n.kind == "emitter" || n.extra.get("rigidBody").is_some())).map(|i| app.s.name_of(i)).collect();
+                if objs.is_empty() {
+                    return None;
+                }
+                format!("connectDynamic -f {} {};", app.s.name_of(field), objs.join(" "))
+            }
+            "removeRigidBody" => "deleteRigidBody;".into(),
             "createActiveRigidBody" => "rigidBody -active -m 1 -b 0.6;".into(),
             "createPassiveRigidBody" => "rigidBody -passive;".into(),
             "createFire" => "fireEffect;".into(),
@@ -576,6 +594,12 @@ pub fn builtin(app: &mut IncaApp, id: &str) {
         "pasteKeys" => crate::timeline::paste_keys(app),
         "bakeKeys" => crate::edit_cmds::bake(app),
         "createGhost" => crate::anim_extras::ghost(app),
+        "dynamicsReset" => {
+            app.s.reset_dynamics();
+            let t = app.s.time.start;
+            app.s.set_time(t);
+            app.echo(format!("currentTime {t};"));
+        }
         "unghostAll" => crate::anim_extras::unghost(app),
         "motionTrail" => crate::anim_extras::motion_trail(app),
         "playblast" => app.playblast.open = true,

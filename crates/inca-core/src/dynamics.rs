@@ -10,7 +10,7 @@ use rapier3d::prelude as rp;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
-pub const EMITTER_TYPES: &[&str] = &["omni", "directional", "volume", "surface"];
+pub const EMITTER_TYPES: &[&str] = &["omni", "directional", "volume", "surface", "particles"];
 pub const FIELD_TYPES: &[&str] = &["gravity", "drag", "turbulence", "radial", "vortex", "air"];
 
 pub fn emitter_defaults(ty: &str) -> Value {
@@ -142,6 +142,7 @@ impl Scene {
                 self.dynamics.initial.insert(id, xf);
             }
             self.build_rigid();
+            self.seed_particles();
         }
         let mut cur = self.dynamics.frame.unwrap_or(start);
         let fps = self.time.fps.max(1.0);
@@ -155,13 +156,87 @@ impl Scene {
         self.rev += 1;
     }
 
+    /// Particle objects (Create Particles) start the simulation with their initial positions.
+    fn seed_particles(&mut self) {
+        for em in self.emitters() {
+            let Some(init) = self.nodes[&em].extra.get("initial").and_then(|v| v.as_array()).cloned() else { continue };
+            let wm = self.world_matrix(&em);
+            let list: Vec<Particle> = init.iter().filter_map(|p| Some(DVec3::new(p.get(0)?.as_f64()?, p.get(1)?.as_f64()?, p.get(2)?.as_f64()?))).map(|p| Particle { p: wm.transform_point3(p), v: DVec3::ZERO, age: 0.0, life: f64::MAX }).collect();
+            self.dynamics.particles.insert(em, list);
+        }
+    }
+
+    /// Fields with an `affects` list only act on those objects; others act on everything.
+    pub fn field_affects(&self, field: &str, target: &str) -> bool {
+        match self.node(field).and_then(|n| n.extra.get("affects")).and_then(|v| v.as_array()) {
+            Some(a) if !a.is_empty() => a.iter().any(|x| x.as_str() == Some(target)),
+            _ => true,
+        }
+    }
+
+    /// connectDynamic -f: the field now affects these objects (added to its list).
+    pub fn connect_dynamic(&mut self, field: &str, objs: &[Id], connect: bool) {
+        let Some(n) = self.nodes.get_mut(field) else { return };
+        let mut list: Vec<String> = n.extra.get("affects").and_then(|v| v.as_array()).map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect()).unwrap_or_default();
+        for o in objs {
+            if connect && !list.contains(o) {
+                list.push(o.clone());
+            } else if !connect {
+                list.retain(|x| x != o);
+            }
+        }
+        n.extra["affects"] = json!(list);
+        self.reset_dynamics();
+        self.touch();
+    }
+
+    /// A grid of particles (count × count, `spacing` apart, at `height`), simulated by the fields.
+    pub fn create_particle_grid(&mut self, lo: DVec3, hi: DVec3, spacing: f64) -> Id {
+        let id = self.create_handle("emitter", "particle1");
+        let mut e = emitter_defaults("particles");
+        e["rate"] = json!(0.0);
+        let sp = spacing.max(1e-3);
+        let n = |a: f64, b: f64| (((b - a).abs() / sp).round() as usize + 1).min(200);
+        let (nx, ny, nz) = (n(lo.x, hi.x), n(lo.y, hi.y), n(lo.z, hi.z));
+        // the node sits at the grid centre; the points are relative to it
+        let c = (lo + hi) * 0.5;
+        self.nodes.get_mut(&id).unwrap().xf.t = c.to_array();
+        let mut pts = vec![];
+        for i in 0..nx {
+            for j in 0..ny {
+                for k in 0..nz {
+                    pts.push(json!([lo.x - c.x + i as f64 * sp, lo.y - c.y + j as f64 * sp, lo.z - c.z + k as f64 * sp]));
+                }
+            }
+        }
+        e["initial"] = Value::Array(pts);
+        self.nodes.get_mut(&id).unwrap().extra = e;
+        self.reset_dynamics();
+        id
+    }
+
+    /// Remove Rigid Body: back to the start pose, then drop the rigid body attributes.
+    pub fn remove_rigid(&mut self, id: &str) -> bool {
+        if self.node(id).and_then(|n| n.extra.get("rigidBody")).is_none() {
+            return false;
+        }
+        self.reset_dynamics();
+        if let Some(e) = self.nodes.get_mut(id).and_then(|n| n.extra.as_object_mut()) {
+            for k in ["rigidBody", "mass", "bounciness", "friction"] {
+                e.remove(k);
+            }
+        }
+        self.touch();
+        true
+    }
+
     fn build_rigid(&mut self) {
         let ids = self.rigid_bodies();
         if ids.is_empty() {
             return;
         }
         let mut w = rp::PhysicsWorld::default();
-        let g = self.fields().into_iter().filter(|f| kind_of(self, f, "fieldType").as_deref() == Some("gravity")).map(|f| {
+        let g = self.fields().into_iter().filter(|f| kind_of(self, f, "fieldType").as_deref() == Some("gravity") && ids.iter().any(|r| self.field_affects(f, r))).map(|f| {
             let e = &self.nodes[&f].extra;
             DVec3::new(ef(e, "directionX", 0.0), ef(e, "directionY", -1.0), ef(e, "directionZ", 0.0)).normalize_or(-DVec3::Y) * ef(e, "magnitude", 9.8)
         }).fold(None, |acc: Option<DVec3>, x| Some(acc.unwrap_or(DVec3::ZERO) + x)).unwrap_or(DVec3::new(0.0, -9.81, 0.0));
@@ -219,11 +294,11 @@ impl Scene {
             }
         }
         // ---- particles
-        let fields: Vec<(String, DVec3, DVec3, Value)> = self.fields().into_iter().map(|f| {
+        let fields: Vec<(String, DVec3, DVec3, Value, Id)> = self.fields().into_iter().map(|f| {
             let wm = self.world_matrix(&f);
             let e = self.nodes[&f].extra.clone();
             let dir = wm.transform_vector3(DVec3::new(f_(&e, "directionX"), f_(&e, "directionY"), f_(&e, "directionZ"))).normalize_or_zero();
-            (e["fieldType"].as_str().unwrap_or("gravity").to_string(), wm.transform_point3(DVec3::ZERO), dir, e)
+            (e["fieldType"].as_str().unwrap_or("gravity").to_string(), wm.transform_point3(DVec3::ZERO), dir, e, f)
         }).collect();
         fn f_(e: &Value, k: &str) -> f64 {
             e.get(k).and_then(|x| x.as_f64()).unwrap_or(0.0)
@@ -272,11 +347,12 @@ impl Scene {
                 let jitter = self.dynamics.rand();
                 born.push(Particle { p, v, age: 0.0, life: life * (0.75 + 0.5 * jitter) });
             }
+            let mine: Vec<&(String, DVec3, DVec3, Value, Id)> = fields.iter().filter(|f| self.field_affects(&f.4, &em)).collect();
             let list = self.dynamics.particles.entry(em.clone()).or_default();
             list.extend(born);
             for pt in list.iter_mut() {
                 let mut acc = DVec3::ZERO;
-                for (ft, fp, fd, fe) in &fields {
+                for (ft, fp, fd, fe, _) in mine.iter().copied() {
                     let m = f_(fe, "magnitude");
                     let maxd = fe.get("maxDistance").and_then(|x| x.as_f64()).unwrap_or(-1.0);
                     let rel = pt.p - *fp;
@@ -399,5 +475,40 @@ mod tests {
         // back to the start restores the initial position
         s.set_time(1.0);
         assert_eq!(s.get_attr_f(&c, "ty"), 5.0);
+    }
+}
+
+#[cfg(test)]
+mod fx_tests {
+    use super::*;
+
+    #[test]
+    fn particle_grid_falls_only_with_connected_gravity() {
+        let mut s = Scene::new();
+        let a = s.create_particle_grid(DVec3::new(0.0, 5.0, 0.0), DVec3::new(1.0, 5.0, 1.0), 0.5);
+        let b = s.create_particle_grid(DVec3::new(4.0, 5.0, 0.0), DVec3::new(5.0, 5.0, 1.0), 0.5);
+        let g = s.create_field("gravity");
+        s.connect_dynamic(&g, std::slice::from_ref(&a), true);
+        s.set_time(s.time.start);
+        assert_eq!(s.dynamics.particles[&a].len(), 9);
+        s.set_time(s.time.start + 24.0);
+        assert!(s.dynamics.particles[&a][0].p.y < 1.0, "connected particles fall");
+        assert!((s.dynamics.particles[&b][0].p.y - 5.0).abs() < 1e-9, "unconnected particles stay");
+        // rewinding restores the grid
+        s.set_time(s.time.start);
+        assert!((s.dynamics.particles[&a][0].p.y - 5.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn remove_rigid_restores_start_pose() {
+        let mut s = Scene::new();
+        crate::mel::Interp::new().run(&mut s, &mut crate::commands::NoHost, "polyCube -n c; move 0 5 0 c; rigidBody -active c; gravity;").unwrap();
+        let c = s.find("c").unwrap();
+        s.set_time(s.time.start);
+        s.set_time(s.time.start + 20.0);
+        assert!(s.node(&c).unwrap().xf.t[1] < 4.0);
+        assert!(s.remove_rigid(&c));
+        assert!((s.node(&c).unwrap().xf.t[1] - 5.0).abs() < 1e-9);
+        assert!(s.node(&c).unwrap().extra.get("rigidBody").is_none());
     }
 }
