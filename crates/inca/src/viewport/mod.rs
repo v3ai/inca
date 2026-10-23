@@ -548,8 +548,8 @@ pub fn frame_uniform(s: &Scene, vp: &Viewport, cv: &CamView) -> FrameUniform {
 pub fn build_draws(s: &Scene, vp: &Viewport, cv: &CamView, g: &mut Gpu, smooth_cache: &mut std::collections::HashMap<String, (u64, PolyMesh)>, live: &std::collections::HashSet<String>) -> Vec<DrawCmd> {
     let mut draws = vec![];
     if vp.grid {
-        // pushed back in depth so geometry lying on the ground plane hides it
-        draws.push(DrawCmd { pass: Pass::Lines, geo: Geo::TransientLines(grid_lines(cv)), u: DrawUniform::new(Mat4::IDENTITY).bias(-0.0004) });
+        // drawn first without depth so any geometry (e.g. a ground plane) covers it
+        draws.push(DrawCmd { pass: Pass::LinesUnder, geo: Geo::TransientLines(grid_lines(cv)), u: DrawUniform::new(Mat4::IDENTITY) });
     }
     let hilite = s.hilite();
     let lead = s.lead().cloned();

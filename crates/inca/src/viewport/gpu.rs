@@ -87,6 +87,8 @@ impl DrawUniform {
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Pass {
+    /// lines drawn before any geometry, without depth writes (the grid)
+    LinesUnder,
     /// opaque shaded triangles
     Mesh,
     /// transparent triangles (x-ray, selected-face overlay)
@@ -332,8 +334,9 @@ impl Gpu {
             rp.set_bind_group(1, &self.draw_bg, &[0]);
             rp.set_pipeline(&self.bg_pipe);
             rp.draw(0..3, 0..1);
-            for pass in [Pass::Mesh, Pass::Lines, Pass::MeshBlend, Pass::LinesTop] {
+            for pass in [Pass::LinesUnder, Pass::Mesh, Pass::Lines, Pass::MeshBlend, Pass::LinesTop] {
                 rp.set_pipeline(match pass {
+                    Pass::LinesUnder => &self.line_top_pipe,
                     Pass::Mesh => &self.mesh_pipe,
                     Pass::MeshBlend => &self.blend_pipe,
                     Pass::Lines => &self.line_pipe,

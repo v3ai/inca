@@ -23,6 +23,8 @@ pub struct RenderJob {
 
 #[derive(Default)]
 pub struct WinState {
+    /// dope sheet key drag: (node, time grabbed, current offset)
+    pub ds_drag: Option<(Option<String>, f64, f64)>,
     pub job: Option<RenderJob>,
     pub image: Option<egui::TextureHandle>,
     pub pixels: Option<(Vec<u8>, [u32; 2])>,
@@ -88,6 +90,9 @@ pub fn show(app: &mut IncaApp, ctx: &egui::Context, _frame: &mut eframe::Frame) 
     let mut open = app.win.graph_editor;
     egui::Window::new("Graph Editor").open(&mut open).default_size([760.0, 420.0]).show(ctx, |ui| graph_editor(app, ui));
     app.win.graph_editor = open;
+    let mut open = app.win.dope_sheet;
+    egui::Window::new("Dope Sheet").open(&mut open).default_size([760.0, 260.0]).show(ctx, |ui| dope_sheet(app, ui));
+    app.win.dope_sheet = open;
     let mut open = app.win.render_view;
     egui::Window::new("Render View").open(&mut open).default_size([700.0, 560.0]).show(ctx, |ui| render_view(app, ui));
     app.win.render_view = open;
@@ -176,6 +181,13 @@ fn script_editor(app: &mut IncaApp, ui: &mut egui::Ui) {
         }
         if ui.button("Clear History").clicked() {
             app.script_log.clear();
+        }
+        if !app.script_lang_rhai && ui.button("Save to Shelf").on_hover_text("Add the script as a button on the Custom shelf").clicked() {
+            let src = app.script_text.trim().to_string();
+            if !src.is_empty() {
+                let l: String = src.lines().find(|l| !l.trim_start().starts_with("//")).unwrap_or("script").split(|c: char| !c.is_alphanumeric()).find(|w| !w.is_empty()).unwrap_or("script").chars().take(8).collect();
+                app.custom_shelf.push((l, src));
+            }
         }
         if ui.button("Load...").clicked() {
             if let Some(p) = rfd::FileDialog::new().add_filter("Scripts", &["mel", "rhai", "txt"]).pick_file() {
@@ -500,6 +512,109 @@ fn graph_editor(app: &mut IncaApp, ui: &mut egui::Ui) {
             app.windows_state.ge_drag = false;
         }
     });
+}
+
+// ------------------------------------------------------------------ dope sheet
+
+fn dope_sheet(app: &mut IncaApp, ui: &mut egui::Ui) {
+    use egui::{pos2, vec2, Rect, Sense, Stroke};
+    let nodes: Vec<String> = app.s.sel.clone();
+    let (t0, t1) = (app.s.time.start, app.s.time.end.max(app.s.time.start + 1.0));
+    ui.label(RichText::new("Drag keys to retime them (the summary row moves every key). Delete removes the keys at the current time.").color(theme::TEXT_DIM));
+    let rows: Vec<(Option<String>, String, Vec<f64>)> = std::iter::once((None, "Dope Sheet Summary".to_string(), app.s.anim.key_times(&nodes)))
+        .chain(nodes.iter().map(|n| (Some(n.clone()), app.s.name_of(n), app.s.anim.key_times(std::slice::from_ref(n)))))
+        .collect();
+    let label_w = 170.0;
+    let row_h = 20.0;
+    let w = ui.available_width();
+    let (rect, resp) = ui.allocate_exact_size(vec2(w, row_h * rows.len().max(1) as f32 + 18.0), Sense::click_and_drag());
+    let p = ui.painter_at(rect);
+    p.rect_filled(rect, 0.0, theme::BG_DARK);
+    let track = Rect::from_min_max(pos2(rect.min.x + label_w, rect.min.y + 18.0), rect.max);
+    let x_of = |t: f64| track.min.x + 6.0 + ((t - t0) / (t1 - t0)) as f32 * (track.width() - 12.0);
+    let t_of = |x: f32| t0 + ((x - track.min.x - 6.0) / (track.width() - 12.0)) as f64 * (t1 - t0);
+    // frame ruler
+    let span = t1 - t0;
+    let step = [1.0, 2.0, 5.0, 10.0, 20.0, 50.0, 100.0].into_iter().find(|s| (span / s) * 36.0 < track.width() as f64).unwrap_or(100.0);
+    let mut t = (t0 / step).ceil() * step;
+    while t <= t1 {
+        let x = x_of(t);
+        p.line_segment([pos2(x, track.min.y), pos2(x, rect.max.y)], Stroke::new(1.0, theme::BG2));
+        p.text(pos2(x + 2.0, rect.min.y + 2.0), egui::Align2::LEFT_TOP, inca_core::math::fmt_num_long(t), egui::FontId::proportional(10.0), theme::TEXT_DIM);
+        t += step;
+    }
+    let drag = app.windows_state.ds_drag.clone();
+    for (i, (node, name, times)) in rows.iter().enumerate() {
+        let y = track.min.y + i as f32 * row_h;
+        p.text(pos2(rect.min.x + 6.0, y + row_h / 2.0), egui::Align2::LEFT_CENTER, name, egui::FontId::proportional(12.0), if node.is_none() { theme::TEXT_DIM } else { theme::TEXT });
+        p.line_segment([pos2(track.min.x, y + row_h), pos2(track.max.x, y + row_h)], Stroke::new(1.0, theme::BG2));
+        for &k in times {
+            let moving = drag.as_ref().is_some_and(|(n, grab, _)| (n.is_none() || n == node) && (k - grab).abs() < 1e-6);
+            let off = if moving { drag.as_ref().map(|d| d.2).unwrap_or(0.0) } else { 0.0 };
+            let x = x_of(k + off);
+            let c = if moving { Color32::from_rgb(255, 230, 0) } else if node.is_none() { Color32::from_rgb(170, 170, 170) } else { theme::KEY };
+            p.rect_filled(Rect::from_center_size(pos2(x, y + row_h / 2.0), vec2(6.0, 12.0)), 1.0, c);
+        }
+    }
+    let cx = x_of(app.s.time.current);
+    p.line_segment([pos2(cx, rect.min.y), pos2(cx, rect.max.y)], Stroke::new(1.5, Color32::from_rgb(200, 60, 60)));
+    if resp.drag_started() {
+        if let Some(pp) = resp.interact_pointer_pos() {
+            let row = ((pp.y - track.min.y) / row_h).floor() as isize;
+            if row >= 0 && (row as usize) < rows.len() {
+                let (node, _, times) = &rows[row as usize];
+                if let Some(&k) = times.iter().min_by(|a, b| (x_of(**a) - pp.x).abs().partial_cmp(&(x_of(**b) - pp.x).abs()).unwrap()) {
+                    if (x_of(k) - pp.x).abs() < 8.0 {
+                        app.windows_state.ds_drag = Some((node.clone(), k, 0.0));
+                    }
+                }
+            }
+        }
+    }
+    if let (Some(d), Some(pp)) = (app.windows_state.ds_drag.as_mut(), resp.interact_pointer_pos()) {
+        if resp.dragged() {
+            d.2 = (t_of(pp.x) - d.1).round();
+        }
+    }
+    if resp.drag_stopped() {
+        if let Some((node, grab, off)) = app.windows_state.ds_drag.take() {
+            if off != 0.0 {
+                app.s.checkpoint("move keys");
+                let ids: Vec<String> = match &node {
+                    Some(n) => vec![n.clone()],
+                    None => nodes.clone(),
+                };
+                for c in app.s.anim.curves.values_mut().filter(|c| ids.contains(&c.node)) {
+                    if c.keys.iter().any(|k| (k.t - (grab + off)).abs() < 1e-6) {
+                        continue; // don't stack two keys on one frame
+                    }
+                    for k in c.keys.iter_mut() {
+                        if (k.t - grab).abs() < 1e-6 {
+                            k.t = grab + off;
+                        }
+                    }
+                    c.sort();
+                }
+                app.s.touch();
+                app.s.apply_anim();
+            }
+        }
+    }
+    if resp.clicked() {
+        if let Some(pp) = resp.interact_pointer_pos() {
+            if track.contains(pp) {
+                let t = t_of(pp.x).round().clamp(t0, t1);
+                app.s.set_time(t);
+            }
+        }
+    }
+    if ui.input(|i| i.key_pressed(egui::Key::Delete)) && resp.hovered() {
+        let names: Vec<String> = nodes.iter().map(|n| app.s.name_of(n)).collect();
+        if !names.is_empty() {
+            let t = app.s.time.current;
+            let _ = app.run_mel("cut keys", &format!("cutKey -t {t} {};", names.join(" ")));
+        }
+    }
 }
 
 // ------------------------------------------------------------------ rendering

@@ -109,7 +109,7 @@ pub fn common(name: &str) -> Vec<M> {
         "Windows" => vec![
             Sub("General Editors", vec![A("scriptEditor"), A("commandList")]),
             Sub("Rendering Editors", vec![A("hypershade"), A("renderView"), A("renderSettings")]),
-            Sub("Animation Editors", vec![A("graphEditor")]),
+            Sub("Animation Editors", vec![A("graphEditor"), A("dopeSheet")]),
             Sep,
             A("outliner"),
             A("attributeEditor"),
@@ -142,7 +142,7 @@ pub fn set_menus(ms: MenuSet) -> Vec<(&'static str, Vec<M>)> {
         MenuSet::Animation => vec![
             ("Key", vec![A("setKey"), A("keyTranslate"), A("keyRotate"), A("keyScale"), Sep, A("deleteKeys"), A("autoKey")]),
             ("Playback", vec![A("play"), A("nextFrame"), A("prevFrame"), A("nextKey"), A("prevKey"), A("goStart"), A("goEnd")]),
-            ("Visualize", vec![A("graphEditor"), Todo("Create Editable Motion Trail"), Todo("Ghost Selected")]),
+            ("Visualize", vec![A("graphEditor"), A("dopeSheet"), Todo("Create Editable Motion Trail"), Todo("Ghost Selected")]),
         ],
         MenuSet::Fx => vec![
             ("Particles", vec![A("emitterOmni"), A("emitterDir"), A("emitterSurface")]),
@@ -232,4 +232,41 @@ pub fn menu_bar(app: &mut IncaApp, ui: &mut egui::Ui) {
         let help = common("Help");
         ui.menu_button("Help", |ui| items(app, ui, &help));
     });
+}
+
+/// Maya's hotbox: every menu around the cursor while Space is held (stays until a click outside or Esc).
+pub fn hotbox(app: &mut IncaApp, ctx: &egui::Context) {
+    let Some(pos) = app.hotbox else { return };
+    if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+        app.hotbox = None;
+        return;
+    }
+    let r = egui::Area::new(egui::Id::new("hotbox")).fixed_pos(pos - egui::vec2(260.0, 70.0)).order(egui::Order::Foreground).show(ctx, |ui| {
+        egui::Frame::popup(ui.style()).show(ui, |ui| {
+            ui.horizontal(|ui| {
+                for m in MenuSet::ALL {
+                    if ui.selectable_label(app.menu_set == m, m.label()).clicked() {
+                        app.menu_set = m;
+                    }
+                }
+            });
+            ui.separator();
+            ui.horizontal_wrapped(|ui| {
+                ui.set_max_width(520.0);
+                for name in ["File", "Edit", "Create", "Select", "Modify", "Display", "Windows"] {
+                    let list = common(name);
+                    ui.menu_button(name, |ui| items(app, ui, &list));
+                }
+                for (name, list) in set_menus(app.menu_set) {
+                    ui.menu_button(name, |ui| items(app, ui, &list));
+                }
+                let help = common("Help");
+                ui.menu_button("Help", |ui| items(app, ui, &help));
+            });
+        });
+    });
+    let clicked_outside = ctx.input(|i| i.pointer.any_click()) && !r.response.contains_pointer() && !ctx.any_popup_open();
+    if clicked_outside && app.space_down.is_none() {
+        app.hotbox = None;
+    }
 }

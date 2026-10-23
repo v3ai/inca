@@ -176,7 +176,9 @@ pub fn shelf(app: &mut IncaApp, ui: &mut egui::Ui) {
             }
         }
     });
-    let items = &all[app.shelf_tab.min(all.len() - 1)].1;
+    let tab = app.shelf_tab.min(all.len() - 1);
+    let items = &all[tab].1;
+    let is_custom = all[tab].0 == "Custom";
     egui::ScrollArea::horizontal().id_salt("shelfscroll").show(ui, |ui| {
         ui.horizontal(|ui| {
             for it in items {
@@ -185,7 +187,26 @@ pub fn shelf(app: &mut IncaApp, ui: &mut egui::Ui) {
                     app.action(it.action);
                 }
             }
-            if items.is_empty() {
+            if is_custom {
+                let mut remove = None;
+                for (i, (l, mel)) in app.custom_shelf.clone().iter().enumerate() {
+                    let b = egui::Button::new(RichText::new(l).size(10.5).color(Color32::from_rgb(255, 225, 140))).min_size(vec2(40.0, 34.0)).fill(theme::BG2);
+                    let r = ui.add(b).on_hover_text(mel);
+                    if r.clicked() {
+                        let _ = app.run_mel(l, mel);
+                    }
+                    r.context_menu(|ui| {
+                        if ui.button("Delete").clicked() {
+                            remove = Some(i);
+                            ui.close();
+                        }
+                    });
+                }
+                if let Some(i) = remove {
+                    app.custom_shelf.remove(i);
+                }
+            }
+            if items.is_empty() && !is_custom {
                 ui.label(RichText::new("(empty shelf)").color(theme::TEXT_DIM));
             }
         });

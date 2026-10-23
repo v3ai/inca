@@ -72,7 +72,7 @@ crates/inca/               the application (eframe/egui + wgpu)
 | Parallelism | `rayon` | path tracer |
 | Scripting | `rhai` | second scripting language next to MEL |
 | File dialogs | `rfd` | native open/save dialogs |
-| Physics (planned) | `rapier3d` | rigid bodies for the FX menu set |
+| Physics | `rapier3d` | active/passive rigid bodies (convex hulls / triangle meshes) |
 
 ## Status against FEATURES.md
 
@@ -80,40 +80,42 @@ crates/inca/               the application (eframe/egui + wgpu)
 
 | Area | Status |
 |---|---|
-| Shell: Maya dark theme, menu bar with menu sets, status line, shelves, tool box, Channel Box / Layer Editor, Attribute Editor, Outliner (drag to parent, rename, filter), Time/Range Slider, command line, help line, Script Editor | ✅ |
-| Hotbox, marking menus (RMB menu only), Shelf Editor, workspaces, Hotkey Editor (read-only list), preferences (small subset) | 🟡 |
+| Shell: Maya dark theme, menu bar with menu sets, hotbox (hold Space), status line, shelves (plus a Custom shelf you can save scripts to), tool box, Channel Box / Layer Editor, Attribute Editor, Outliner (drag to parent, rename, filter), Time/Range Slider, command line, help line, Script Editor, recent files, drag-and-drop import | ✅ |
+| Marking menus (RMB menu only), Shelf Editor, workspaces, Hotkey Editor (read-only list), preferences (small subset) | 🟡 |
 | Files: New/Open/Save/Save As, `.inca` (JS-compatible), import OBJ/STL/glTF/GLB/.inca, export OBJ+MTL/STL/GLB/.inca | ✅ |
-| Projects, recent files, autosave, FBX | ⏭ |
+| Projects, autosave, FBX | ⏭ |
 | Viewports: persp/top/front/side, single/four/two layouts, Space toggle, Alt+LMB/MMB/RMB and wheel navigation, F/A framing, wireframe/shaded, default/all/flat lighting, wire-on-shaded, X-ray, backface culling, smooth mesh preview 1/2/3, grid, HUD, isolate select, look through camera | ✅ |
 | Bookmarks, film/resolution gates, textured viewport, shadows in the viewport | ⏭ |
 | Selection: click/Shift/Ctrl/Ctrl+Shift, marquee, select all/inverse/hierarchy/by name, components (vertex/edge/face) with occlusion, grow/shrink, loops/rings/borders, convert | ✅ |
 | Lasso/paint select, soft selection, symmetry | ⏭ |
-| Transforms: move/rotate/scale manipulators (world/object, grid snap), pivots, center pivot, freeze, reset, snap to ground, duplicate, group/ungroup, parent/unparent, copy/paste, delete | ✅ |
-| Edit Pivot (D) mode, point snapping, discrete manipulators | ⏭ |
-| Poly modeling: all 12 primitives with live history; extrude (faces/edges), bridge, insert edge loop, merge/merge to center, poke, delete edge/vertex, extract/duplicate faces, fill hole, triangulate/quadrangulate, add divisions, reverse, soften/harden, combine, separate, smooth, mirror, booleans, UV projections | ✅ |
-| Bevel, multi-cut, target weld, chamfer, quad draw, UV editor, sculpting | ⏭ |
-| NURBS & curves: tessellated NURBS primitives with isoparms, circle/square/`curve` command, revolve/loft/extrude/planar with live history, rebuild/reverse, NURBS→poly | 🟡 (interactive curve tools ⏭) |
+| Transforms: move/rotate/scale manipulators (world/object, grid snap), Edit Pivot (Insert / hold D), center pivot, freeze, reset, snap to ground, duplicate, group/ungroup, parent/unparent, copy/paste, delete | ✅ |
+| Point snapping, discrete manipulators | ⏭ |
+| Poly modeling: all 12 primitives with live history; extrude (faces/edges), bevel, bridge, insert edge loop, merge/merge to center, poke, delete edge/vertex, extract/duplicate faces, fill hole, triangulate/quadrangulate, add divisions, reverse, soften/harden, combine, separate, smooth, mirror, booleans, UV projections, Create Polygon tool | ✅ |
+| Multi-cut, target weld, chamfer vertex, Quad Draw, UV editor, sculpting | ⏭ |
+| NURBS & curves: tessellated NURBS primitives with isoparms, CV / EP / three-point-arc curve tools, circle/square, revolve/loft/extrude/planar with live history, rebuild/reverse, NURBS→poly | ✅ (true NURBS evaluation ⏭) |
 | Materials: the five Inca material types, five texture types, Hypershade (create, edit, assign, map textures), per-face assignment | ✅ (node graph view ⏭) |
 | Lights: ambient, directional, point, spot, area, sky dome; viewport "use all lights" | ✅ |
-| Animation: set key (S, Shift+W/E/R), auto key, playback, step frames/keys, Graph Editor (move keys, tangents, infinity), key ticks | ✅ |
-| Dope Sheet, set driven key, motion paths, playblast | ⏭ |
-| Rigging, deformers, constraints | ⏭ (data from JS scenes is kept) |
+| Animation: set key (S, Shift+W/E/R), auto key, playback, step frames/keys, Graph Editor (move keys, tangents, infinity), Dope Sheet (retime keys), key ticks | ✅ |
+| Set driven key, motion paths, ghosting, playblast | ⏭ |
+| Rigging: Joint Tool, smooth bind (`skinCluster`), nonlinear deformers (bend, flare, sine, squash, twist, wave) as live history, point/orient/parent/scale/aim constraints | ✅ |
+| IK handles, paint skin weights, lattice, cluster, blend shapes | ⏭ |
 | Rendering: Inca Path Tracer (progressive CPU, GI, glass, metals, area/spot lights, textures), Render Settings, save image | ✅ |
 | Render sequence, hardware renderer | ⏭ |
-| Scripting: MEL (variables, arrays, vectors, procs, loops, switch, backticks, about 120 commands), Rhai, command reference window | ✅ |
+| Scripting: MEL (variables, arrays, vectors, procs, loops, switch, backticks, about 140 commands), Rhai, command reference window | ✅ |
 | Hypergraph, Connection Editor (`connectAttr` etc. work from MEL) | 🟡 |
-| Dynamics & FX (particles, fields, rigid bodies via rapier3d) | ⏭ |
+| Dynamics & FX: emitters (omni/directional/volume/surface), fields (gravity, drag, turbulence, radial, vortex, air), fire and smoke effects, active/passive rigid bodies (rapier3d), cached and re-simulated from the start frame | ✅ (fields affect all particles; no per-emitter connections yet) |
+| nCloth, fluids, hair | ⏭ |
 
 ## Roadmap
 
 1. **Now:** a working app covering the table above.
-2. **Modeling depth:** bevel, multi-cut, target weld, edit pivot, soft selection and symmetry,
-   UV editor, interactive CV/EP/arc curve tools, Quad Draw.
-3. **Animation & rigging:** Dope Sheet, joints and IK, skinning, deformers, constraints
-   (reading the rigging data the JS app already saves).
-4. **FX:** particles and fields, rigid bodies via `rapier3d`.
-5. **Polish:** textured viewport and viewport shadows, hotbox, Shelf Editor, Hotkey Editor,
-   preferences file, projects and autosave, packaging (cargo-dist / AppImage / dmg / msi).
+2. **Modeling depth:** multi-cut, target weld, soft selection and symmetry, UV editor, Quad Draw,
+   lasso/paint selection, point snapping.
+3. **Rigging depth:** IK handles, paint skin weights, lattice/cluster/blend shapes, and converting
+   the rigging nodes that JS scenes contain (today they load as locators and save back untouched).
+4. **Viewport & rendering:** textured viewport, viewport shadows, render sequences, Hypergraph.
+5. **Polish:** Shelf Editor, Hotkey Editor, preferences file, projects and autosave, packaging
+   (cargo-dist / AppImage / dmg / msi) and a CI workflow for the Rust build.
 
 ## Build, run, test
 

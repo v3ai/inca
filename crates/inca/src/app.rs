@@ -63,6 +63,7 @@ pub struct Windows {
     pub script_editor: bool,
     pub hypershade: bool,
     pub graph_editor: bool,
+    pub dope_sheet: bool,
     pub render_view: bool,
     pub render_settings: bool,
     pub prefs: bool,
@@ -138,6 +139,11 @@ pub struct IncaApp {
     pub clipboard: Option<serde_json::Value>,
     pub test: Option<TestRun>,
     pub recent: Vec<String>,
+    /// user shelf buttons (label, MEL), saved between sessions
+    pub custom_shelf: Vec<(String, String)>,
+    /// Space: tap toggles the layout, hold shows the hotbox
+    pub space_down: Option<f64>,
+    pub hotbox: Option<egui::Pos2>,
 }
 
 /// INCA_TEST / INCA_SHOT: run a MEL script at startup, save a screenshot and quit.
@@ -197,6 +203,9 @@ impl IncaApp {
             clipboard: None,
             test,
             recent: cc.storage.and_then(|s| eframe::get_value(s, "recent")).unwrap_or_default(),
+            custom_shelf: cc.storage.and_then(|s| eframe::get_value(s, "customShelf")).unwrap_or_default(),
+            space_down: None,
+            hotbox: None,
         };
         if let Some(p) = std::env::args().nth(1).filter(|a| !a.starts_with('-')) {
             app.open_path(std::path::Path::new(&p));
@@ -382,6 +391,7 @@ impl IncaApp {
 
     /// Run a named action (menus, shelves, hotkeys all go through here).
     pub fn action(&mut self, id: &str) {
+        self.hotbox = None;
         if !matches!(id, "repeatLast" | "undo" | "redo") {
             self.last_action = Some(id.to_string());
         }
@@ -400,13 +410,32 @@ impl IncaApp {
             return;
         }
         let events = ctx.input(|i| i.events.clone());
+        let now = ctx.input(|i| i.time);
         for e in &events {
+            // Space: a tap toggles single/four view, holding it opens the hotbox
+            if let egui::Event::Key { key: egui::Key::Space, pressed, repeat: false, modifiers, .. } = e {
+                if modifiers.is_none() {
+                    if *pressed {
+                        self.space_down = Some(now);
+                    } else if let Some(t0) = self.space_down.take() {
+                        if now - t0 < 0.25 && self.hotbox.is_none() {
+                            self.action("toggleLayout");
+                        }
+                    }
+                }
+            }
             // holding D edits the pivot
             if let egui::Event::Key { key: egui::Key::D, pressed, repeat: false, modifiers, .. } = e {
                 if !modifiers.ctrl && !modifiers.command && !modifiers.alt {
                     self.pivot_mode = *pressed;
                 }
             }
+        }
+        if let Some(t0) = self.space_down {
+            if now - t0 >= 0.25 && self.hotbox.is_none() {
+                self.hotbox = ctx.input(|i| i.pointer.hover_pos()).or(Some(ctx.content_rect().center()));
+            }
+            ctx.request_repaint();
         }
         for e in events {
             if let egui::Event::Key { key, pressed: true, modifiers, repeat: false, .. } = e {
@@ -443,6 +472,7 @@ impl IncaApp {
 impl eframe::App for IncaApp {
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         eframe::set_value(storage, "recent", &self.recent);
+        eframe::set_value(storage, "customShelf", &self.custom_shelf);
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
@@ -489,6 +519,7 @@ impl eframe::App for IncaApp {
         }
         egui::CentralPanel::default().frame(egui::Frame::NONE.fill(theme::BG_DARK)).show(ui, |ui| vp_ui::viewports(self, ui, frame));
         windows::show(self, &ctx, frame);
+        crate::menus::hotbox(self, &ctx);
         crate::test_hook::step(self, &ctx);
         if self.panels.quit {
             ctx.send_viewport_cmd(egui::ViewportCommand::Close);

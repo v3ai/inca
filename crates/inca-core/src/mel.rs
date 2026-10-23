@@ -49,13 +49,7 @@ impl Val {
             serde_json::Value::Bool(b) => Val::Int(*b as i64),
             serde_json::Value::Number(n) => n.as_i64().map(Val::Int).unwrap_or(Val::Float(n.as_f64().unwrap_or(0.0))),
             serde_json::Value::String(s) => Val::Str(s.clone()),
-            serde_json::Value::Array(a) => {
-                if a.len() == 3 && a.iter().all(|x| x.is_number()) {
-                    Val::Array(a.iter().map(Val::from_json).collect())
-                } else {
-                    Val::Array(a.iter().map(Val::from_json).collect())
-                }
-            }
+            serde_json::Value::Array(a) => Val::Array(a.iter().map(Val::from_json).collect()),
             _ => Val::None,
         }
     }
@@ -1182,10 +1176,8 @@ fn cast(ty: &str, arr: bool, v: Val) -> Val {
 
 fn binop(o: &str, a: &Val, b: &Val) -> Result<Val, String> {
     use Val::*;
-    if o == "+" {
-        if matches!(a, Str(_)) || matches!(b, Str(_)) {
-            return Ok(Str(format!("{a}{b}")));
-        }
+    if o == "+" && (matches!(a, Str(_)) || matches!(b, Str(_))) {
+        return Ok(Str(format!("{a}{b}")));
     }
     if let (Vec3(x), Vec3(y)) = (a, b) {
         return Ok(match o {

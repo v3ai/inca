@@ -104,10 +104,8 @@ fn pane(app: &mut IncaApp, ui: &mut egui::Ui, frame: &mut eframe::Frame, idx: us
     let painter = ui.painter_at(img_rect);
     viewport::draw_particles(&app.s, &app.vps[idx], &cv, &painter);
     viewport::draw_component_overlay(&app.s, &app.vps[idx], &cv, &painter);
-    if resp.hovered() || resp.dragged() {
-        if app.active_vp != idx && (resp.clicked() || resp.drag_started() || ui.input(|i| i.pointer.any_pressed())) {
-            app.active_vp = idx;
-        }
+    if (resp.hovered() || resp.dragged()) && app.active_vp != idx && (resp.clicked() || resp.drag_started() || ui.input(|i| i.pointer.any_pressed())) {
+        app.active_vp = idx;
     }
     let active = app.active_vp == idx;
     if active && app.layout != Layout::Single {

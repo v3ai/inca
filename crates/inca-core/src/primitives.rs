@@ -46,6 +46,7 @@ pub struct GenInfo {
 
 pub const PLATONIC: &[&str] = &["Tetrahedron", "Octahedron", "Icosahedron", "Dodecahedron"];
 
+#[allow(clippy::approx_constant)] // Maya's pyramid side length is the literal 1.41421
 pub static GEN_INFO: &[GenInfo] = &[
     GenInfo {
         ty: "polySphere", label: "Sphere", base: "pSphere", nurbs: false,
