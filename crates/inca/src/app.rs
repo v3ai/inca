@@ -262,6 +262,7 @@ impl IncaApp {
             bg_mode: cc.storage.and_then(|s| eframe::get_value(s, "bgMode")).unwrap_or(0),
             hotbox: None,
         };
+        app.panels.ol = cc.storage.and_then(|s| eframe::get_value(s, "outliner")).unwrap_or_default();
         if let Some(p) = std::env::args().nth(1).filter(|a| !a.starts_with('-')) {
             app.open_path(std::path::Path::new(&p));
         }
@@ -535,6 +536,7 @@ impl eframe::App for IncaApp {
         eframe::set_value(storage, "customShelf", &self.custom_shelf);
         eframe::set_value(storage, "workspace", &self.workspace);
         eframe::set_value(storage, "bgMode", &self.bg_mode);
+        eframe::set_value(storage, "outliner", &self.panels.ol);
         eframe::set_value(storage, "rightTab", &self.right_tab);
         eframe::set_value(storage, "showRight", &self.show_right);
         eframe::set_value(storage, "showOutliner", &self.show_outliner);

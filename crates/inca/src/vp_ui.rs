@@ -537,6 +537,7 @@ fn interact(app: &mut IncaApp, ui: &mut egui::Ui, idx: usize, resp: &egui::Respo
         }
     }
     if resp.clicked_by(egui::PointerButton::Primary) {
+        app.panels.ol_active = false;
         if let Some(p) = resp.interact_pointer_pos() {
             click_select(app, idx, cv, p, sel_mode(mods));
         }
