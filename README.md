@@ -13,6 +13,11 @@ Write an issue on the gh issues page
 
 See [FEATURES.md](FEATURES.md) for the full feature list.
 
+## Rust edition (in progress)
+
+A native Rust rewrite (egui + wgpu) lives in `crates/` on the `rust-rewrite` branch:
+`cargo run --release -p inca`. See [RUST.md](RUST.md) for the plan, architecture and feature status.
+
 ## Download and run
 
 Go to the [Releases page](https://github.com/v3ai/inca/releases) and open the newest release. Under **Assets**, download the file for your computer.

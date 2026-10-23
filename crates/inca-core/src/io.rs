@@ -485,3 +485,59 @@ mod tests {
         std::fs::remove_dir_all(&dir).ok();
     }
 }
+
+#[cfg(test)]
+mod compat_tests {
+    use super::*;
+
+    /// A scene in the exact layout the JS app's serializeScene() writes.
+    const JS_SCENE: &str = r#"{"format":"inca-scene","version":"0.1.12","idCounter":40,
+      "nodes":[
+        {"id":"d3","name":"persp","kind":"camera","parent":null,"t":[28,21,28],"r":[-27.938,45,0],"s":[1,1,1],"ro":"xyz","p":[0,0,0],"pt":[0,0,0],"visible":true,"layer":null,"template":false,"locks":{},"shapeName":"perspShape","extra":null,
+         "cam":{"focalLength":35,"near":0.1,"far":10000,"ortho":false,"orthoWidth":30,"coi":44.82,"horizontalFilmAperture":1.417,"verticalFilmAperture":0.945,"startup":true}},
+        {"id":"d10","name":"grp","kind":"group","parent":null,"t":[0,1,0],"r":[0,0,0],"s":[1,1,1],"ro":"xyz","p":[0,0,0],"pt":[0,0,0],"visible":true,"layer":"l1","template":false,"locks":{"tx":true},"shapeName":null,"extra":null},
+        {"id":"d11","name":"pCube1","kind":"mesh","parent":"d10","t":[2,0,0],"r":[0,30,0],"s":[1,1,1],"ro":"xyz","p":[0,0,0],"pt":[0,0,0],"visible":true,"layer":null,"template":false,"locks":{},"shapeName":"pCubeShape1","extra":null,
+         "material":"m1","smoothLevel":0,"nurbs":false,
+         "history":[{"id":"h12","name":"polyCube1","type":"polyCube","params":{"width":1,"height":1,"depth":1,"subdivisionsWidth":1,"subdivisionsHeight":1,"subdivisionsDepth":1}}],
+         "mesh":{"v":[[-0.5,-0.5,0.5],[0.5,-0.5,0.5],[-0.5,0.5,0.5],[0.5,0.5,0.5],[-0.5,0.5,-0.5],[0.5,0.5,-0.5],[-0.5,-0.5,-0.5],[0.5,-0.5,-0.5]],
+                 "f":[[0,1,3,2],[2,3,5,4],[4,5,7,6],[6,7,1,0],[1,7,5,3],[6,0,2,4]],"uv":null,"fm":null,"softAngle":60,"edgeHard":null,"displayEdges":null}},
+        {"id":"d20","name":"pointLight1","kind":"light","parent":null,"t":[0,4,0],"r":[0,0,0],"s":[1,1,1],"ro":"xyz","p":[0,0,0],"pt":[0,0,0],"visible":true,"layer":null,"template":false,"locks":{},"shapeName":"pointLightShape1","extra":null,
+         "light":{"type":"pointLight","color":[1,0.5,0.25],"intensity":2,"decayRate":0,"shadows":false,"shadowRadius":2}},
+        {"id":"d30","name":"joint1","kind":"joint","parent":null,"t":[0,0,0],"r":[0,0,0],"s":[1,1,1],"ro":"xyz","p":[0,0,0],"pt":[0,0,0],"visible":true,"layer":null,"template":false,"locks":{},"shapeName":null,"extra":null,"rig":{"radius":0.5},"jo":[0,0,90]}
+      ],
+      "shading":{"mats":[{"id":"m1","name":"lambert1","type":"lambert","attrs":{"color":[0.5,0.5,0.5],"transparency":[0,0,0],"ambientColor":[0,0,0],"incandescence":[0,0,0],"diffuse":0.8,"bump":0},"maps":{}}],"texs":[],"defaultMatId":"m1"},
+      "layers":[{"id":"l1","name":"layer1","visible":true,"mode":"normal","color":null}],
+      "anim":[{"node":"d11","attr":"translateY","keys":[{"t":1,"v":0,"it":"auto","ot":"auto","is":0,"os":0},{"t":10,"v":5,"it":"auto","ot":"auto","is":0,"os":0}],"pre":"constant","post":"constant"}],
+      "conns":[],"time":{"current":1,"start":1,"end":120,"animStart":1,"animEnd":200,"fps":24,"playing":false,"loop":"continuous","autoKey":false,"playEvery":false},
+      "render":null,"sel":["d11"],"project":null}"#;
+
+    #[test]
+    fn loads_js_scene_and_writes_it_back() {
+        let v: Value = serde_json::from_str(JS_SCENE).unwrap();
+        let mut s = Scene::new();
+        s.load(&v).unwrap();
+        let c = s.find("pCube1").unwrap();
+        assert_eq!(s.node(&c).unwrap().parent.as_deref(), Some("d10"));
+        assert_eq!(s.node(&c).unwrap().mesh().unwrap().history[0].name, "polyCube1");
+        assert_eq!(s.sel, vec!["d11".to_string()]);
+        // history is live after loading
+        let r = s.resolve("polyCube1").unwrap();
+        s.set_attr(&r, "subdivisionsWidth", json!(2));
+        assert_eq!(s.node(&c).unwrap().mesh().unwrap().mesh.f.len(), 10);
+        // animation, layers, locks, light attributes and rig data survive
+        s.set_time(10.0);
+        assert!((s.get_attr_f(&c, "ty") - 5.0).abs() < 1e-9);
+        let g = s.find("grp").unwrap();
+        assert!(s.node(&g).unwrap().is_locked("tx"));
+        assert_eq!(s.node(&g).unwrap().layer.as_deref(), Some("l1"));
+        let l = s.find("pointLight1").unwrap();
+        assert_eq!(s.get_attr_f(&l, "intensity"), 2.0);
+        let out = s.serialize();
+        let j = out["nodes"].as_array().unwrap().iter().find(|n| n["name"] == "joint1").unwrap();
+        assert_eq!(j["kind"], "joint");
+        assert_eq!(j["rig"]["radius"], 0.5);
+        assert_eq!(j["jo"], json!([0, 0, 90]));
+        // the startup camera keeps its id and name
+        assert!(out["nodes"].as_array().unwrap().iter().any(|n| n["id"] == "d3" && n["name"] == "persp"));
+    }
+}

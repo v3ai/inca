@@ -1772,3 +1772,19 @@ mod tests {
         assert_eq!(r.list().len(), 2);
     }
 }
+
+#[cfg(test)]
+mod more_tests {
+    use super::*;
+    use crate::mel::Interp;
+
+    #[test]
+    fn create_then_move_selection() {
+        let mut s = Scene::new();
+        Interp::new().run(&mut s, &mut NoHost, "camera; move -r 6 3 6; spotLight; move -r 1 2 3;").unwrap();
+        let c = s.find("camera1").unwrap();
+        assert_eq!(s.node(&c).unwrap().xf.t, [6.0, 3.0, 6.0]);
+        let l = s.find("spotLight1").unwrap();
+        assert_eq!(s.node(&l).unwrap().xf.t, [1.0, 2.0, 3.0]);
+    }
+}

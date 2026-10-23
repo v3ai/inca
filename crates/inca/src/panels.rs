@@ -52,10 +52,8 @@ pub fn outliner(app: &mut IncaApp, ui: &mut egui::Ui) {
             outliner_row(app, ui, r, 0, &filter);
         }
         // drop on empty space = unparent
-        let (_, drop) = ui.dnd_drop_zone::<String, _>(egui::Frame::NONE, |ui| {
-            ui.set_min_size(egui::vec2(ui.available_width(), 40.0));
-        });
-        if let Some(id) = drop {
+        let (_, zone) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 40.0), egui::Sense::hover());
+        if let Some(id) = zone.dnd_release_payload::<String>().map(|p| (*p).clone()) {
             let n = app.s.name_of(&id);
             let _ = app.run_mel("unparent", &format!("parent -w {n};"));
         }

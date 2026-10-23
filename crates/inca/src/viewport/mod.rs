@@ -869,3 +869,70 @@ pub fn scene_bbox(s: &Scene) -> Aabb {
     }
     b
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use inca_core::params::Params;
+
+    fn setup() -> (Scene, Viewport, CamView, Id) {
+        let mut s = Scene::new();
+        let id = s.create_mesh("polyCube", &Params::new(), None);
+        let mut vp = Viewport::new("persp");
+        vp.rect = Rect::from_min_size(Pos2::ZERO, egui::vec2(800.0, 600.0));
+        let b = s.world_bbox(&id);
+        frame_box(&mut s, "persp", &b, 800.0 / 600.0);
+        let cv = cam_view(&s, "persp", [800.0, 600.0]);
+        (s, vp, cv, id)
+    }
+
+    #[test]
+    fn projection_round_trip() {
+        let (_, vp, cv, _) = setup();
+        let p = DVec3::new(0.2, 0.3, -0.1);
+        let q = cv.project(p, vp.rect).unwrap();
+        let r = cv.ray(q, vp.rect);
+        // the ray through the projected point passes the point
+        let t = (p - r.origin).dot(r.dir);
+        assert!((r.at(t) - p).length() < 1e-6);
+    }
+
+    #[test]
+    fn pick_object_and_components() {
+        let (s, vp, cv, id) = setup();
+        let c = cv.project(DVec3::ZERO, vp.rect).unwrap();
+        assert_eq!(pick_object(&s, &vp, &cv, c), Some(id.clone()));
+        assert_eq!(pick_object(&s, &vp, &cv, Pos2::new(2.0, 2.0)), None);
+        // the corner facing the camera (+x +y +z) is visible and pickable
+        let pm = &s.node(&id).unwrap().mesh().unwrap().mesh;
+        let vi = pm.v.iter().position(|v| v.x > 0.0 && v.y > 0.0 && v.z > 0.0).unwrap();
+        let q = cv.project(pm.v[vi], vp.rect).unwrap();
+        assert_eq!(pick_component(&s, &vp, &cv, &id, CompMode::Vertex, q + egui::vec2(3.0, 2.0)), Some(Comp::V(vi as u32)));
+        // the hidden corner is not picked through the cube
+        let hidden = pm.v.iter().position(|v| v.x < 0.0 && v.y < 0.0 && v.z < 0.0).unwrap();
+        let hq = cv.project(pm.v[hidden], vp.rect).unwrap();
+        assert_ne!(pick_component(&s, &vp, &cv, &id, CompMode::Vertex, hq), Some(Comp::V(hidden as u32)));
+        // top face under the cursor
+        let top = (0..pm.f.len()).find(|&f| pm.face_normal(f).y > 0.9).unwrap();
+        let tq = cv.project(pm.face_center(top), vp.rect).unwrap();
+        assert_eq!(pick_component(&s, &vp, &cv, &id, CompMode::Face, tq), Some(Comp::F(top)));
+        // marquee over everything selects the cube and only visible vertices
+        assert_eq!(marquee_objects(&s, &vp, &cv, vp.rect), vec![id.clone()]);
+        let vs = marquee_components(&s, &vp, &cv, &id, CompMode::Vertex, vp.rect);
+        assert_eq!(vs.len(), 7);
+    }
+
+    #[test]
+    fn navigation_keeps_center_of_interest() {
+        let (mut s, _, cv, _) = setup();
+        let center = cv.eye + cv.fwd * cv.coi;
+        tumble(&mut s, "persp", 40.0, 10.0);
+        let cv2 = cam_view(&s, "persp", [800.0, 600.0]);
+        let center2 = cv2.eye + cv2.fwd * cv2.coi;
+        assert!((center - center2).length() < 1e-6);
+        dolly(&mut s, "persp", 0.5);
+        let cv3 = cam_view(&s, "persp", [800.0, 600.0]);
+        assert!(cv3.coi < cv2.coi);
+        assert!(((cv3.eye + cv3.fwd * cv3.coi) - center).length() < 1e-6);
+    }
+}
