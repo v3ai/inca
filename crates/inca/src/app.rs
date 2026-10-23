@@ -210,6 +210,7 @@ pub struct IncaApp {
     pub fps_measured: f32,
     pub mesh_tool: crate::mesh_tools::MeshToolState,
     pub mesh_opts: crate::mesh_tools::MeshToolOpts,
+    pub uv_editor: crate::uv_editor::UvEditor,
     /// (sources, duplicates) of the last Shift+D, to repeat its offset
     pub last_dup: Option<(Vec<String>, Vec<String>)>,
     /// viewport background (Alt+B cycles viewport::BG_MODES)
@@ -314,6 +315,7 @@ impl IncaApp {
             overlay_border: HashSet::new(),
             fps_measured: 0.0,
             mesh_tool: Default::default(),
+            uv_editor: Default::default(),
             mesh_opts: cc.storage.and_then(|s| eframe::get_value(s, "meshTools")).unwrap_or_default(),
             last_dup: None,
             bg_mode: cc.storage.and_then(|s| eframe::get_value(s, "bgMode")).unwrap_or(0),
@@ -552,7 +554,7 @@ impl IncaApp {
                 ctx.memory_mut(|m| m.surrender_focus(id));
             }
         }
-        if ctx.egui_wants_keyboard_input() {
+        if ctx.egui_wants_keyboard_input() || crate::uv_editor::wants_keys(self, ctx) {
             return;
         }
         let events = ctx.input(|i| i.events.clone());
@@ -741,6 +743,7 @@ impl eframe::App for IncaApp {
         crate::edit_cmds::prompt_window(self, &ctx);
         crate::edit_cmds::dup_special_window(self, &ctx);
         crate::edit_cmds::add_attr_window(self, &ctx);
+        crate::uv_editor::window(self, &ctx);
         crate::project::autosave_tick(self, ctx.input(|i| i.time));
         crate::menus::hotbox(self, &ctx);
         crate::test_hook::step(self, &ctx);

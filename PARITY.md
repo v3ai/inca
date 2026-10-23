@@ -27,7 +27,8 @@ registry, menus, UI modules and a 0.1.12 screenshot.
 - [x] B5. Mesh: Cleanup, Collapse, Connect, Chamfer Vertices, Polygon Edges to Curve, Soften/Harden (30°) (Reduce / Conform / Conform Normals are menu-only placeholders in the JS too)
 - [x] B6. Mesh Tools: Insert Edge Loop tool (interactive), Multi-Cut, Target Weld, Quad Draw, Sculpt tool (brushes), Make Live
 - [x] B7. Curves / Surfaces: Pencil Curve tool, Open/Close (Attach / Detach / Birail / Boundary are menu-only placeholders in the JS too)
-- [ ] B8. UV: UV Editor (select / move / rotate / scale UVs, flip, rotate 90, normalize, layout, unfold/relax), UV component mode (F12)
+- [x] B8. UV: UV Editor (select / move / rotate / scale UVs, flip, rotate 90, normalize, layout, unfold/relax, shells, checker / shading)
+- [ ] B8b. UV component mode in the viewport (F12) and the texture image behind the UV Editor
 - [ ] B9. Selection: (Lasso and Paint done) Soft Select (B) with falloff display, Symmetry (object X, world X/Y/Z), cycle component type, pre-selection highlight
 - [ ] B10. Manipulators: Ctrl+click axis lock, MMB drag along active handle, point snap (V), discrete rotate (J), hold W/E/R marking menus, manipulator size readout + reset
 - [ ] B11. Marking menus: RMB object/component menus, Shift+RMB tool menus, Ctrl+RMB conversion; In-View Editor for history nodes; option boxes for menu items

@@ -14,6 +14,7 @@ mod test_hook;
 mod theme;
 mod timeline;
 mod toolbar;
+mod uv_editor;
 mod viewport;
 mod vp_ui;
 mod windows;

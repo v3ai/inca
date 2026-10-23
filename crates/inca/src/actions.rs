@@ -213,6 +213,7 @@ pub static ACTIONS: &[(&str, &str, &str)] = &[
     ("flattenSculptTool", "Flatten Sculpt Tool", ""),
     ("inflateSculptTool", "Inflate Sculpt Tool", ""),
     ("makeLive", "Make Live", ""),
+    ("uvEditor", "UV Editor", ""),
     ("pencilCurveTool", "Pencil Curve Tool", ""),
     ("openCloseCurve", "Open/Close", ""),
     ("collapse", "Collapse", ""),
@@ -557,6 +558,7 @@ pub fn builtin(app: &mut IncaApp, id: &str) {
             app.show_right = true;
         }
         "makeLive" => crate::mesh_tools::make_live(app),
+        "uvEditor" => crate::uv_editor::open(app),
         "pencilCurveTool" => app.set_tool(Tool::Pencil),
         "openCloseCurve" => {
             let mel: String = app

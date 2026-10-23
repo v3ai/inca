@@ -58,6 +58,7 @@ pub static OPS: &[OpInfo] = &[
     OpInfo { ty: "polyMergeCenter", base: "polyMergeVert", hidden: false, channels: &[] },
     OpInfo { ty: "polyChamferVtx", base: "polyChamfer", hidden: false, channels: &[ch("width", F, Some(0.001), None)] },
     OpInfo { ty: "polySplit", base: "polySplit", hidden: false, channels: &[] },
+    OpInfo { ty: "polyUVSet", base: "polyUVSet", hidden: true, channels: &[] },
     OpInfo { ty: "polySmoothFace", base: "polySmoothFace", hidden: false, channels: &[ch("divisions", I, Some(0.0), Some(4.0))] },
     OpInfo { ty: "polySubdFace", base: "polySubdFace", hidden: false, channels: &[ch("divisions", I, Some(1.0), Some(4.0))] },
     OpInfo { ty: "polyTriangulate", base: "polyTriangulate", hidden: false, channels: &[] },
@@ -198,6 +199,16 @@ pub fn apply(ty: &str, pm: &PolyMesh, p: &Params, ctx: &dyn OpCtx) -> Result<OpO
                 })
                 .unwrap_or_default();
             mesh::op_split(pm, &pts)
+        }
+        "polyUVSet" => {
+            // a full per-face UV set written by the UV Editor
+            let mut m = pm.clone();
+            if let Some(uv) = p.get("uv").and_then(|u| serde_json::from_value::<Vec<Option<Vec<glam::DVec2>>>>(u.clone()).ok()) {
+                if uv.len() == m.f.len() {
+                    m.uv = Some(uv);
+                }
+            }
+            m.into()
         }
         "polySmoothFace" => mesh::subdivide(pm, num_or(p, "divisions", 1.0).round().clamp(0.0, 4.0) as u32, true).into(),
         "polySubdFace" => mesh::subdivide(pm, num_or(p, "divisions", 1.0).round().clamp(1.0, 4.0) as u32, false).into(),
