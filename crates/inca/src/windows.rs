@@ -36,6 +36,7 @@ pub struct WinState {
     pub ge_key: Option<(String, usize)>,
     pub ge_drag: bool,
     pub rv: crate::render_view::RvState,
+    pub hs: crate::hypershade::HsState,
 }
 
 impl WinState {
@@ -160,7 +161,7 @@ pub fn show(app: &mut IncaApp, ctx: &egui::Context, _frame: &mut eframe::Frame) 
     egui::Window::new("Script Editor").open(&mut open).default_size([640.0, 460.0]).show(ctx, |ui| script_editor(app, ui));
     app.win.script_editor = open;
     let mut open = app.win.hypershade;
-    egui::Window::new("Hypershade").open(&mut open).default_size([620.0, 480.0]).show(ctx, |ui| hypershade(app, ui));
+    egui::Window::new("Hypershade").open(&mut open).default_size([980.0, 560.0]).show(ctx, |ui| crate::hypershade::window(app, ui));
     app.win.hypershade = open;
     let mut open = app.win.graph_editor;
     egui::Window::new("Graph Editor").open(&mut open).default_size([760.0, 420.0]).show(ctx, |ui| graph_editor(app, ui));
@@ -388,68 +389,6 @@ pub fn material_editor(app: &mut IncaApp, ui: &mut egui::Ui, mid: &str) {
             }
         }
     }
-}
-
-fn hypershade(app: &mut IncaApp, ui: &mut egui::Ui) {
-    ui.horizontal(|ui| {
-        ui.label("Create:");
-        for t in MAT_TYPES {
-            if ui.button(t.label).clicked() {
-                let _ = app.run_mel("create material", &format!("shadingNode -asShader {};", t.ty));
-                app.windows_state.hs_selected = app.s.mats.keys().last().cloned();
-            }
-        }
-    });
-    ui.separator();
-    ui.columns(2, |cols| {
-        let ui = &mut cols[0];
-        ui.label(RichText::new("Materials").strong());
-        egui::ScrollArea::vertical().id_salt("hsmats").show(ui, |ui| {
-            let mats: Vec<(String, String, [f32; 3])> = app.s.mats.values().map(|m| (m.id.clone(), m.name.clone(), m.pbr().base)).collect();
-            egui::Grid::new("hsgrid").num_columns(3).show(ui, |ui| {
-                for (i, (id, name, c)) in mats.iter().enumerate() {
-                    let sel = app.windows_state.hs_selected.as_deref() == Some(id.as_str());
-                    ui.vertical(|ui| {
-                        let (r, resp) = ui.allocate_exact_size(egui::vec2(56.0, 56.0), egui::Sense::click());
-                        ui.painter().rect_filled(r, 2.0, if sel { theme::HI } else { theme::BG_DARK });
-                        ui.painter().circle_filled(r.center(), 22.0, Color32::from(egui::Rgba::from_rgb(c[0], c[1], c[2])));
-                        ui.painter().circle_filled(r.center() + egui::vec2(-7.0, -7.0), 5.0, Color32::from_white_alpha(60));
-                        ui.label(RichText::new(name).size(10.5));
-                        if resp.clicked() {
-                            app.windows_state.hs_selected = Some(id.clone());
-                        }
-                        if resp.double_clicked() {
-                            let _ = app.run_mel("assign material", &format!("hyperShade -assign {name};"));
-                        }
-                        resp.on_hover_text("Click to edit, double-click to assign to the selection");
-                    });
-                    if i % 3 == 2 {
-                        ui.end_row();
-                    }
-                }
-            });
-        });
-        let ui = &mut cols[1];
-        match app.windows_state.hs_selected.clone().filter(|m| app.s.mats.contains_key(m)) {
-            Some(mid) => {
-                ui.horizontal(|ui| {
-                    if ui.button("Assign to Selection").clicked() {
-                        let n = app.s.mats[&mid].name.clone();
-                        let _ = app.run_mel("assign material", &format!("hyperShade -assign {n};"));
-                    }
-                    if mid != app.s.default_mat && ui.button("Delete").clicked() {
-                        app.s.checkpoint("delete material");
-                        app.s.delete_material(&mid);
-                        app.windows_state.hs_selected = None;
-                    }
-                });
-                egui::ScrollArea::vertical().id_salt("hsattr").show(ui, |ui| material_editor(app, ui, &mid));
-            }
-            None => {
-                ui.label(RichText::new("Select a material to edit it").color(theme::TEXT_DIM));
-            }
-        }
-    });
 }
 
 // ------------------------------------------------------------------ graph editor

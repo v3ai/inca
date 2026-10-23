@@ -4,6 +4,7 @@ mod actions;
 mod anim_extras;
 mod app;
 mod edit_cmds;
+mod hypershade;
 mod icons;
 mod icons_svg;
 mod marking;

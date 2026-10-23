@@ -248,3 +248,60 @@ fn value_noise(x: f64, y: f64) -> f64 {
     let v = s(yf);
     (a + (b - a) * u) * (1.0 - v) + (c + (d - c) * u) * v
 }
+
+/// Hypershade swatch: an RGBA image of a lit sphere with the material (and the procedural
+/// texture on its colour slot, if any) over a dark checker background.
+pub fn swatch(m: &Material, color_tex: Option<&Texture>, size: usize) -> Vec<u8> {
+    let p = m.pbr();
+    let light = glam::Vec3::new(-0.5, 0.6, 0.65).normalize();
+    let fill = glam::Vec3::new(0.7, -0.2, 0.4).normalize();
+    let mut out = Vec::with_capacity(size * size * 4);
+    let enc = |x: f32| ((if x <= 0.0031308 { x * 12.92 } else { 1.055 * x.max(0.0).powf(1.0 / 2.4) - 0.055 }).clamp(0.0, 1.0) * 255.0 + 0.5) as u8;
+    for y in 0..size {
+        for x in 0..size {
+            let u = (x as f32 + 0.5) / size as f32 * 2.0 - 1.0;
+            let v = 1.0 - (y as f32 + 0.5) / size as f32 * 2.0;
+            let r2 = (u * u + v * v) / 0.81;
+            let bg = if ((x * 8 / size) + (y * 8 / size)) % 2 == 0 { 0.05 } else { 0.09 };
+            if r2 >= 1.0 {
+                let b = enc(bg);
+                out.extend_from_slice(&[b, b, b, 255]);
+                continue;
+            }
+            let n = glam::Vec3::new(u / 0.9, v / 0.9, (1.0 - r2).sqrt());
+            let mut base = p.base;
+            if let Some(t) = color_tex {
+                let su = 0.5 + n.x.atan2(n.z) / std::f32::consts::TAU;
+                let sv = 0.5 + n.y.asin() / std::f32::consts::PI;
+                if let Some(c) = t.sample(su as f64, sv as f64) {
+                    base = c;
+                }
+            }
+            let diff = n.dot(light).max(0.0) + 0.25 * n.dot(fill).max(0.0) + 0.08;
+            let h = (light + glam::Vec3::Z).normalize();
+            let shin = 2.0 / (p.roughness.max(0.02) * p.roughness.max(0.02)) - 2.0;
+            let spec = if p.unlit { 0.0 } else { p.specular * n.dot(h).max(0.0).powf(shin.max(1.0)) * (shin + 8.0) / 25.0 };
+            let kd = if p.unlit { 1.0 } else { diff * (1.0 - p.metalness) };
+            let sc = [1.0 - p.metalness + p.metalness * base[0], 1.0 - p.metalness + p.metalness * base[1], 1.0 - p.metalness + p.metalness * base[2]];
+            let c: Vec<u8> = (0..3).map(|i| {
+                let lit = base[i] * kd + spec * sc[i] * 0.6 + p.emission[i];
+                enc(lit * p.opacity + bg * (1.0 - p.opacity))
+            }).collect();
+            out.extend_from_slice(&[c[0], c[1], c[2], 255]);
+        }
+    }
+    out
+}
+
+/// Flat texture swatch (procedural textures; None for file textures).
+pub fn texture_swatch(t: &Texture, size: usize) -> Option<Vec<u8>> {
+    let mut out = Vec::with_capacity(size * size * 4);
+    for y in 0..size {
+        for x in 0..size {
+            let c = t.sample((x as f64 + 0.5) / size as f64, 1.0 - (y as f64 + 0.5) / size as f64)?;
+            out.extend(c.iter().map(|v| (v.clamp(0.0, 1.0).powf(1.0 / 2.2) * 255.0) as u8));
+            out.push(255);
+        }
+    }
+    Some(out)
+}
