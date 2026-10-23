@@ -45,15 +45,15 @@ pub fn time_slider(app: &mut IncaApp, ui: &mut egui::Ui) {
         if ui.add(egui::DragValue::new(&mut cur).speed(0.2).max_decimals(2)).changed() {
             app.s.set_time(cur);
         }
-        for (g, a, tip) in [("⏮", "goStart", "Go to start"), ("◀|", "prevKey", "Previous key"), ("◀", "prevFrame", "Step back one frame")] {
+        for (g, a, tip) in [("⏮", "goToStart", "Go to start"), ("◀|", "prevKey", "Previous key"), ("◀", "prevFrame", "Step back one frame")] {
             if ui.small_button(g).on_hover_text(tip).clicked() {
                 app.action(a);
             }
         }
         if ui.small_button(if app.playing { "⏸" } else { "▶" }).on_hover_text("Play / Stop (Alt+V)").clicked() {
-            app.action("play");
+            app.action("playToggle");
         }
-        for (g, a, tip) in [("▶", "nextFrame", "Step forward one frame"), ("|▶", "nextKey", "Next key"), ("⏭", "goEnd", "Go to end")] {
+        for (g, a, tip) in [("▶", "nextFrame", "Step forward one frame"), ("|▶", "nextKey", "Next key"), ("⏭", "goToEnd", "Go to end")] {
             if ui.small_button(g).on_hover_text(tip).clicked() {
                 app.action(a);
             }

@@ -6,10 +6,10 @@ registry, menus, UI modules and a 0.1.12 screenshot.
 
 ## A. Look & layout (what you see at start-up)
 
-- [ ] A1. Icon set: the JS SVG icons (shelf, status line, tool box, outliner, panel toolbar, menus) instead of hand-drawn vector icons / text buttons
-- [ ] A2. Shelves: same shelf tabs and buttons as `shelf.js` (Curves/Surfaces, Poly Modeling, Sculpting, Rigging, Animation, Rendering, FX, Custom), icon buttons with labels on hover
-- [ ] A3. Status line: same groups and icons — menu set, new/open/save, undo/redo, hierarchy/object/component mode, selection masks, snap toggles (grid/curve/point/live), history, render/IPR/render settings, input line (Absolute / Relative / Rename / Select) with "x y z or name", Symmetry dropdown, panel toggles on the right
-- [ ] A4. Tool box: Select, Lasso, Paint, Move, Rotate, Scale, Last Tool; Quick Layout buttons at the bottom (single, four, side by side, outliner + persp, …)
+- [x] A1. Icon set: the JS SVG icons (shelf, status line, tool box, outliner, panel toolbar, menus) instead of hand-drawn vector icons / text buttons
+- [x] A2. Shelves: same shelf tabs and buttons as `shelf.js` (Curves/Surfaces, Poly Modeling, Sculpting, Rigging, Animation, Rendering, FX, Custom), icon buttons with labels on hover
+- [x] A3. Status line: same groups and icons — menu set, new/open/save, undo/redo, hierarchy/object/component mode, selection masks, snap toggles (grid/curve/point/live), history, render/IPR/render settings, input line (Absolute / Relative / Rename / Select) with "x y z or name", Symmetry dropdown, panel toggles on the right
+- [x] A4. Tool box: Select, Lasso, Paint, Move, Rotate, Scale, Last Tool; Quick Layout buttons at the bottom (single, four, side by side, outliner + persp, …)
 - [ ] A5. Default workspace: Outliner docked on the left and Attribute Editor on the right at start-up (as in 0.1.12), Workspace selector on the right of the menu bar, workspaces (Maya Classic, Modeling Standard/Expert, Sculpting, Animation, Rigging, Rendering, UV Editing)
 - [ ] A6. Viewport defaults: flat grey background (Alt+B cycles grey / black / dark / light / gradient), grid colours, larger UI font sizes matching the JS CSS
 - [ ] A7. Viewport panel: menus View / Shading / Lighting / Show / Renderer / Panels with the JS items; icon toolbar row (camera attrs, bookmarks, grid, film/resolution gate, wireframe/shaded/textured/lights/shadows/x-ray/isolate, exposure + gamma fields, colour management dropdown)
@@ -28,7 +28,7 @@ registry, menus, UI modules and a 0.1.12 screenshot.
 - [ ] B6. Mesh Tools: Insert Edge Loop tool (interactive), Multi-Cut, Target Weld, Quad Draw, Sculpt tool (brushes), Make Live
 - [ ] B7. Curves / Surfaces: Pencil Curve tool, Open/Close, Attach, Detach, Birail, Boundary
 - [ ] B8. UV: UV Editor (select / move / rotate / scale UVs, flip, rotate 90, normalize, layout, unfold/relax), UV component mode (F12)
-- [ ] B9. Selection: Lasso and Paint selection tools, Soft Select (B) with falloff display, Symmetry (object X, world X/Y/Z), cycle component type, pre-selection highlight
+- [ ] B9. Selection: (Lasso and Paint done) Soft Select (B) with falloff display, Symmetry (object X, world X/Y/Z), cycle component type, pre-selection highlight
 - [ ] B10. Manipulators: Ctrl+click axis lock, MMB drag along active handle, point snap (V), discrete rotate (J), hold W/E/R marking menus, manipulator size readout + reset
 - [ ] B11. Marking menus: RMB object/component menus, Shift+RMB tool menus, Ctrl+RMB conversion; In-View Editor for history nodes; option boxes for menu items
 - [ ] B12. Rigging: IK handles (RP / SC, pole vector, twist), Insert / Mirror / Orient Joint, Unbind Skin, Paint Skin Weights, Cluster, Lattice (+ point tool), Soft Modification, Blend Shape, Delete Deformers, Pole Vector constraint, Remove Constraints, Set Driven Key window; load the JS rig nodes (joints, IK, lattices, constraints) instead of keeping them as locators

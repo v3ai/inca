@@ -3,6 +3,7 @@
 mod actions;
 mod app;
 mod icons;
+mod icons_svg;
 mod menus;
 mod panels;
 mod scripting;

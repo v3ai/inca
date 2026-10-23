@@ -10,6 +10,8 @@ use std::collections::HashMap;
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Tool {
     Select,
+    Lasso,
+    Paint,
     Move,
     Rotate,
     Scale,
@@ -23,6 +25,22 @@ pub enum Tool {
 impl Tool {
     pub fn is_manip(self) -> bool {
         matches!(self, Tool::Move | Tool::Rotate | Tool::Scale)
+    }
+    /// Icon of an interactive tool (tool box "last tool" button).
+    pub fn icon(self) -> &'static str {
+        match self {
+            Tool::CvCurve => "cvCurve",
+            Tool::EpCurve => "epCurve",
+            Tool::Arc => "arcCurve",
+            Tool::Polygon => "planar",
+            Tool::Joint => "joint",
+            Tool::Lasso => "lasso",
+            Tool::Paint => "paintSelect",
+            Tool::Move => "move",
+            Tool::Rotate => "rotate",
+            Tool::Scale => "scale",
+            Tool::Select => "select",
+        }
     }
     pub fn is_creation(self) -> bool {
         matches!(self, Tool::CvCurve | Tool::EpCurve | Tool::Arc | Tool::Polygon | Tool::Joint)
@@ -141,6 +159,18 @@ pub struct IncaApp {
     pub recent: Vec<String>,
     /// user shelf buttons (label, MEL), saved between sessions
     pub custom_shelf: Vec<(String, String)>,
+    /// status line: select whole hierarchies instead of objects
+    pub select_hierarchy: bool,
+    pub last_comp_mode: CompMode,
+    /// object types switched off in the selection masks ("mesh", "curve", ...)
+    pub sel_mask_off: std::collections::HashSet<String>,
+    pub lock_selection: bool,
+    pub snap_curve: bool,
+    pub snap_point: bool,
+    pub live_surface: Option<String>,
+    /// 0 off, 1 object X, 2 world X, 3 world Y, 4 world Z
+    pub symmetry: usize,
+    pub paint_radius: f32,
     /// Space: tap toggles the layout, hold shows the hotbox
     pub space_down: Option<f64>,
     pub hotbox: Option<egui::Pos2>,
@@ -205,6 +235,15 @@ impl IncaApp {
             recent: cc.storage.and_then(|s| eframe::get_value(s, "recent")).unwrap_or_default(),
             custom_shelf: cc.storage.and_then(|s| eframe::get_value(s, "customShelf")).unwrap_or_default(),
             space_down: None,
+            select_hierarchy: false,
+            last_comp_mode: CompMode::Vertex,
+            sel_mask_off: Default::default(),
+            lock_selection: false,
+            snap_curve: false,
+            snap_point: false,
+            live_surface: None,
+            symmetry: 0,
+            paint_radius: 24.0,
             hotbox: None,
         };
         if let Some(p) = std::env::args().nth(1).filter(|a| !a.starts_with('-')) {
@@ -318,6 +357,8 @@ impl IncaApp {
         self.tool = t;
         self.help = match t {
             Tool::Select => "Select Tool: select an object",
+            Tool::Lasso => "Lasso Tool: drag a freehand outline around objects or components",
+            Tool::Paint => "Paint Selection Tool: drag over components (or objects) to select them; Ctrl drag to deselect",
             Tool::Move => "Move Tool: Use manipulator to move object(s). Ctrl+MMB-drag to move components along normals.",
             Tool::Rotate => "Rotate Tool: Use manipulator to rotate object(s).",
             Tool::Scale => "Scale Tool: Use manipulator to scale object(s).",
@@ -331,6 +372,9 @@ impl IncaApp {
     }
 
     pub fn set_comp_mode(&mut self, m: Option<CompMode>) {
+        if let Some(c) = m {
+            self.last_comp_mode = c;
+        }
         let mel = match m {
             None => "selectMode -o;",
             Some(CompMode::Vertex) => "selectMode -co; selectType -pv 1;",
@@ -512,7 +556,7 @@ impl eframe::App for IncaApp {
             egui::Panel::left("toolbox").exact_size(38.0).resizable(false).frame(theme::bar_frame()).show(ui, |ui| toolbar::tool_box(self, ui));
         }
         if self.show_outliner {
-            egui::Panel::left("outliner").default_size(220.0).frame(theme::panel_frame()).show(ui, |ui| panels::outliner(self, ui));
+            egui::Panel::left("outlinerWindow").default_size(220.0).frame(theme::panel_frame()).show(ui, |ui| panels::outliner(self, ui));
         }
         if self.show_right {
             egui::Panel::right("rightpanel").default_size(300.0).min_size(220.0).frame(theme::panel_frame()).show(ui, |ui| panels::right_panel(self, ui));

@@ -15,7 +15,7 @@ pub struct PanelState {
     pub renaming: Option<(String, String)>,
     pub expanded: std::collections::HashSet<String>,
     pub input_line: String,
-    pub input_select: bool,
+    pub input_mode: usize,
     pub quit: bool,
     /// a channel drag is in progress (one undo step per drag)
     pub editing: bool,
@@ -673,6 +673,8 @@ fn shape_tab(app: &mut IncaApp, ui: &mut egui::Ui, id: &str) {
 fn tool_settings(app: &mut IncaApp, ui: &mut egui::Ui) {
     theme::section_header(ui, match app.tool {
         Tool::Select => "Select Tool",
+        Tool::Lasso => "Lasso Tool",
+        Tool::Paint => "Paint Selection Tool",
         Tool::Move => "Move Tool",
         Tool::Rotate => "Rotate Tool",
         Tool::Scale => "Scale Tool",
@@ -685,6 +687,12 @@ fn tool_settings(app: &mut IncaApp, ui: &mut egui::Ui) {
     if app.tool.is_creation() {
         ui.label("Click in a viewport to place points (on the ground grid in perspective, on the view plane in orthographic views). Enter completes, Backspace removes the last point, Esc cancels.");
         ui.checkbox(&mut app.snap_grid, "Snap to grid");
+    }
+    if app.tool == Tool::Paint {
+        ui.horizontal(|ui| {
+            ui.label("Brush radius");
+            ui.add(egui::Slider::new(&mut app.paint_radius, 2.0..=200.0));
+        });
     }
     if app.tool.is_manip() {
         ui.horizontal(|ui| {

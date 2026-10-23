@@ -751,7 +751,36 @@ pub fn seg_dist(p: Pos2, a: Pos2, b: Pos2) -> f32 {
 }
 
 /// Objects inside a marquee (any projected vertex or the centre inside).
+#[cfg(test)]
 pub fn marquee_objects(s: &Scene, vp: &Viewport, cv: &CamView, r: Rect) -> Vec<Id> {
+    region_objects(s, vp, cv, &|q| r.contains(q))
+}
+
+/// Screen-space point-in-polygon (even-odd), for the lasso.
+pub fn in_polygon(poly: &[Pos2], p: Pos2) -> bool {
+    let mut inside = false;
+    let mut j = poly.len().wrapping_sub(1);
+    for i in 0..poly.len() {
+        let (a, b) = (poly[i], poly[j]);
+        if (a.y > p.y) != (b.y > p.y) && p.x < (b.x - a.x) * (p.y - a.y) / (b.y - a.y) + a.x {
+            inside = !inside;
+        }
+        j = i;
+    }
+    inside
+}
+
+/// Within `r` pixels of a brush stroke (paint selection).
+pub fn on_stroke(stroke: &[Pos2], r: f32, p: Pos2) -> bool {
+    match stroke {
+        [] => false,
+        [a] => a.distance(p) <= r,
+        _ => stroke.windows(2).any(|w| seg_dist(p, w[0], w[1]) <= r),
+    }
+}
+
+/// Objects with a projected vertex (or icon point) satisfying `inside`.
+pub fn region_objects(s: &Scene, vp: &Viewport, cv: &CamView, inside: &dyn Fn(Pos2) -> bool) -> Vec<Id> {
     let mut out = vec![];
     for id in s.all_dag(false) {
         if !s.is_visible(&id) || s.is_template(&id) {
@@ -762,11 +791,11 @@ pub fn marquee_objects(s: &Scene, vp: &Viewport, cv: &CamView, r: Rect) -> Vec<I
         let hit = match &n.shape {
             Shape::Mesh(m) => {
                 let step = (m.mesh.v.len() / 4000).max(1);
-                m.mesh.v.iter().step_by(step).any(|p| cv.project(wm.transform_point3(*p), vp.rect).is_some_and(|q| r.contains(q)))
+                m.mesh.v.iter().step_by(step).any(|p| cv.project(wm.transform_point3(*p), vp.rect).is_some_and(inside))
             }
             Shape::Group => false,
             Shape::Camera(c) if c.startup => false,
-            _ => icon_lines(s, &id, [1.0; 4]).iter().any(|v| cv.project(wm.transform_point3(DVec3::new(v.pos[0] as f64, v.pos[1] as f64, v.pos[2] as f64)), vp.rect).is_some_and(|q| r.contains(q))),
+            _ => icon_lines(s, &id, [1.0; 4]).iter().any(|v| cv.project(wm.transform_point3(DVec3::new(v.pos[0] as f64, v.pos[1] as f64, v.pos[2] as f64)), vp.rect).is_some_and(inside)),
         };
         if hit {
             out.push(id);
@@ -886,11 +915,16 @@ pub fn pick_component(s: &Scene, vp: &Viewport, cv: &CamView, id: &str, mode: Co
     }
 }
 
+#[cfg(test)]
 pub fn marquee_components(s: &Scene, vp: &Viewport, cv: &CamView, id: &str, mode: CompMode, r: Rect) -> Vec<Comp> {
+    region_components(s, vp, cv, id, mode, &|q| r.contains(q))
+}
+
+pub fn region_components(s: &Scene, vp: &Viewport, cv: &CamView, id: &str, mode: CompMode, region: &dyn Fn(Pos2) -> bool) -> Vec<Comp> {
     let Some(pm) = s.node(id).and_then(|n| n.mesh()).map(|m| &m.mesh) else { return vec![] };
     let wm = s.world_matrix(id);
     let vis = Vis::new(pm, wm, cv, vp.xray);
-    let inside = |p: DVec3| cv.project(wm.transform_point3(p), vp.rect).is_some_and(|q| r.contains(q));
+    let inside = |p: DVec3| cv.project(wm.transform_point3(p), vp.rect).is_some_and(region);
     match mode {
         CompMode::Vertex => (0..pm.v.len()).filter(|&i| inside(pm.v[i]) && vis.vertex(i as u32)).map(|i| Comp::V(i as u32)).collect(),
         CompMode::Edge => pm.topo().edges.iter().filter(|&&(a, b)| inside((pm.v[a as usize] + pm.v[b as usize]) * 0.5) && vis.edge(a, b)).map(|&(a, b)| Comp::E(a, b)).collect(),
@@ -991,6 +1025,7 @@ pub fn scene_bbox(s: &Scene) -> Aabb {
 mod tests {
     use super::*;
     use inca_core::params::Params;
+    use egui::pos2;
 
     fn setup() -> (Scene, Viewport, CamView, Id) {
         let mut s = Scene::new();
@@ -1051,5 +1086,19 @@ mod tests {
         let cv3 = cam_view(&s, "persp", [800.0, 600.0]);
         assert!(cv3.coi < cv2.coi);
         assert!(((cv3.eye + cv3.fwd * cv3.coi) - center).length() < 1e-6);
+    }
+
+    #[test]
+    fn lasso_and_brush_regions() {
+        let tri = [pos2(0.0, 0.0), pos2(10.0, 0.0), pos2(0.0, 10.0)];
+        assert!(in_polygon(&tri, pos2(2.0, 2.0)));
+        assert!(!in_polygon(&tri, pos2(8.0, 8.0)));
+        let stroke = [pos2(0.0, 0.0), pos2(100.0, 0.0)];
+        assert!(on_stroke(&stroke, 5.0, pos2(50.0, 4.0)));
+        assert!(!on_stroke(&stroke, 5.0, pos2(50.0, 6.0)));
+        let (s, vp, cv, id) = setup();
+        let r = vp.rect;
+        let poly = [r.left_top(), r.right_top(), r.right_bottom(), r.left_bottom()];
+        assert_eq!(region_objects(&s, &vp, &cv, &|q| in_polygon(&poly, q)), vec![id]);
     }
 }

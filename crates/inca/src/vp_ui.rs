@@ -15,6 +15,8 @@ pub struct VpState {
     pub gizmos: Vec<Gizmo>,
     pub drag: Option<GizmoDrag>,
     pub marquee: Option<(usize, Pos2)>,
+    /// Lasso outline / paint stroke points of the drag in progress.
+    pub stroke: Vec<Pos2>,
     pub nav: Option<(usize, egui::PointerButton)>,
     pub snap_step: f64,
     pub snap_angle: f64,
@@ -24,7 +26,7 @@ pub struct VpState {
 
 impl Default for VpState {
     fn default() -> Self {
-        VpState { gizmos: (0..4).map(|_| Gizmo::default()).collect(), drag: None, marquee: None, nav: None, snap_step: 1.0, snap_angle: 15.0, tool_pts: vec![] }
+        VpState { gizmos: (0..4).map(|_| Gizmo::default()).collect(), drag: None, marquee: None, stroke: vec![], nav: None, snap_step: 1.0, snap_angle: 15.0, tool_pts: vec![] }
     }
 }
 
@@ -195,9 +197,9 @@ fn panel_menus(app: &mut IncaApp, ui: &mut egui::Ui, idx: usize) {
     });
     ui.separator();
     let v = &mut app.vps[idx];
-    use crate::icons::{self, Icon};
-    for (i, tip, on, which) in [(Icon::Wire, "Wireframe (4)", v.shade == ShadeMode::Wire, 0), (Icon::Shaded, "Smooth shade (5)", v.shade == ShadeMode::Shaded, 1), (Icon::Light, "Use all lights (7)", v.lights == LightMode::All, 2), (Icon::XRay, "X-Ray", v.xray, 3), (Icon::Grid, "Grid", v.grid, 4)] {
-        if icons::button(ui, i, tip, on, 19.0).clicked() {
+    use crate::icons;
+    for (i, tip, on, which) in [("wireframe", "Wireframe (4)", v.shade == ShadeMode::Wire, 0), ("smoothShade", "Smooth shade (5)", v.shade == ShadeMode::Shaded, 1), ("useLights", "Use all lights (7)", v.lights == LightMode::All, 2), ("xray", "X-Ray", v.xray, 3), ("grid", "Grid", v.grid, 4)] {
+        if icons::button_ex(ui, i, tip, on, 20.0, 16.0, true).clicked() {
             match which {
                 0 => v.shade = ShadeMode::Wire,
                 1 => v.shade = ShadeMode::Shaded,
@@ -265,22 +267,65 @@ fn interact(app: &mut IncaApp, ui: &mut egui::Ui, idx: usize, resp: &egui::Respo
     if gizmo_used {
         return;
     }
-    // ---- selection: click or marquee (LMB)
+    // ---- selection: click, marquee, lasso or paint stroke (LMB)
     if resp.drag_started_by(egui::PointerButton::Primary) {
         if let Some(p) = resp.interact_pointer_pos() {
-            app.vp_state.marquee = Some((idx, p - resp.drag_delta()));
+            let p0 = p - resp.drag_delta();
+            app.vp_state.marquee = Some((idx, p0));
+            app.vp_state.stroke = vec![p0];
         }
     }
     if let Some((v, start)) = app.vp_state.marquee {
         if v == idx {
             if let Some(cur) = pointer.interact_pos() {
-                let r = Rect::from_two_pos(start, cur);
-                painter.rect_stroke(r, 0.0, Stroke::new(1.0, Color32::WHITE), egui::StrokeKind::Inside);
+                let tool = app.tool;
+                if tool != Tool::Select && app.vp_state.stroke.last().is_none_or(|l| l.distance(cur) > 2.0) {
+                    app.vp_state.stroke.push(cur);
+                }
+                let stroke = app.vp_state.stroke.clone();
+                let white = Stroke::new(1.0, Color32::WHITE);
+                match tool {
+                    Tool::Lasso => {
+                        let mut pts = stroke.clone();
+                        pts.push(stroke[0]);
+                        painter.add(egui::Shape::dashed_line(&pts, white, 4.0, 3.0));
+                    }
+                    Tool::Paint => {
+                        let r = app.paint_radius;
+                        painter.add(egui::Shape::line(stroke.clone(), Stroke::new(r * 2.0, Color32::from_rgba_unmultiplied(255, 255, 255, 30))));
+                        painter.circle_stroke(cur, r, Stroke::new(1.0, Color32::from_rgb(255, 80, 80)));
+                    }
+                    _ => {
+                        painter.rect_stroke(Rect::from_two_pos(start, cur), 0.0, white, egui::StrokeKind::Inside);
+                    }
+                }
                 if resp.drag_stopped() || !pointer.primary_down() {
                     app.vp_state.marquee = None;
-                    marquee_select(app, idx, cv, r, sel_mode(mods));
+                    app.vp_state.stroke.clear();
+                    let mode = sel_mode(mods);
+                    match tool {
+                        Tool::Lasso if stroke.len() >= 3 => region_select(app, idx, cv, &|q| viewport::in_polygon(&stroke, q), mode),
+                        Tool::Paint => {
+                            let r = app.paint_radius;
+                            // paint adds; Ctrl paints a deselection
+                            let mode = if mods.ctrl { SelMode::Remove } else if mode == SelMode::Replace { SelMode::Add } else { mode };
+                            region_select(app, idx, cv, &|q| viewport::on_stroke(&stroke, r, q), mode)
+                        }
+                        Tool::Lasso => {}
+                        _ => {
+                            let r = Rect::from_two_pos(start, cur);
+                            if r.width() >= 3.0 || r.height() >= 3.0 {
+                                region_select(app, idx, cv, &|q| r.contains(q), mode);
+                            }
+                        }
+                    }
                 }
             }
+        }
+    }
+    if app.tool == Tool::Paint && resp.hovered() && app.vp_state.marquee.is_none() {
+        if let Some(h) = resp.hover_pos() {
+            painter.circle_stroke(h, app.paint_radius, Stroke::new(1.0, Color32::from_rgba_unmultiplied(255, 80, 80, 160)));
         }
     }
     if resp.clicked_by(egui::PointerButton::Primary) {
@@ -293,6 +338,9 @@ fn interact(app: &mut IncaApp, ui: &mut egui::Ui, idx: usize, resp: &egui::Respo
 }
 
 fn click_select(app: &mut IncaApp, idx: usize, cv: &CamView, p: Pos2, mode: SelMode) {
+    if app.lock_selection {
+        return;
+    }
     let vp = app.vps[idx].clone();
     if let Some(cm) = app.s.comp_mode {
         let hil = app.s.hilite();
@@ -349,8 +397,7 @@ fn click_select(app: &mut IncaApp, idx: usize, cv: &CamView, p: Pos2, mode: SelM
         }
         return;
     }
-    let hit = viewport::pick_object(&app.s, &vp, cv, p);
-    // clicking a child selects its top-most ancestor group? Maya selects the object itself.
+    let hit = viewport::pick_object(&app.s, &vp, cv, p).and_then(|h| filter_picks(app, vec![h]).pop());
     match hit {
         Some(id) => app.select_names(&[id], mode),
         None => {
@@ -361,8 +408,28 @@ fn click_select(app: &mut IncaApp, idx: usize, cv: &CamView, p: Pos2, mode: SelM
     }
 }
 
-fn marquee_select(app: &mut IncaApp, idx: usize, cv: &CamView, r: Rect, mode: SelMode) {
-    if r.width() < 3.0 && r.height() < 3.0 {
+/// Status line settings applied to picked objects: masks, hierarchy mode and the lock.
+fn filter_picks(app: &IncaApp, ids: Vec<String>) -> Vec<String> {
+    let mut out: Vec<String> = vec![];
+    for id in ids {
+        if !crate::toolbar::mask_allows(app, &id) {
+            continue;
+        }
+        let mut top = id;
+        if app.select_hierarchy {
+            while let Some(p) = app.s.node(&top).and_then(|n| n.parent.clone()) {
+                top = p;
+            }
+        }
+        if !out.contains(&top) {
+            out.push(top);
+        }
+    }
+    out
+}
+
+fn region_select(app: &mut IncaApp, idx: usize, cv: &CamView, region: &dyn Fn(Pos2) -> bool, mode: SelMode) {
+    if app.lock_selection {
         return;
     }
     let vp = app.vps[idx].clone();
@@ -371,7 +438,7 @@ fn marquee_select(app: &mut IncaApp, idx: usize, cv: &CamView, r: Rect, mode: Se
         for id in app.s.hilite() {
             let name = app.s.name_of(&id);
             let topo = app.s.node(&id).unwrap().mesh().unwrap().mesh.topo();
-            for c in viewport::marquee_components(&app.s, &vp, cv, &id, cm, r) {
+            for c in viewport::region_components(&app.s, &vp, cv, &id, cm, region) {
                 parts.push(match c {
                     Comp::V(v) => format!("{name}.vtx[{v}]"),
                     Comp::E(a, b) => format!("{name}.e[{}]", topo.edge(a, b).unwrap_or(0)),
@@ -398,7 +465,7 @@ fn marquee_select(app: &mut IncaApp, idx: usize, cv: &CamView, r: Rect, mode: Se
         let _ = app.exec_mel(&mel, parts.len() < 200);
         return;
     }
-    let ids = viewport::marquee_objects(&app.s, &vp, cv, r);
+    let ids = filter_picks(app, viewport::region_objects(&app.s, &vp, cv, region));
     app.select_names(&ids, if mode == SelMode::Toggle && ids.is_empty() { SelMode::Add } else { mode });
 }
 
@@ -413,7 +480,7 @@ fn marking_menu(app: &mut IncaApp, ui: &mut egui::Ui) {
         }
         ui.separator();
         ui.menu_button("Assign New Material", |ui| {
-            for (l, a) in [("Lambert", "matLambert"), ("Blinn", "matBlinn"), ("Phong", "matPhong"), ("Standard Surface", "matStandard")] {
+            for (l, a) in [("Lambert", "assignNew_lambert"), ("Blinn", "assignNew_blinn"), ("Phong", "assignNew_phong"), ("Standard Surface", "assignNew_standardSurface")] {
                 if ui.button(l).clicked() {
                     app.action(a);
                     ui.close();

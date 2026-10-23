@@ -134,4 +134,4 @@ INCA_TEST=script.mel INCA_SHOT=out.png [INCA_SHOT_FRAME=12] cargo run -p inca
 ```
 
 Lines starting with `//!ui <action>` in the script run UI actions (e.g. `//!ui layoutFour`,
-`//!ui renderFrame`).
+`//!ui renderCurrent`).
