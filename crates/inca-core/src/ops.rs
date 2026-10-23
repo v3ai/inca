@@ -11,6 +11,9 @@ use crate::primitives::{self, ch, ChanKind, Channel};
 pub trait OpCtx {
     fn world_curve(&self, id: &str) -> Option<Curve>;
     fn world_mesh(&self, id: &str) -> Option<PolyMesh>;
+    fn world_matrix(&self, _id: &str) -> Option<crate::math::DMat4> {
+        None
+    }
 }
 
 pub struct NoCtx;
@@ -48,6 +51,7 @@ pub static OPS: &[OpInfo] = &[
     },
     OpInfo { ty: "polyExtrudeEdge", base: "polyExtrudeEdge", hidden: false, channels: &[ch("offset", F, None, None), ch("translateY", F, None, None)] },
     OpInfo { ty: "polyBevel", base: "polyBevel", hidden: false, channels: &[ch("fraction", F, Some(0.001), Some(1.0))] },
+    OpInfo { ty: "skinCluster", base: "skinCluster", hidden: false, channels: &[] },
     OpInfo { ty: "polySplitRing", base: "polySplitRing", hidden: false, channels: &[Channel { key: "t", kind: F, min: Some(0.001), max: Some(0.999), label: Some("Weight") }, Channel { key: "multiple", kind: I, min: Some(1.0), max: Some(50.0), label: Some("Number Of Edge Loops") }] },
     OpInfo { ty: "deleteComponent", base: "deleteComponent", hidden: false, channels: &[] },
     OpInfo { ty: "polyMergeVert", base: "polyMergeVert", hidden: false, channels: &[ch("threshold", F, Some(0.0), None)] },
@@ -72,6 +76,9 @@ pub static OPS: &[OpInfo] = &[
 
 /// Op description (history types and primitive generators).
 pub fn info(ty: &str) -> Option<(&'static str, bool, &'static [Channel])> {
+    if let Some(k) = crate::deformers::KINDS.iter().find(|k| **k == ty) {
+        return Some((k, false, crate::deformers::channels(k)));
+    }
     if let Some(o) = OPS.iter().find(|o| o.ty == ty) {
         return Some((o.base, o.hidden, o.channels));
     }
@@ -139,6 +146,7 @@ pub fn apply(ty: &str, pm: &PolyMesh, p: &Params, ctx: &dyn OpCtx) -> Result<OpO
             },
         ),
         "polyExtrudeEdge" => mesh::op_extrude_edges(pm, &edges().unwrap_or_default(), num_or(p, "offset", 0.0), DVec3::new(0.0, num_or(p, "translateY", 0.0), 0.0)),
+        "skinCluster" => crate::skin::apply(pm, p, ctx)?.into(),
         "polyBevel" => {
             let es = match edges() {
                 Some(e) => e,
@@ -214,6 +222,13 @@ pub fn apply(ty: &str, pm: &PolyMesh, p: &Params, ctx: &dyn OpCtx) -> Result<OpO
         "planarTrim" => {
             let cs: Vec<Curve> = ids(p, "curves").iter().filter_map(|id| ctx.world_curve(id)).collect();
             curves::planar(&cs, num_or(p, "segments", 8.0) as usize).into()
+        }
+        k if crate::deformers::KINDS.contains(&k) => {
+            let mut m = pm.clone();
+            let mw = ctx.world_matrix(str_or(p, "owner", "")).unwrap_or(crate::math::DMat4::IDENTITY);
+            let hw = ctx.world_matrix(str_or(p, "handle", "")).ok_or("deformer handle missing")?;
+            crate::deformers::apply(k, &mut m.v, mw, hw, p);
+            m.into()
         }
         _ => return Err(format!("unknown op {ty}")),
     })

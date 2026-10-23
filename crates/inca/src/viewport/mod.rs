@@ -346,6 +346,18 @@ pub fn icon_lines(s: &Scene, id: &str, col: [f32; 4]) -> Vec<LineVertex> {
     let mut o = vec![];
     let Some(n) = s.node(id) else { return o };
     match &n.shape {
+        Shape::Locator if n.kind == "joint" => {
+            let r = n.passthrough.get("rig").and_then(|r| r["radius"].as_f64()).unwrap_or(0.5) * 0.5;
+            circle(&mut o, DVec3::ZERO, DVec3::X, DVec3::Y, r, col);
+            circle(&mut o, DVec3::ZERO, DVec3::Y, DVec3::Z, r, col);
+            circle(&mut o, DVec3::ZERO, DVec3::Z, DVec3::X, r, col);
+        }
+        Shape::Locator if n.kind == "deformer" => {
+            push_line(&mut o, -DVec3::Y, DVec3::Y, col);
+            for y in [-1.0, 0.0, 1.0] {
+                circle(&mut o, DVec3::Y * y, DVec3::X, DVec3::Z, 0.5, col);
+            }
+        }
         Shape::Locator => {
             for ax in [DVec3::X, DVec3::Y, DVec3::Z] {
                 push_line(&mut o, -ax, ax, col);
@@ -622,8 +634,37 @@ pub fn build_draws(s: &Scene, vp: &Viewport, cv: &CamView, g: &mut Gpu, smooth_c
                 draws.push(DrawCmd { pass: Pass::Lines, geo: Geo::TransientLines(icon_lines(s, &id, c)), u: DrawUniform::new(wm) });
             }
             Shape::Locator => {
-                let c = if selected { sel_col } else { C_WIRE };
-                draws.push(DrawCmd { pass: Pass::Lines, geo: Geo::TransientLines(icon_lines(s, &id, c)), u: DrawUniform::new(wm) });
+                let c = if selected {
+                    sel_col
+                } else if n.kind == "joint" {
+                    [0.1, 0.35, 0.9, 1.0]
+                } else if n.kind == "deformer" {
+                    [0.75, 0.3, 0.85, 1.0]
+                } else {
+                    C_WIRE
+                };
+                draws.push(DrawCmd { pass: Pass::LinesTop, geo: Geo::TransientLines(icon_lines(s, &id, c)), u: DrawUniform::new(wm) });
+                if n.kind == "joint" {
+                    // bones: a thin pyramid from the joint to each child joint (world space)
+                    let a = wm.as_dmat4().transform_point3(DVec3::ZERO);
+                    let mut l = vec![];
+                    for k in n.children.iter().filter(|k| s.node(k).is_some_and(|c| c.kind == "joint")) {
+                        let b = s.world_matrix(k).transform_point3(DVec3::ZERO);
+                        let d = b - a;
+                        let len = d.length();
+                        if len < 1e-6 {
+                            continue;
+                        }
+                        let u = d.any_orthonormal_vector() * len * 0.08;
+                        let v = d.normalize().cross(u);
+                        let base = a + d * 0.15;
+                        for corner in [u, v, -u, -v] {
+                            push_line(&mut l, a, base + corner, c);
+                            push_line(&mut l, base + corner, b, c);
+                        }
+                    }
+                    draws.push(DrawCmd { pass: Pass::LinesTop, geo: Geo::TransientLines(l), u: DrawUniform::new(Mat4::IDENTITY) });
+                }
             }
             _ => {}
         }

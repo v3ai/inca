@@ -536,7 +536,7 @@ mod compat_tests {
         let j = out["nodes"].as_array().unwrap().iter().find(|n| n["name"] == "joint1").unwrap();
         assert_eq!(j["kind"], "joint");
         assert_eq!(j["rig"]["radius"], 0.5);
-        assert_eq!(j["jo"], json!([0, 0, 90]));
+        assert_eq!(serde_json::from_value::<[f64; 3]>(j["jo"].clone()).unwrap(), [0.0, 0.0, 90.0]);
         // the startup camera keeps its id and name
         assert!(out["nodes"].as_array().unwrap().iter().any(|n| n["id"] == "d3" && n["name"] == "persp"));
     }

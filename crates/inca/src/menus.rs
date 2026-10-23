@@ -134,10 +134,10 @@ pub fn set_menus(ms: MenuSet) -> Vec<(&'static str, Vec<M>)> {
             ("Curves", vec![A("rebuildCurve"), A("reverseCurve")]),
         ],
         MenuSet::Rigging => vec![
-            ("Skeleton", vec![Todo("Create Joints"), Todo("Create IK Handle")]),
-            ("Skin", vec![Todo("Bind Skin"), Todo("Paint Skin Weights")]),
-            ("Deform", vec![Todo("Bend"), Todo("Twist"), Todo("Lattice"), Todo("Blend Shape")]),
-            ("Constrain", vec![Todo("Parent"), Todo("Point"), Todo("Orient"), Todo("Aim")]),
+            ("Skeleton", vec![A("jointTool"), Todo("Create IK Handle")]),
+            ("Skin", vec![A("bindSkin"), Todo("Paint Skin Weights")]),
+            ("Deform", vec![Sub("Nonlinear", vec![A("deformBend"), A("deformFlare"), A("deformSine"), A("deformSquash"), A("deformTwist"), A("deformWave")]), Todo("Lattice"), Todo("Blend Shape")]),
+            ("Constrain", vec![A("cParent"), A("cPoint"), A("cOrient"), A("cScale"), A("cAim")]),
         ],
         MenuSet::Animation => vec![
             ("Key", vec![A("setKey"), A("keyTranslate"), A("keyRotate"), A("keyScale"), Sep, A("deleteKeys"), A("autoKey")]),

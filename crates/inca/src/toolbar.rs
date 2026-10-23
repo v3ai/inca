@@ -140,7 +140,7 @@ pub fn shelves() -> Vec<(&'static str, Vec<ShelfItem>)> {
                 s("AutoUV", "uvAutomatic"),
             ],
         ),
-        ("Rigging", vec![s("Locator", "createLocator"), s("Group", "group"), s("Parent", "parent"), s("Unparent", "unparent")]),
+        ("Rigging", vec![s("Joint", "jointTool"), s("Bind", "bindSkin"), s("Bend", "deformBend"), s("Twist", "deformTwist"), s("Squash", "deformSquash"), s("Parent C", "cParent"), s("Point C", "cPoint"), s("Orient C", "cOrient"), s("Aim C", "cAim"), s("Locator", "createLocator"), s("Group", "group"), s("Parent", "parent"), s("Unparent", "unparent")]),
         ("Animation", vec![s("Key", "setKey"), s("KeyT", "keyTranslate"), s("KeyR", "keyRotate"), s("KeyS", "keyScale"), s("Graph", "graphEditor"), s("Play", "play")]),
         (
             "Rendering",

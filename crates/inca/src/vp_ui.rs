@@ -607,6 +607,15 @@ fn place_point(cv: &CamView, rect: Rect, p: Pos2, snap: Option<f64>) -> Option<D
 fn creation_tool(app: &mut IncaApp, idx: usize, resp: &egui::Response, cv: &CamView, painter: &egui::Painter) {
     let rect = app.vps[idx].rect;
     let snap = app.snap_grid.then_some(app.vp_state.snap_step);
+    if app.tool == Tool::Joint {
+        if resp.clicked_by(egui::PointerButton::Primary) {
+            if let Some(p) = resp.interact_pointer_pos().and_then(|p| place_point(cv, rect, p, snap)) {
+                let f = inca_core::math::fmt_num;
+                let _ = app.run_mel("joint", &format!("joint -p {} {} {};", f(p.x), f(p.y), f(p.z)));
+            }
+        }
+        return;
+    }
     if resp.clicked_by(egui::PointerButton::Primary) {
         if let Some(p) = resp.interact_pointer_pos().and_then(|p| place_point(cv, rect, p, snap)) {
             app.vp_state.tool_pts.push(p);
@@ -646,6 +655,11 @@ fn creation_tool(app: &mut IncaApp, idx: usize, resp: &egui::Response, cv: &CamV
 
 /// Complete the active creation tool (Enter).
 pub fn finish_creation(app: &mut IncaApp) {
+    if app.tool == Tool::Joint {
+        // finish the chain: the next click starts a new one
+        app.select_names(&[], SelMode::Replace);
+        return;
+    }
     let pts = std::mem::take(&mut app.vp_state.tool_pts);
     let f = |p: &DVec3| format!("-p {} {} {}", inca_core::math::fmt_num(p.x), inca_core::math::fmt_num(p.y), inca_core::math::fmt_num(p.z));
     let flags = |pts: &[DVec3]| pts.iter().map(f).collect::<Vec<_>>().join(" ");

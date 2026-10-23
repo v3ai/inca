@@ -50,18 +50,25 @@ pub struct Xform {
     pub p: [f64; 3],
     /// pivot translate (keeps the object in place when the pivot moves)
     pub pt: [f64; 3],
+    /// joint orient (joints only): local = T * JO * R * S
+    #[serde(default)]
+    pub jo: [f64; 3],
 }
 
 impl Default for Xform {
     fn default() -> Self {
-        Xform { t: [0.0; 3], r: [0.0; 3], s: [1.0; 3], ro: "xyz".into(), p: [0.0; 3], pt: [0.0; 3] }
+        Xform { t: [0.0; 3], r: [0.0; 3], s: [1.0; 3], ro: "xyz".into(), p: [0.0; 3], pt: [0.0; 3], jo: [0.0; 3] }
     }
 }
 
 impl Xform {
     /// local = T(t + pt + p) * R * S * T(-p)
+    pub fn jo_quat(&self) -> DQuat {
+        quat_from_euler_deg(self.jo, "xyz")
+    }
+
     pub fn matrix(&self) -> DMat4 {
-        let q = quat_from_euler_deg(self.r, &self.ro);
+        let q = self.jo_quat() * quat_from_euler_deg(self.r, &self.ro);
         let rs = DMat4::from_scale_rotation_translation(v3(self.s), q, DVec3::ZERO);
         let p = v3(self.p);
         let rp = rs.transform_point3(p);
@@ -269,6 +276,29 @@ pub struct Conn {
     pub dst_attr: String,
 }
 
+/// A transform constraint (point / orient / parent / scale / aim).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Constraint {
+    pub id: Id,
+    pub name: String,
+    pub kind: String,
+    pub driven: Id,
+    pub targets: Vec<Id>,
+    /// maintained offset (column-major matrix)
+    #[serde(default)]
+    pub offset: Option<[f64; 16]>,
+    #[serde(default = "aim_x")]
+    pub aim: [f64; 3],
+    #[serde(default = "up_y")]
+    pub up: [f64; 3],
+}
+fn aim_x() -> [f64; 3] {
+    [1.0, 0.0, 0.0]
+}
+fn up_y() -> [f64; 3] {
+    [0.0, 1.0, 0.0]
+}
+
 /// What a name refers to.
 #[derive(Clone, Debug, PartialEq)]
 pub enum NodeRef {
@@ -294,6 +324,7 @@ pub struct Scene {
     pub layers: Vec<Layer>,
     pub anim: Anim,
     pub conns: Vec<Conn>,
+    pub constraints: Vec<Constraint>,
     pub time: TimeState,
     pub render: Params,
     pub sel: Vec<Id>,
@@ -339,6 +370,7 @@ impl Scene {
             layers: vec![],
             anim: Anim::default(),
             conns: vec![],
+            constraints: vec![],
             time: TimeState::default(),
             render: Params::new(),
             sel: vec![],
@@ -572,6 +604,15 @@ impl Scene {
         id
     }
 
+    /// A deformer handle (drawn as a locator-like icon).
+    pub fn create_handle(&mut self, kind: &str, name: &str) -> Id {
+        let id = self.make_dag(kind, name, None, Shape::Locator, false, None);
+        if let Some(n) = self.nodes.get_mut(&id) {
+            n.shape_name = None;
+        }
+        id
+    }
+
     pub fn create_camera(&mut self, name: &str, cam: CamShape, exact: bool) -> Id {
         self.make_dag("camera", name, None, Shape::Camera(cam), exact, None)
     }
@@ -712,15 +753,17 @@ impl Scene {
     pub fn set_local_matrix(&mut self, id: &str, m: DMat4) {
         let Some(n) = self.nodes.get_mut(id) else { return };
         let (s, q, pos) = m.to_scale_rotation_translation();
-        let e = euler_deg_from_quat(q, &n.xf.ro);
+        // joints keep their orient: only the remaining rotation goes into rotate
+        let e = euler_deg_from_quat(n.xf.jo_quat().inverse() * q, &n.xf.ro);
         let xf = &mut n.xf;
         xf.r = [0, 1, 2].map(|i| round_to(near_angle(xf.r[i], e[i]), 6));
         xf.s = [s.x, s.y, s.z].map(|x| round_to(x, 6));
         let rs = DMat4::from_scale_rotation_translation(s, q, DVec3::ZERO);
         let rp = rs.transform_point3(v3(xf.p));
         xf.t = [0, 1, 2].map(|i| round_to(pos[i] - xf.pt[i] - xf.p[i] + rp[i], 6));
-        n.rev += 0;
         self.touch();
+        let id = id.to_string();
+        self.refresh_dependents(&id);
     }
     pub fn set_world_matrix(&mut self, id: &str, wm: DMat4) {
         let pinv = self.parent_world(id).inverse();
@@ -871,6 +914,7 @@ impl Scene {
             self.anim.remove_node(i);
             self.comp.remove(i);
             self.conns.retain(|c| c.src != *i && c.dst != *i);
+            self.constraints.retain(|c| c.driven != *i && !c.targets.contains(i));
         }
         self.sel.retain(|s| !ids.contains(s));
         // booleans etc. that used a deleted mesh keep their current result
@@ -974,19 +1018,28 @@ impl Scene {
 
     /// Re-evaluate meshes whose history references `src` (curve surfaces, booleans).
     pub fn refresh_dependents(&mut self, src: &str) {
+        self.refresh_many(&[src.to_string()]);
+    }
+
+    /// Re-evaluate every mesh whose history reads one of `srcs` or their descendants
+    /// (curve surfaces, booleans, deformer handles, skin joints).
+    pub fn refresh_many(&mut self, srcs: &[Id]) {
+        let ids: HashSet<String> = srcs.iter().flat_map(|s| self.subtree(s)).collect();
+        if ids.is_empty() || !self.nodes.values().any(|n| n.mesh().is_some_and(|m| m.history.len() > 1 || m.history.first().is_some_and(|h| h.ty != "meshData"))) {
+            return;
+        }
+        let refs = |v: &Value| v.as_str().is_some_and(|s| ids.contains(s)) || v.as_array().is_some_and(|a| a.iter().any(|x| x.as_str().is_some_and(|s| ids.contains(s))));
         let users: Vec<(Id, usize)> = self
             .nodes
             .values()
             .filter_map(|n| {
                 let m = n.mesh()?;
-                let i = m.history.iter().position(|h| h.params.values().any(|v| v.as_str() == Some(src) || v.as_array().is_some_and(|a| a.iter().any(|x| x.as_str() == Some(src)))))?;
+                let i = m.history.iter().position(|h| h.params.values().any(&refs))?;
                 Some((n.id.clone(), i))
             })
             .collect();
         for (u, i) in users {
-            if u != src {
-                self.evaluate(&u, i);
-            }
+            self.evaluate(&u, i);
         }
     }
 
@@ -1182,6 +1235,11 @@ impl Scene {
 
     /// Set an attribute; returns false when it is locked or unknown.
     pub fn set_attr(&mut self, r: &NodeRef, attr: &str, v: Value) -> bool {
+        self.set_attr_ex(r, attr, v, true)
+    }
+
+    /// `refresh` = re-evaluate meshes that depend on the node (off while batching).
+    pub fn set_attr_ex(&mut self, r: &NodeRef, attr: &str, v: Value, refresh: bool) -> bool {
         let attr = alias(attr).to_string();
         let attr = attr.as_str();
         match r {
@@ -1232,8 +1290,10 @@ impl Scene {
                     }
                 }
                 self.touch();
-                let id = id.clone();
-                self.refresh_dependents(&id);
+                if refresh {
+                    let id = id.clone();
+                    self.refresh_dependents(&id);
+                }
                 true
             }
             NodeRef::History(id, i) => {
@@ -1287,10 +1347,14 @@ impl Scene {
     pub fn apply_anim(&mut self) {
         let t = self.time.current;
         let vals: Vec<(String, String, f64)> = self.anim.curves.values().filter(|c| !c.keys.is_empty()).map(|c| (c.node.clone(), c.attr.clone(), c.eval(t))).collect();
+        let mut moved: Vec<Id> = vec![];
         for (n, a, v) in vals {
             if self.nodes.contains_key(&n) {
-                let r = NodeRef::Dag(n);
-                self.set_attr(&r, &a, json!(v));
+                let r = NodeRef::Dag(n.clone());
+                self.set_attr_ex(&r, &a, json!(v), false);
+                if !moved.contains(&n) {
+                    moved.push(n);
+                }
             } else if let Some(r) = self.history_ref_by_id(&n) {
                 self.set_attr(&r, &a, json!(v));
             }
@@ -1299,10 +1363,118 @@ impl Scene {
         for c in self.conns.clone() {
             if let (Some(sr), Some(dr)) = (self.ref_by_id(&c.src), self.ref_by_id(&c.dst)) {
                 if let Some(v) = self.get_attr(&sr, &c.src_attr) {
-                    self.set_attr(&dr, &c.dst_attr, v);
+                    self.set_attr_ex(&dr, &c.dst_attr, v, false);
+                    if matches!(dr, NodeRef::Dag(_)) {
+                        moved.push(c.dst.clone());
+                    }
                 }
             }
         }
+        moved.extend(self.eval_constraints());
+        self.refresh_many(&moved);
+    }
+
+    // ------------------------------------------------------------ constraints
+    /// Apply all constraints; returns the nodes that moved.
+    pub fn eval_constraints(&mut self) -> Vec<Id> {
+        let mut moved = vec![];
+        for c in self.constraints.clone() {
+            if !self.nodes.contains_key(&c.driven) || c.targets.iter().any(|t| !self.nodes.contains_key(t)) || c.targets.is_empty() {
+                continue;
+            }
+            let cur = self.world_matrix(&c.driven);
+            let (cs, cq, ct) = cur.to_scale_rotation_translation();
+            let n = c.targets.len() as f64;
+            let tw: Vec<DMat4> = c.targets.iter().map(|t| self.world_matrix(t)).collect();
+            let avg_pos = c.targets.iter().map(|t| self.world_pivot(t)).sum::<DVec3>() / n;
+            let off = c.offset.map(|o| DMat4::from_cols_array(&o)).unwrap_or(DMat4::IDENTITY);
+            let new = match c.kind.as_str() {
+                "point" => {
+                    let pivot_off = self.world_pivot(&c.driven) - ct;
+                    DMat4::from_scale_rotation_translation(cs, cq, avg_pos + off.w_axis.truncate() - pivot_off)
+                }
+                "orient" => {
+                    let mut q = tw[0].to_scale_rotation_translation().1;
+                    for (i, m) in tw.iter().enumerate().skip(1) {
+                        q = q.slerp(m.to_scale_rotation_translation().1, 1.0 / (i as f64 + 1.0));
+                    }
+                    let oq = DQuat::from_mat4(&off);
+                    DMat4::from_scale_rotation_translation(cs, q * oq, ct)
+                }
+                "scale" => {
+                    let s = tw.iter().map(|m| m.to_scale_rotation_translation().0).sum::<DVec3>() / n;
+                    DMat4::from_scale_rotation_translation(s * off.to_scale_rotation_translation().0, cq, ct)
+                }
+                "aim" => {
+                    let aim = DVec3::from_array(c.aim).normalize_or(DVec3::X);
+                    let up = DVec3::from_array(c.up).normalize_or(DVec3::Y);
+                    let dir = (avg_pos - self.world_pivot(&c.driven)).normalize_or(aim);
+                    // rotate the aim axis onto dir, then roll the up axis towards world up
+                    let q1 = DQuat::from_rotation_arc(aim, dir);
+                    let up1 = q1 * up;
+                    let want = (DVec3::Y - dir * DVec3::Y.dot(dir)).normalize_or(up1);
+                    let ang = up1.cross(want).dot(dir).atan2(up1.dot(want));
+                    let q = DQuat::from_axis_angle(dir, ang) * q1;
+                    DMat4::from_scale_rotation_translation(cs, q, ct)
+                }
+                _ => tw[0] * off, // parent
+            };
+            if (new - cur).to_cols_array().iter().any(|x| x.abs() > 1e-9) {
+                let pinv = self.parent_world(&c.driven).inverse();
+                let local = pinv * new;
+                // quiet update: no refresh here, the caller batches it
+                let Some(nd) = self.nodes.get_mut(&c.driven) else { continue };
+                let (s, q, pos) = local.to_scale_rotation_translation();
+                let e = euler_deg_from_quat(nd.xf.jo_quat().inverse() * q, &nd.xf.ro);
+                let xf = &mut nd.xf;
+                xf.r = [0, 1, 2].map(|i| near_angle(xf.r[i], e[i]));
+                xf.s = s.to_array();
+                let rs = DMat4::from_scale_rotation_translation(s, q, DVec3::ZERO);
+                let rp = rs.transform_point3(v3(xf.p));
+                xf.t = [0, 1, 2].map(|i| pos[i] - xf.pt[i] - xf.p[i] + rp[i]);
+                self.rev += 1;
+                moved.push(c.driven.clone());
+            }
+        }
+        moved
+    }
+
+    /// Create a constraint (`maintain_offset` keeps the driven object where it is).
+    pub fn add_constraint(&mut self, kind: &str, targets: Vec<Id>, driven: &str, maintain_offset: bool) -> String {
+        let name = self.unique_name(&format!("{}_{kind}Constraint1", self.name_of(driven)));
+        let id = self.new_id("c");
+        let dw = self.world_matrix(driven);
+        let offset = if maintain_offset {
+            match kind {
+                "point" => {
+                    let avg = targets.iter().map(|t| self.world_pivot(t)).sum::<DVec3>() / targets.len().max(1) as f64;
+                    Some(DMat4::from_translation(self.world_pivot(driven) - avg).to_cols_array())
+                }
+                "orient" => {
+                    let tq = self.world_matrix(&targets[0]).to_scale_rotation_translation().1;
+                    let dq = dw.to_scale_rotation_translation().1;
+                    Some(DMat4::from_quat(tq.inverse() * dq).to_cols_array())
+                }
+                "scale" => {
+                    let ts = self.world_matrix(&targets[0]).to_scale_rotation_translation().0;
+                    let ds = dw.to_scale_rotation_translation().0;
+                    Some(DMat4::from_scale(ds / ts.max(DVec3::splat(1e-9))).to_cols_array())
+                }
+                "parent" => Some((self.world_matrix(&targets[0]).inverse() * dw).to_cols_array()),
+                _ => None,
+            }
+        } else if kind == "parent" {
+            // snap: keep the driven object's own scale
+            let (s, _, _) = dw.to_scale_rotation_translation();
+            Some(DMat4::from_scale(s).to_cols_array())
+        } else {
+            None
+        };
+        self.constraints.push(Constraint { id, name: name.clone(), kind: kind.into(), driven: driven.into(), targets, offset, aim: [1.0, 0.0, 0.0], up: [0.0, 1.0, 0.0] });
+        let moved = self.eval_constraints();
+        self.refresh_many(&moved);
+        self.touch();
+        name
     }
 
     pub fn set_time(&mut self, t: f64) {
@@ -1475,6 +1647,9 @@ impl Scene {
         for (k, v) in &n.passthrough {
             o.insert(k.clone(), v.clone());
         }
+        if n.xf.jo != [0.0; 3] || n.kind == "joint" {
+            o.insert("jo".into(), json!(n.xf.jo));
+        }
         d
     }
 
@@ -1549,11 +1724,12 @@ impl Scene {
         n.template = d["template"].as_bool().unwrap_or(false);
         n.locks = d["locks"].as_object().cloned().unwrap_or_default();
         n.extra = d["extra"].clone();
-        for k in ["rig", "extraAttrs", "jo"] {
+        for k in ["rig", "extraAttrs"] {
             if let Some(v) = d.get(k) {
                 n.passthrough.insert(k.into(), v.clone());
             }
         }
+        n.xf.jo = a3(&d["jo"], [0.0; 3]);
         if let Some(m) = n.mesh_mut() {
             bake_fm(m);
         }
@@ -1576,6 +1752,7 @@ impl Scene {
             "layers": self.layers,
             "anim": self.anim.serialize(),
             "conns": self.conns,
+            "constraints": self.constraints,
             "time": TimeState { playing: false, ..self.time.clone() },
             "render": if self.render.is_empty() { Value::Null } else { Value::Object(self.render.clone()) },
             "sel": self.sel,
@@ -1592,6 +1769,7 @@ impl Scene {
         self.layers.clear();
         self.anim = Anim::default();
         self.conns.clear();
+        self.constraints.clear();
         self.sel.clear();
         self.comp.clear();
         self.comp_mode = None;
@@ -1630,6 +1808,7 @@ impl Scene {
         let anim: Vec<AnimCurve> = serde_json::from_value(data["anim"].clone()).unwrap_or_default();
         self.anim.load(anim);
         self.conns = serde_json::from_value::<Vec<Conn>>(data["conns"].clone()).unwrap_or_default();
+        self.constraints = serde_json::from_value::<Vec<Constraint>>(data["constraints"].clone()).unwrap_or_default();
         if let Ok(t) = serde_json::from_value::<TimeState>(data["time"].clone()) {
             self.time = TimeState { playing: false, ..t };
         }
@@ -1712,6 +1891,9 @@ impl OpCtx for Scene {
     }
     fn world_mesh(&self, id: &str) -> Option<PolyMesh> {
         self.mesh_world(id)
+    }
+    fn world_matrix(&self, id: &str) -> Option<DMat4> {
+        self.nodes.contains_key(id).then(|| Scene::world_matrix(self, id))
     }
 }
 

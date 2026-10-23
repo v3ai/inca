@@ -107,7 +107,7 @@ pub const CORE_COMMANDS: &[&str] = &[
     "polyQuad", "polyNormal", "polyPoke", "polyCloseBorder", "polyMirrorFace", "polyMergeVertex", "polyDelFacet", "polyDelEdge", "polyDelVertex", "polyUnite", "polySeparate",
     "polyCBoolOp", "polyBoolOp", "polyBridgeEdge", "polySoftEdge", "polyProjection", "polySplitRing", "polyChipOff", "polyDuplicateAndConnect", "revolve", "loft", "extrude", "planarSrf",
     "rebuildCurve", "reverseCurve", "file", "undo", "redo", "connectAttr", "disconnectAttr", "listConnections", "isConnected", "warning", "error", "about", "selectMode", "selectType",
-    "polyCreateFacet", "polyBevel", "assignMaterial", "nurbsToPoly", "displaySmoothness", "toggle", "layerEditor", "createDisplayLayer", "editDisplayLayerMembers", "help", "whatIs",
+    "polyCreateFacet", "polyBevel", "nonLinear", "joint", "skinCluster", "parentConstraint", "pointConstraint", "orientConstraint", "scaleConstraint", "aimConstraint", "assignMaterial", "nurbsToPoly", "displaySmoothness", "toggle", "layerEditor", "createDisplayLayer", "editDisplayLayerMembers", "help", "whatIs",
 ];
 
 pub fn exists(name: &str) -> bool {
@@ -506,6 +506,9 @@ pub fn run(s: &mut Scene, h: &mut dyn Host, name: &str, raw: &[Val]) -> Result<V
         "rename" => &[("is|ignoreShape", 0)],
         "polyExtrudeFacet" | "polyExtrudeFace" => &[("ltz|localTranslateZ", 1), ("ltx", 1), ("lty", 1), ("t|translate", 3), ("tx", 1), ("ty", 1), ("tz", 1), ("off|offset", 1), ("kft|keepFacesTogether", 1), ("d|divisions", 1), ("ch|constructionHistory", 1), ("thk|thickness", 1)],
         "polyProjection" => &[("t|type", 1), ("md|mapDirection", 1), ("ch", 1)],
+        "joint" => &[("p|position", 3), ("n|name", 1), ("rad|radius", 1), ("a|absolute", 0)],
+        "parentConstraint" | "pointConstraint" | "orientConstraint" | "scaleConstraint" | "aimConstraint" => &[("mo|maintainOffset", 0), ("w|weight", 1), ("aim|aimVector", 3), ("u|upVector", 3)],
+        "skinCluster" => &[("tsb|toSelectedBones", 0), ("mi|maximumInfluences", 1), ("dr|dropoffRate", 1)],
         "nurbsToPoly" => &[("f|format", 1), ("pt|polygonType", 1), ("ch", 1)],
         _ => &[("ch|constructionHistory", 1), ("n|name", 1)],
     };
@@ -1105,6 +1108,104 @@ pub fn run(s: &mut Scene, h: &mut dyn Host, name: &str, raw: &[Val]) -> Result<V
                 return Err("Select edges, faces or a polygon object.".into());
             }
             Ok(strs(out))
+        }
+        "joint" => {
+            // a selected joint becomes the parent, like Maya's Joint Tool
+            let parent = s.lead().filter(|l| s.node(l).is_some_and(|n| n.kind == "joint")).cloned();
+            let nm = a.s(&["n", "name"]).unwrap_or("joint1".into());
+            let id = s.create_handle("joint", &nm);
+            if let Some(r) = a.f(&["rad", "radius"]) {
+                s.nodes.get_mut(&id).unwrap().passthrough.insert("rig".into(), json!({ "radius": r }));
+            }
+            if let Some(p) = &parent {
+                s.reparent(&id, Some(p), None);
+            }
+            if let Some(p) = a.v3(&["p", "position"]) {
+                let pw = s.parent_world(&id);
+                let local = pw.inverse().transform_point3(DVec3::from_array(p));
+                let n = s.nodes.get_mut(&id).unwrap();
+                n.xf = Xform { t: local.to_array(), ..Default::default() };
+            }
+            s.select(std::slice::from_ref(&id), SelMode::Replace);
+            Ok(Val::Str(s.name_of(&id)))
+        }
+        "skinCluster" => {
+            let ts = targets(s, &a);
+            let mut joints: Vec<Id> = vec![];
+            for t in &ts {
+                for i in s.subtree(t) {
+                    if s.node(&i).is_some_and(|n| n.kind == "joint") && !joints.contains(&i) {
+                        joints.push(i);
+                    }
+                }
+            }
+            let meshes: Vec<Id> = ts.iter().flat_map(|t| s.subtree(t)).filter(|i| s.node(i).is_some_and(|n| n.mesh().is_some())).collect();
+            if joints.is_empty() || meshes.is_empty() {
+                return Err("skinCluster: select joints and a polygon object".into());
+            }
+            let mi = a.f(&["mi", "maximumInfluences"]).unwrap_or(3.0) as usize;
+            let mut out = vec![];
+            for m in &meshes {
+                let p = crate::skin::bind(s, m, &joints, mi);
+                s.add_history(m, "skinCluster", p);
+                out.push(last_history_name(s, m));
+            }
+            Ok(strs(out))
+        }
+        "parentConstraint" | "pointConstraint" | "orientConstraint" | "scaleConstraint" | "aimConstraint" => {
+            let mut ts = targets(s, &a);
+            if ts.len() < 2 {
+                return Err(format!("{name}: select target(s) then the object to constrain"));
+            }
+            let driven = ts.pop().unwrap();
+            let kind = name.trim_end_matches("Constraint");
+            let mo = a.b(&["mo", "maintainOffset"], false);
+            let c = s.add_constraint(kind, ts, &driven, mo);
+            if let (Some(aim), Some(c)) = (a.v3(&["aim", "aimVector"]), s.constraints.last_mut()) {
+                c.aim = aim;
+            }
+            Ok(strs(vec![c]))
+        }
+        "nonLinear" => {
+            let kind = a.s(&["type"]).unwrap_or("bend".into());
+            if !crate::deformers::KINDS.contains(&kind.as_str()) {
+                return Err(format!("nonLinear: unknown type {kind}"));
+            }
+            let meshes: Vec<Id> = targets(s, &a).iter().flat_map(|t| s.subtree(t)).filter(|i| s.node(i).is_some_and(|n| n.mesh().is_some())).collect();
+            if meshes.is_empty() {
+                return Err("nonLinear: select a polygon object".into());
+            }
+            // the handle covers the meshes: bounds -1..1 span their height
+            let mut bb = Aabb::EMPTY;
+            for m in &meshes {
+                bb.union(&s.world_bbox(m));
+            }
+            let h = s.create_handle("deformer", &format!("{kind}1Handle"));
+            let half = (bb.size().y * 0.5).max(0.01);
+            {
+                let n = s.nodes.get_mut(&h).unwrap();
+                n.xf.t = bb.center().to_array();
+                n.xf.s = [half; 3];
+                n.extra = json!({ "deformer": kind });
+            }
+            let mut p = crate::deformers::defaults(&kind);
+            for (f, v) in &a.flags {
+                if p.contains_key(f) {
+                    if let Some(x) = v.first() {
+                        p.insert(f.clone(), json!(x.num()));
+                    }
+                }
+            }
+            p.insert("handle".into(), json!(h));
+            let mut hist = String::new();
+            for m in &meshes {
+                let mut pm = p.clone();
+                pm.insert("owner".into(), json!(m));
+                s.add_history(m, &kind, pm);
+                hist = last_history_name(s, m);
+            }
+            s.select(std::slice::from_ref(&h), SelMode::Replace);
+            Ok(strs(vec![hist, s.name_of(&h)]))
         }
         "polyBridgeEdge" => simple_edge_op(s, &a, "polyBridgeEdge", |a, p| {
             p.insert("divisions".into(), json!(a.f(&["dv", "divisions"]).unwrap_or(0.0)));
@@ -1821,6 +1922,49 @@ mod tests {
         mel(&mut s, "setAttr polyBevel1.fraction 0.8;").unwrap();
         assert_eq!(s.node(&id).unwrap().mesh().unwrap().mesh.f.len(), 26);
         mel(&mut s, "select -r pCube1.e[0]; polyBevel;").unwrap();
+    }
+
+    #[test]
+    fn nonlinear_deformer_follows_handle() {
+        let mut s = Scene::new();
+        mel(&mut s, "polyCylinder -h 4 -sh 8; nonLinear -type twist -endAngle 90;").unwrap();
+        let c = s.find("pCylinder1").unwrap();
+        assert_eq!(s.node(&c).unwrap().mesh().unwrap().history.last().unwrap().name, "twist1");
+        let ti = s.node(&c).unwrap().mesh().unwrap().mesh.v.iter().position(|v| v.y > 1.99).unwrap();
+        let top = |s: &Scene| s.node(&c).unwrap().mesh().unwrap().mesh.v[ti];
+        let before = top(&s);
+        mel(&mut s, "setAttr twist1.endAngle 0;").unwrap();
+        let after = top(&s);
+        assert!((before - after).length() > 0.1);
+        // moving the handle re-evaluates the deformation
+        mel(&mut s, "setAttr twist1.endAngle 90; move -r 0 10 0 twist1Handle;").unwrap();
+        let moved = top(&s);
+        assert!((moved - before).length() > 0.01);
+    }
+
+    #[test]
+    fn joints_skin_and_constraints() {
+        let mut s = Scene::new();
+        mel(&mut s, "polyCylinder -h 4 -sh 8; move -r 0 2 0; select -cl; joint -p 0 0 0; joint -p 0 2 0; joint -p 0 4 0;").unwrap();
+        let j2 = s.find("joint2").unwrap();
+        assert_eq!(s.node(&j2).unwrap().parent.as_deref(), s.find("joint1").as_deref());
+        mel(&mut s, "select -r joint1 pCylinder1; skinCluster -mi 2;").unwrap();
+        let c = s.find("pCylinder1").unwrap();
+        let tip = s.node(&c).unwrap().mesh().unwrap().mesh.v.iter().position(|v| v.y > 1.99).unwrap();
+        let before = s.mesh_world(&c).unwrap().v[tip];
+        mel(&mut s, "setAttr joint2.rotateZ 90;").unwrap();
+        let after = s.mesh_world(&c).unwrap().v[tip];
+        assert!(after.x < before.x - 1.0, "{before} -> {after}");
+        // a point constraint follows its target and survives save/load
+        mel(&mut s, "spaceLocator; move 5 1 0; polySphere -n ball; select -r locator1 ball; pointConstraint;").unwrap();
+        let b = s.find("ball").unwrap();
+        assert!((s.world_pivot(&b) - DVec3::new(5.0, 1.0, 0.0)).length() < 1e-9);
+        mel(&mut s, "move 2 2 2 locator1; currentTime 2;").unwrap();
+        assert!((s.world_pivot(&b) - DVec3::new(2.0, 2.0, 2.0)).length() < 1e-9);
+        let data = s.serialize();
+        let mut s2 = Scene::new();
+        s2.load(&data).unwrap();
+        assert_eq!(s2.constraints.len(), 1);
     }
 
     #[test]

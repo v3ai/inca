@@ -17,6 +17,7 @@ pub enum Tool {
     EpCurve,
     Arc,
     Polygon,
+    Joint,
 }
 
 impl Tool {
@@ -24,7 +25,7 @@ impl Tool {
         matches!(self, Tool::Move | Tool::Rotate | Tool::Scale)
     }
     pub fn is_creation(self) -> bool {
-        matches!(self, Tool::CvCurve | Tool::EpCurve | Tool::Arc | Tool::Polygon)
+        matches!(self, Tool::CvCurve | Tool::EpCurve | Tool::Arc | Tool::Polygon | Tool::Joint)
     }
 }
 
@@ -315,6 +316,7 @@ impl IncaApp {
             Tool::EpCurve => "EP Curve Tool: click to place edit points, Enter to finish",
             Tool::Arc => "Three Point Circular Arc: click the start, a point on the arc and the end",
             Tool::Polygon => "Create Polygon Tool: click to place vertices, Enter to create the face",
+            Tool::Joint => "Joint Tool: click to place joints (each new joint is parented to the last), Enter to finish the chain",
         }
         .into();
     }
@@ -457,6 +459,11 @@ impl eframe::App for IncaApp {
         ctx.send_viewport_cmd(egui::ViewportCommand::Title(self.title()));
         self.tick_playback(&ctx);
         self.hotkeys(&ctx);
+        // constraints follow their targets live (gizmo drags, channel edits)
+        let moved = self.s.eval_constraints();
+        if !moved.is_empty() {
+            self.s.refresh_many(&moved);
+        }
         // ---- layout (Maya order: menus, status line, shelf, then the work area)
         egui::Panel::top("menubar").exact_size(22.0).resizable(false).frame(theme::bar_frame()).show(ui, |ui| crate::menus::menu_bar(self, ui));
         egui::Panel::top("statusline").exact_size(28.0).resizable(false).frame(theme::bar_frame()).show(ui, |ui| toolbar::status_line(self, ui));

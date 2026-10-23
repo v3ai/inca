@@ -16,3 +16,5 @@ pub mod commands;
 pub mod mel;
 pub mod render;
 pub mod selection;
+pub mod deformers;
+pub mod skin;

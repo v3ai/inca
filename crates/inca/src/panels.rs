@@ -372,12 +372,25 @@ pub fn channel_box(app: &mut IncaApp, ui: &mut egui::Ui) {
             channel_row(app, ui, &[NodeRef::Dag(lead.clone())], &c, &ops::nice_name(&c), kind, mn, mx);
         }
     }
-    // INPUTS (construction history, newest first)
-    let hist: Vec<(usize, String, String)> = app.s.node(&lead).and_then(|n| n.mesh()).map(|m| m.history.iter().enumerate().filter(|(_, h)| !h.name.contains('#')).map(|(i, h)| (i, h.name.clone(), h.ty.clone())).collect()).unwrap_or_default();
+    // INPUTS (construction history, newest first); a deformer handle shows its deformer
+    let mut hist: Vec<(String, usize, String, String)> = app.s.node(&lead).and_then(|n| n.mesh()).map(|m| m.history.iter().enumerate().filter(|(_, h)| !h.name.contains('#')).map(|(i, h)| (lead.clone(), i, h.name.clone(), h.ty.clone())).collect()).unwrap_or_default();
+    hist.reverse();
+    if app.s.node(&lead).is_some_and(|n| n.kind == "deformer") {
+        for n in app.s.nodes.values() {
+            if let Some(m) = n.mesh() {
+                for (i, h) in m.history.iter().enumerate() {
+                    if h.params.get("handle").and_then(|v| v.as_str()) == Some(lead.as_str()) {
+                        hist.push((n.id.clone(), i, h.name.clone(), h.ty.clone()));
+                    }
+                }
+            }
+        }
+    }
     if !hist.is_empty() {
         ui.add_space(4.0);
         theme::section_header(ui, "INPUTS");
-        for (i, hname, ty) in hist.into_iter().rev() {
+        for (owner, i, hname, ty) in hist {
+            let lead = owner;
             let open_id = format!("{lead}:{hname}");
             let open = app.panels.expanded.contains(&open_id);
             let err = app.s.node(&lead).and_then(|n| n.mesh()).and_then(|m| m.history[i].error.clone());
@@ -650,6 +663,7 @@ fn tool_settings(app: &mut IncaApp, ui: &mut egui::Ui) {
         Tool::EpCurve => "EP Curve Tool",
         Tool::Arc => "Three Point Circular Arc",
         Tool::Polygon => "Create Polygon Tool",
+        Tool::Joint => "Joint Tool",
     });
     if app.tool.is_creation() {
         ui.label("Click in a viewport to place points (on the ground grid in perspective, on the view plane in orthographic views). Enter completes, Backspace removes the last point, Esc cancels.");
