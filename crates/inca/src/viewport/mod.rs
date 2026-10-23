@@ -298,9 +298,8 @@ pub fn build_mesh_buffers(pm: &PolyMesh, color_of: &dyn Fn(Option<&String>) -> [
 /// Grid on the ground plane (or facing an ortho camera).
 pub fn grid_lines(cv: &CamView) -> Vec<LineVertex> {
     let mut out = vec![];
-    let sub = [0.36, 0.36, 0.36, 1.0];
-    let maj = [0.30, 0.30, 0.30, 1.0];
-    let axis = [0.12, 0.12, 0.12, 1.0];
+    // JS makeGrid colours
+    let (sub, maj, axis) = (hex(0x5c5c5c), hex(0x4d4d4d), hex(0x1e1e1e));
     let (size, step) = (12.0f64, 1.0f64);
     // ortho cameras get a grid in their view plane
     let (u, v) = if cv.ortho {
@@ -484,7 +483,26 @@ pub fn mesh_key(s: &Scene, id: &str) -> u64 {
     h.finish()
 }
 
-pub fn frame_uniform(s: &Scene, vp: &Viewport, cv: &CamView) -> FrameUniform {
+/// Background colours (top, bottom) per Alt+B mode, as the JS `BG` table:
+/// grey, black, dark grey, light grey, gradient.
+pub const BG_MODES: [&str; 5] = ["Gray", "Black", "Dark Gray", "Light Gray", "Gradient"];
+
+fn hex(c: u32) -> [f32; 4] {
+    [((c >> 16) & 255) as f32 / 255.0, ((c >> 8) & 255) as f32 / 255.0, (c & 255) as f32 / 255.0, 1.0]
+}
+
+pub fn background(mode: usize) -> ([f32; 4], [f32; 4]) {
+    match mode {
+        1 => (hex(0x000000), hex(0x000000)),
+        2 => (hex(0x3a3a3a), hex(0x3a3a3a)),
+        3 => (hex(0xa0a0a0), hex(0xa0a0a0)),
+        4 => (hex(0x8a8f96), hex(0x3d3f42)),
+        _ => (hex(0x6b6b6b), hex(0x6b6b6b)),
+    }
+}
+
+pub fn frame_uniform(s: &Scene, vp: &Viewport, cv: &CamView, bg_mode: usize) -> FrameUniform {
+    let (bg_top, bg_bottom) = background(bg_mode);
     let m4 = |m: DMat4| m.as_mat4().to_cols_array_2d();
     let mut lights = [GpuLight { pos: [0.0; 4], dir: [0.0; 4], color: [0.0; 4], params: [0.0; 4] }; 8];
     let mut count = 0;
@@ -537,8 +555,8 @@ pub fn frame_uniform(s: &Scene, vp: &Viewport, cv: &CamView) -> FrameUniform {
         view: m4(cv.view),
         cam_pos: [cv.eye.x as f32, cv.eye.y as f32, cv.eye.z as f32, if cv.ortho { 1.0 } else { 0.0 }],
         cam_dir: [cv.fwd.x as f32, cv.fwd.y as f32, cv.fwd.z as f32, 0.0],
-        bg_top: [0.27, 0.29, 0.32, 1.0],
-        bg_bottom: [0.045, 0.048, 0.052, 1.0],
+        bg_top,
+        bg_bottom,
         mode: [light_mode, count as f32, if vp.xray { 1.0 } else { 0.0 }, if vp.backface { 1.0 } else { 0.0 }],
         lights,
     }

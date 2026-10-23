@@ -95,7 +95,7 @@ fn pane(app: &mut IncaApp, ui: &mut egui::Ui, frame: &mut eframe::Frame, idx: us
         };
         let live = app.vp_state.live_meshes();
         let draws = viewport::build_draws(&app.s, &app.vps[idx], &cv, gpu, &mut app.smooth_cache, &live);
-        let fu = viewport::frame_uniform(&app.s, &app.vps[idx], &cv);
+        let fu = viewport::frame_uniform(&app.s, &app.vps[idx], &cv, app.bg_mode);
         gpu.render(idx, &fu, &draws);
         ui.painter().image(tex, img_rect, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
     } else {

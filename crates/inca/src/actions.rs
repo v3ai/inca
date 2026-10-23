@@ -197,6 +197,7 @@ pub static ACTIONS: &[(&str, &str, &str)] = &[
     ("toggleCmdline", "Command Line", ""),
     ("toggleToolbox", "Tool Box", ""),
     ("toggleUIElements", "Hide/Show UI Elements", "Ctrl+Space"),
+    ("cycleBackground", "Toggle Background Color", "Alt+B"),
     ("manipBigger", "Increase Manipulator Size", "="),
     ("manipSmaller", "Decrease Manipulator Size", "-"),
 ];
@@ -672,6 +673,7 @@ pub fn builtin(app: &mut IncaApp, id: &str) {
         "toggleCmdline" => app.set_shown("cmdline", !app.shown("cmdline")),
         "toggleToolbox" => app.set_shown("toolbox", !app.shown("toolbox")),
         "toggleUIElements" => crate::workspace::toggle_all(app),
+        "cycleBackground" => app.bg_mode = (app.bg_mode + 1) % crate::viewport::BG_MODES.len(),
         "manipBigger" => app.manip_size = (app.manip_size * 1.2).min(5.0),
         "manipSmaller" => app.manip_size = (app.manip_size / 1.2).max(0.2),
         _ => app.last_result = format!("// Warning: {} is not available yet.", label(id)),
@@ -710,6 +712,7 @@ pub fn hotkey(key: Key, m: Modifiers, app: &IncaApp) -> Option<&'static str> {
         (Key::I, true, true, _) => "invertSelection",
         (Key::E, true, _, _) => "extrude",
         (Key::B, true, _, _) => "bevel",
+        (Key::B, false, false, true) => "cycleBackground",
         (Key::Insert, ..) => "pivotEdit",
         (Key::Num1, true, _, _) => "isolateSelect",
         (Key::Delete, true, _, _) => "deleteEdgeVertex",

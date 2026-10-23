@@ -698,6 +698,12 @@ fn prefs(app: &mut IncaApp, ui: &mut egui::Ui) {
     ui.add(egui::Slider::new(&mut app.manip_size, 0.2..=5.0).text("size"));
     theme::section_header(ui, "Modeling");
     ui.checkbox(&mut app.history_on, "Construction history on by default");
+    theme::section_header(ui, "Display");
+    egui::ComboBox::from_label("Background color").selected_text(crate::viewport::BG_MODES[app.bg_mode]).show_ui(ui, |ui| {
+        for (i, m) in crate::viewport::BG_MODES.iter().enumerate() {
+            ui.selectable_value(&mut app.bg_mode, i, *m);
+        }
+    });
     theme::section_header(ui, "Interface");
     for (k, l) in crate::workspace::ELEMENTS {
         let mut on = app.shown(k);

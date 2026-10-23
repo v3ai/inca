@@ -172,6 +172,8 @@ pub struct IncaApp {
     /// 0 off, 1 object X, 2 world X, 3 world Y, 4 world Z
     pub symmetry: usize,
     pub paint_radius: f32,
+    /// viewport background (Alt+B cycles viewport::BG_MODES)
+    pub bg_mode: usize,
     /// Space: tap toggles the layout, hold shows the hotbox
     pub space_down: Option<f64>,
     pub hotbox: Option<egui::Pos2>,
@@ -254,6 +256,7 @@ impl IncaApp {
             live_surface: None,
             symmetry: 0,
             paint_radius: 24.0,
+            bg_mode: cc.storage.and_then(|s| eframe::get_value(s, "bgMode")).unwrap_or(0),
             hotbox: None,
         };
         if let Some(p) = std::env::args().nth(1).filter(|a| !a.starts_with('-')) {
@@ -528,6 +531,7 @@ impl eframe::App for IncaApp {
         eframe::set_value(storage, "recent", &self.recent);
         eframe::set_value(storage, "customShelf", &self.custom_shelf);
         eframe::set_value(storage, "workspace", &self.workspace);
+        eframe::set_value(storage, "bgMode", &self.bg_mode);
         eframe::set_value(storage, "rightTab", &self.right_tab);
         eframe::set_value(storage, "showRight", &self.show_right);
         eframe::set_value(storage, "showOutliner", &self.show_outliner);

@@ -100,6 +100,7 @@ pub fn common(name: &str) -> Vec<M> {
         "Display" => vec![
             A("toggleGrid"),
             A("toggleHud"),
+            A("cycleBackground"),
             Sep,
             A("hideSelection"),
             A("showAll"),
