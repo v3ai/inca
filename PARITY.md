@@ -30,8 +30,9 @@ registry, menus, UI modules and a 0.1.12 screenshot.
 - [x] B8. UV: UV Editor (select / move / rotate / scale UVs, flip, rotate 90, normalize, layout, unfold/relax, shells, checker / shading)
 - [ ] B8b. UV component mode in the viewport (F12) and the texture image behind the UV Editor
 - [x] B9. Selection: Lasso and Paint tools, Soft Select (B, B+drag radius, falloff colours, smooth / linear), Symmetry (object X, world X/Y/Z), cycle component type (Shift+Q), pre-selection highlight
-- [ ] B10. Manipulators: Ctrl+click axis lock, MMB drag along active handle, point snap (V), discrete rotate (J), hold W/E/R marking menus, manipulator size readout + reset
-- [ ] B11. Marking menus: RMB object/component menus, Shift+RMB tool menus, Ctrl+RMB conversion; In-View Editor for history nodes; option boxes for menu items
+- [x] B10. Manipulators: hold V point snap, hold X grid snap, hold J discrete rotate, W/E/R + LMB marking menus, manipulator size (+/-) readout + reset
+- [ ] B10b. Ctrl+click axis lock and MMB drag along the active handle (needs a custom manipulator instead of transform-gizmo)
+- [x] B11. Marking menus: RMB object/component menus, Shift+RMB tool menus, Ctrl+RMB conversion; In-View Editor for new history nodes; option boxes (smooth, mirror, add divisions, extrude, bridge, bevel, merge, planar map, revolve, group, chamfer, duplicate special)
 - [ ] B12. Rigging: IK handles (RP / SC, pole vector, twist), Insert / Mirror / Orient Joint, Unbind Skin, Paint Skin Weights, Cluster, Lattice (+ point tool), Soft Modification, Blend Shape, Delete Deformers, Pole Vector constraint, Remove Constraints, Set Driven Key window; load the JS rig nodes (joints, IK, lattices, constraints) instead of keeping them as locators
 - [ ] B13. Animation: (Play Backwards, Stop, Copy/Paste Keys done) Bake, Ghosting, Motion Trails, Attach to Motion Path, Playblast (video / PNG sequence)
 - [ ] B14. FX: Create Particles (particle tool), Rewind Simulation, Remove Rigid Body, per-field connections

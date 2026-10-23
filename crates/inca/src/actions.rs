@@ -268,7 +268,9 @@ pub static ACTIONS: &[(&str, &str, &str)] = &[
     ("assignNew_standardSurface", "Standard Surface", ""),
     ("assignNew_surfaceShader", "Surface Shader", ""),
     ("renderCurrent", "Render Current Frame", ""),
-    ("snapGrid", "Snap to Grids", "X"),
+    ("snapGrid", "Snap to Grids (hold X)", ""),
+    ("manipBigger", "Increase Manipulator Size", "="),
+    ("manipSmaller", "Decrease Manipulator Size", "-"),
     ("toggleWorld", "World / Object space", ""),
     ("toggleHistory", "Construction History", ""),
     ("toggleShelf", "Shelf", ""),
@@ -277,8 +279,6 @@ pub static ACTIONS: &[(&str, &str, &str)] = &[
     ("toggleToolbox", "Tool Box", ""),
     ("toggleUIElements", "Hide/Show UI Elements", "Ctrl+Space"),
     ("cycleBackground", "Toggle Background Color", "Alt+B"),
-    ("manipBigger", "Increase Manipulator Size", "="),
-    ("manipSmaller", "Decrease Manipulator Size", "-"),
 ];
 
 pub fn label(id: &str) -> String {
@@ -327,6 +327,8 @@ pub fn mel_for(app: &IncaApp, id: &str) -> Option<String> {
         return Some(format!("{id};"));
     }
     let ch = app.history_on as i32;
+    let opt = |a: &str, k: &str| crate::options::get(app, a, k);
+    let f = inca_core::math::fmt_num_long;
     Some(
         match id {
             "nurbsCircle" => format!("circle -c 0 0 0 -nr 0 1 0 -sw 360 -r 1 -d 3 -s 8 -ch {ch};"),
@@ -340,7 +342,7 @@ pub fn mel_for(app: &IncaApp, id: &str) -> Option<String> {
             "deleteChannels" => "delete -c;".into(),
             "duplicate" => "duplicate -rr;".into(),
             "duplicateHistory" => "duplicate -rr -un;".into(),
-            "group" => "group;".into(),
+            "group" => if opt("group", "pivot") == 0.0 { "group; xform -cp;".into() } else { "group;".into() },
             "ungroup" => return ungroup_mel(app),
             "parent" => "parent;".into(),
             "unparent" => "parent -w;".into(),
@@ -356,18 +358,18 @@ pub fn mel_for(app: &IncaApp, id: &str) -> Option<String> {
             "booleanUnion" => "polyCBoolOp -op 1;".into(),
             "booleanDifference" => "polyCBoolOp -op 2;".into(),
             "booleanIntersection" => "polyCBoolOp -op 3;".into(),
-            "smooth" => format!("polySmooth -dv 1 -ch {ch};"),
+            "smooth" => format!("polySmooth -dv {} -ch {ch};", opt("smooth", "divisions") as i64),
             "triangulate" => "polyTriangulate;".into(),
             "quadrangulate" => "polyQuad -a 30;".into(),
-            "mirror" => "polyMirrorFace -ma 0 -p 0 -mm 1;".into(),
+            "mirror" => format!("polyMirrorFace -ma {} -p 0 -mm {} -mt {};", opt("mirror", "axis") as i64, opt("mirror", "merge") as i64, f(opt("mirror", "threshold"))),
             "fillHole" => "polyCloseBorder;".into(),
-            "addDivisions" => "polySubdivideFacet -dv 1;".into(),
+            "addDivisions" => format!("polySubdivideFacet -dv {};", opt("addDivisions", "divisions") as i64),
             "extrude" => match app.s.comp_mode {
                 Some(CompMode::Edge) => "polyExtrudeEdge -off 0.5;".into(),
-                _ => format!("polyExtrudeFacet -ltz 0.5 -kft 1 -ch {ch};"),
+                _ => format!("polyExtrudeFacet -ltz {} -off {} -d {} -kft {} -ch {ch};", f(opt("extrude", "thickness")), f(opt("extrude", "offset")), opt("extrude", "divisions").max(1.0) as i64, opt("extrude", "keepFacesTogether") as i64),
             },
-            "bridge" => "polyBridgeEdge -dv 0;".into(),
-            "bevel" => format!("polyBevel -f 0.5 -ch {ch};"),
+            "bridge" => format!("polyBridgeEdge -dv {};", opt("bridge", "divisions") as i64),
+            "bevel" => format!("polyBevel -f {} -ch {ch};", f(opt("bevel", "fraction"))),
             "smoothBind" => "skinCluster -tsb -mi 3;".into(),
             "createEmitter" => "emitter -type omni -r 100 -spd 1;".into(),
             "createDirectionalEmitter" => "emitter -type directional -r 100 -spd 3 -dx 0 -dy 1 -dz 0;".into(),
@@ -397,10 +399,10 @@ pub fn mel_for(app: &IncaApp, id: &str) -> Option<String> {
             "cleanup" => "polyCleanup;".into(),
             "collapse" => if app.s.comp_mode == Some(inca_core::scene::CompMode::Face) { "polyCollapseFacet;" } else { "polyCollapseEdge;" }.into(),
             "connect" => "polyConnectComponents;".into(),
-            "chamferVertex" => "polyChamferVtx -w 0.25;".into(),
+            "chamferVertex" => format!("polyChamferVtx -w {};", f(opt("chamferVertex", "width"))),
             "curveFromEdges" => "polyToCurve -form 2 -degree 1;".into(),
             "softHardAngle" => "polySoftEdge -a 30;".into(),
-            "merge" => "polyMergeVertex -d 0.01;".into(),
+            "merge" => format!("polyMergeVertex -d {};", f(opt("merge", "threshold"))),
             "poke" => "polyPoke;".into(),
             "deleteEdgeVertex" => "delete;".into(),
             "extract" => "polyChipOff -dup 0;".into(),
@@ -408,11 +410,11 @@ pub fn mel_for(app: &IncaApp, id: &str) -> Option<String> {
             "reverseNormals" => "polyNormal;".into(),
             "softenEdge" => "polySoftEdge -a 180;".into(),
             "hardenEdge" => "polySoftEdge -a 0;".into(),
-            "planarMap" => "polyProjection -t planar -md y;".into(),
+            "planarMap" => format!("polyProjection -t planar -md {};", ["x", "y", "z"][(opt("planarMap", "axis") as usize).min(2)]),
             "cylindricalMap" => "polyProjection -t cylindrical;".into(),
             "sphericalMap" => "polyProjection -t spherical;".into(),
             "automaticMap" => "polyProjection -t automatic;".into(),
-            "revolve" => format!("revolve -ax 1 -ssw 0 -esw 360 -s 8 -ch {ch};"),
+            "revolve" => format!("revolve -ax {} -ssw {} -esw {} -s {} -ch {ch};", opt("revolve", "axis") as i64, f(opt("revolve", "startSweep")), f(opt("revolve", "endSweep")), opt("revolve", "sections") as i64),
             "loft" => format!("loft -ch {ch};"),
             "extrudeCurve" => format!("extrude -ch {ch};"),
             "planarSurface" => format!("planarSrf -ch {ch};"),
@@ -879,6 +881,11 @@ pub fn builtin(app: &mut IncaApp, id: &str) {
             app.windows_state.start_render(&app.s, &cam, 0);
         }
         "snapGrid" => app.snap_grid = !app.snap_grid,
+        "manipBigger" | "manipSmaller" => {
+            let f = if id == "manipBigger" { 1.15 } else { 1.0 / 1.15 };
+            app.manip_size = (app.manip_size * f).clamp(0.2, 4.0);
+            app.manip_size_shown = 2.5;
+        }
         "pivotEdit" => {
             app.pivot_mode = !app.pivot_mode;
             if app.pivot_mode && !app.tool.is_manip() {
@@ -893,8 +900,6 @@ pub fn builtin(app: &mut IncaApp, id: &str) {
         "toggleToolbox" => app.set_shown("toolbox", !app.shown("toolbox")),
         "toggleUIElements" => crate::workspace::toggle_all(app),
         "cycleBackground" => app.bg_mode = (app.bg_mode + 1) % crate::viewport::BG_MODES.len(),
-        "manipBigger" => app.manip_size = (app.manip_size * 1.2).min(5.0),
-        "manipSmaller" => app.manip_size = (app.manip_size / 1.2).max(0.2),
         _ => app.last_result = format!("// Warning: {} is not available yet.", label(id)),
     }
 }
@@ -949,6 +954,8 @@ pub fn hotkey(key: Key, m: Modifiers, app: &IncaApp) -> Option<&'static str> {
         (Key::E, true, _, _) => "extrude",
         (Key::B, true, _, _) => "bevel",
         (Key::B, false, false, false) => "softSelect",
+        (Key::Equals | Key::Plus, false, _, false) => "manipBigger",
+        (Key::Minus, false, false, false) => "manipSmaller",
         (Key::Q, false, true, false) => "componentTypeCycle",
         (Key::B, false, false, true) => "cycleBackground",
         (Key::Insert, ..) => "pivotEdit",
@@ -991,9 +998,6 @@ pub fn hotkey(key: Key, m: Modifiers, app: &IncaApp) -> Option<&'static str> {
         (Key::Comma, false, true, false) => "shrinkSelection",
         (Key::Period, false, false, false) => "nextKey",
         (Key::Comma, false, false, false) => "prevKey",
-        (Key::Equals | Key::Plus, false, _, false) => "manipBigger",
-        (Key::Minus, false, _, false) => "manipSmaller",
-        (Key::X, false, false, false) => "snapGrid",
         (Key::Escape, ..) if app.playing => "stopPlayback",
         _ => return None,
     })

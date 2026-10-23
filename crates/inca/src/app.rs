@@ -215,6 +215,15 @@ pub struct IncaApp {
     pub mesh_opts: crate::mesh_tools::MeshToolOpts,
     pub uv_editor: crate::uv_editor::UvEditor,
     pub soft: SoftSel,
+    pub marking: Option<crate::marking::Menu>,
+    /// the object a marking menu was opened over
+    pub marking_target: Option<String>,
+    /// In-View Editor: a history node shown in the viewport after an op
+    pub inview: Option<(String, usize)>,
+    pub options: crate::options::Values,
+    pub option_dialog: Option<String>,
+    /// seconds left to show the manipulator size readout
+    pub manip_size_shown: f32,
     /// (sources, duplicates) of the last Shift+D, to repeat its offset
     pub last_dup: Option<(Vec<String>, Vec<String>)>,
     /// viewport background (Alt+B cycles viewport::BG_MODES)
@@ -291,7 +300,7 @@ impl IncaApp {
             world_space: true,
             snap_grid: false,
             history_on: true,
-            manip_size: 1.0,
+            manip_size: cc.storage.and_then(|s| eframe::get_value(s, "manipSize")).unwrap_or(1.0),
             pivot_mode: false,
             gpu,
             smooth_cache: HashMap::new(),
@@ -334,6 +343,12 @@ impl IncaApp {
             fps_measured: 0.0,
             mesh_tool: Default::default(),
             uv_editor: Default::default(),
+            manip_size_shown: 0.0,
+            marking: None,
+            marking_target: None,
+            inview: None,
+            options: cc.storage.and_then(|s| eframe::get_value(s, "options")).unwrap_or_default(),
+            option_dialog: None,
             soft: cc.storage.and_then(|s| eframe::get_value(s, "softSelect")).unwrap_or_default(),
             mesh_opts: cc.storage.and_then(|s| eframe::get_value(s, "meshTools")).unwrap_or_default(),
             last_dup: None,
@@ -359,6 +374,23 @@ impl IncaApp {
     /// Run MEL as one undoable step, echoing it like Maya's Script Editor.
     pub fn run_mel(&mut self, label: &str, src: &str) -> Result<Val, String> {
         self.s.checkpoint(label);
+        let hist_len = |s: &Scene, id: &str| s.node(id).and_then(|n| n.mesh()).map(|m| m.history.len()).unwrap_or(0);
+        let watched: Vec<(String, usize)> = self.s.hilite().into_iter().chain(self.s.sel.iter().cloned()).map(|i| { let n = hist_len(&self.s, &i); (i, n) }).collect();
+        let r = self.run_mel_inner(src);
+        // a new history node with channels opens the In-View Editor (JS showHistoryEditor)
+        for (id, n0) in watched {
+            let n1 = hist_len(&self.s, &id);
+            if n1 > n0 {
+                let ty = self.s.node(&id).and_then(|n| n.mesh()).map(|m| m.history[n1 - 1].ty.clone()).unwrap_or_default();
+                if inca_core::ops::info(&ty).is_some_and(|i| !i.2.is_empty()) {
+                    self.inview = Some((id, n1 - 1));
+                }
+            }
+        }
+        r
+    }
+
+    fn run_mel_inner(&mut self, src: &str) -> Result<Val, String> {
         let before = self.s.rev;
         let r = self.exec_mel(src, true);
         if self.s.rev == before {
@@ -690,6 +722,8 @@ impl eframe::App for IncaApp {
         eframe::set_value(storage, "hud", &self.hud);
         eframe::set_value(storage, "meshTools", &self.mesh_opts);
         eframe::set_value(storage, "softSelect", &self.soft);
+        eframe::set_value(storage, "manipSize", &self.manip_size);
+        eframe::set_value(storage, "options", &self.options);
         if let Some(p) = &self.s.project {
             eframe::set_value(storage, "lastProject", p);
         }
@@ -764,6 +798,8 @@ impl eframe::App for IncaApp {
         crate::edit_cmds::dup_special_window(self, &ctx);
         crate::edit_cmds::add_attr_window(self, &ctx);
         crate::uv_editor::window(self, &ctx);
+        crate::marking::show(self, &ctx);
+        crate::options::dialog(self, &ctx);
         crate::project::autosave_tick(self, ctx.input(|i| i.time));
         crate::menus::hotbox(self, &ctx);
         crate::test_hook::step(self, &ctx);

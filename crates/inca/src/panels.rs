@@ -1038,6 +1038,18 @@ pub fn ae_copies(app: &mut IncaApp, ctx: &egui::Context) {
     app.panels.ae_copies = keep;
 }
 
+/// The channels of one history node (Attribute Editor tab, In-View Editor).
+pub fn history_channels(app: &mut IncaApp, ui: &mut egui::Ui, id: &str, i: usize) {
+    let r = NodeRef::History(id.to_string(), i);
+    let ty = app.s.node(id).and_then(|n| n.mesh()).and_then(|m| m.history.get(i)).map(|h| h.ty.clone()).unwrap_or_default();
+    if let Some((_, _, chans)) = ops::info(&ty) {
+        for c in chans {
+            let label = c.label.map(String::from).unwrap_or_else(|| ops::nice_name(c.key));
+            channel_row(app, ui, std::slice::from_ref(&r), c.key, &label, c.kind, c.min, c.max);
+        }
+    }
+}
+
 fn ae_body(app: &mut IncaApp, ui: &mut egui::Ui, tabs: &[(String, NodeRef)], tab: usize) {
     let (_, r) = tabs[tab].clone();
     match &r {

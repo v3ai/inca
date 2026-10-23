@@ -198,7 +198,24 @@ pub fn items(app: &mut IncaApp, ui: &mut egui::Ui, list: &[M]) {
                     text = format!("{} {text}", if c { "✔" } else { "  " });
                 }
                 let b = egui::Button::new(text).shortcut_text(hotkey_label(id));
-                if ui.add(b).clicked() {
+                if crate::options::has_box(id) {
+                    // the option box opens the command's options dialog
+                    let mut opened = false;
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 2.0;
+                        if ui.add(b).clicked() {
+                            app.action(id);
+                            ui.close();
+                        }
+                        if crate::icons::button_ex(ui, "optionBox", "Options", false, 16.0, 12.0, true).clicked() {
+                            opened = true;
+                        }
+                    });
+                    if opened {
+                        crate::options::open(app, id);
+                        ui.close();
+                    }
+                } else if ui.add(b).clicked() {
                     app.action(id);
                     ui.close();
                 }

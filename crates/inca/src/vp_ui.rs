@@ -134,6 +134,10 @@ fn pane(app: &mut IncaApp, ui: &mut egui::Ui, frame: &mut eframe::Frame, idx: us
     }
     interact(app, ui, idx, &resp, &cv, &painter);
     hud(app, idx, &cv, &painter);
+    if active {
+        manip_size_readout(app, ui, img_rect);
+        inview_editor(app, ui, img_rect);
+    }
 }
 
 fn panel_menus(app: &mut IncaApp, ui: &mut egui::Ui, idx: usize) {
@@ -438,6 +442,24 @@ fn sel_mode(m: egui::Modifiers) -> SelMode {
 
 fn interact(app: &mut IncaApp, ui: &mut egui::Ui, idx: usize, resp: &egui::Response, cv: &CamView, painter: &egui::Painter) {
     let (mods, pointer, scroll) = ui.input(|i| (i.modifiers, i.pointer.clone(), i.smooth_scroll_delta.y));
+    // ---- marking menus: RMB (Shift / Ctrl variants), W / E / R + LMB
+    if app.marking.is_some() {
+        return;
+    }
+    let now = ui.input(|i| i.time);
+    if resp.hovered() && !mods.alt {
+        if let Some(p) = pointer.press_origin().filter(|_| pointer.button_pressed(egui::PointerButton::Secondary)) {
+            crate::marking::open_rmb(app, idx, cv, p, mods, now);
+            return;
+        }
+        if pointer.button_pressed(egui::PointerButton::Primary) {
+            let held = ui.input(|i| [(egui::Key::W, Tool::Move), (egui::Key::E, Tool::Rotate), (egui::Key::R, Tool::Scale)].into_iter().find(|(k, _)| i.key_down(*k)).map(|x| x.1));
+            if let (Some(t), Some(p)) = (held, pointer.press_origin()) {
+                crate::marking::open_tool(app, idx, t, p, now);
+                return;
+            }
+        }
+    }
     let cam = app.vps[idx].camera.clone();
     // ---- navigation (Alt + mouse, wheel)
     if resp.hovered() && scroll != 0.0 {
@@ -564,8 +586,7 @@ fn interact(app: &mut IncaApp, ui: &mut egui::Ui, idx: usize, resp: &egui::Respo
             click_select(app, idx, cv, p, sel_mode(mods));
         }
     }
-    // ---- RMB marking menu
-    resp.context_menu(|ui| marking_menu(app, ui));
+
 }
 
 fn click_select(app: &mut IncaApp, idx: usize, cv: &CamView, p: Pos2, mode: SelMode) {
@@ -700,42 +721,6 @@ fn region_select(app: &mut IncaApp, idx: usize, cv: &CamView, region: &dyn Fn(Po
     app.select_names(&ids, if mode == SelMode::Toggle && ids.is_empty() { SelMode::Add } else { mode });
 }
 
-fn marking_menu(app: &mut IncaApp, ui: &mut egui::Ui) {
-    let has_mesh = app.s.sel.iter().any(|i| app.s.node(i).is_some_and(|n| n.mesh().is_some()));
-    if has_mesh {
-        for (l, m) in [("Object Mode", None), ("Vertex", Some(CompMode::Vertex)), ("Edge", Some(CompMode::Edge)), ("Face", Some(CompMode::Face))] {
-            if ui.selectable_label(app.s.comp_mode == m, l).clicked() {
-                app.set_comp_mode(m);
-                ui.close();
-            }
-        }
-        ui.separator();
-        ui.menu_button("Assign New Material", |ui| {
-            for (l, a) in [("Lambert", "assignNew_lambert"), ("Blinn", "assignNew_blinn"), ("Phong", "assignNew_phong"), ("Standard Surface", "assignNew_standardSurface")] {
-                if ui.button(l).clicked() {
-                    app.action(a);
-                    ui.close();
-                }
-            }
-        });
-        ui.menu_button("Assign Existing Material", |ui| {
-            let mats: Vec<(String, String)> = app.s.mats.values().map(|m| (m.id.clone(), m.name.clone())).collect();
-            for (_, n) in mats {
-                if ui.button(&n).clicked() {
-                    let _ = app.run_mel("assign material", &format!("hyperShade -assign {n};"));
-                    ui.close();
-                }
-            }
-        });
-        ui.separator();
-    }
-    for a in ["selectAll", "frameSelected", "frameAll", "duplicate", "deleteSel", "centerPivot", "freezeTransformations"] {
-        if ui.button(crate::actions::label(a)).clicked() {
-            app.action(a);
-            ui.close();
-        }
-    }
-}
 
 /// Move / rotate / scale manipulator. Returns true while it owns the mouse.
 fn gizmo(app: &mut IncaApp, ui: &mut egui::Ui, idx: usize, resp: &egui::Response, cv: &CamView, painter: &egui::Painter) -> bool {
@@ -792,7 +777,8 @@ fn gizmo(app: &mut IncaApp, ui: &mut egui::Ui, idx: usize, resp: &egui::Response
         viewport: resp.rect,
         modes,
         orientation: if app.world_space && app.tool != Tool::Scale && app.s.comp_mode.is_none() { GizmoOrientation::Global } else { GizmoOrientation::Local },
-        snapping: app.snap_grid,
+        // hold X: grid snap while moving; hold J: discrete rotate (Maya)
+        snapping: app.snap_grid || ui.input(|i| (app.tool == Tool::Move && i.key_down(egui::Key::X)) || (app.tool == Tool::Rotate && i.key_down(egui::Key::J))),
         snap_distance: app.vp_state.snap_step as f32,
         snap_angle: (app.vp_state.snap_angle as f32).to_radians(),
         snap_scale: 0.1,
@@ -849,6 +835,15 @@ fn gizmo(app: &mut IncaApp, ui: &mut egui::Ui, idx: usize, resp: &egui::Response
             if let Some(n) = new_tfs.first() {
                 d.cur = *n;
             }
+            // hold V (or the status line toggle): the moved pivot snaps to the vertex nearest the cursor
+            if d.tool == Tool::Move && (app.snap_point || ui.input(|i| i.key_down(egui::Key::V))) {
+                let moving: HashSet<String> = d.comps.iter().map(|c| c.0.clone()).chain(d.objects.iter().map(|o| o.0.clone())).collect();
+                if let Some(w) = snap_vertex(&app.s, &app.vps[idx], cv, cursor, &moving) {
+                    let d = app.vp_state.drag.as_mut().unwrap();
+                    d.cur.translation = w.into();
+                }
+            }
+            let d = app.vp_state.drag.as_mut().unwrap();
             let delta = tf_matrix(&d.cur) * tf_matrix(&d.start).inverse();
             let objs = d.objects.clone();
             let pivots = d.pivots.clone();
@@ -1054,6 +1049,28 @@ pub fn finish_creation(app: &mut IncaApp) {
     let _ = app.run_mel("create", &mel);
 }
 
+/// Nearest vertex of a visible mesh (not one being moved) within 40 px of the cursor.
+fn snap_vertex(s: &inca_core::scene::Scene, vp: &viewport::Viewport, cv: &CamView, cursor: Pos2, skip: &HashSet<String>) -> Option<DVec3> {
+    let mut best: Option<(f32, DVec3)> = None;
+    for id in s.all_dag(false) {
+        if skip.contains(&id) || !s.is_visible(&id) {
+            continue;
+        }
+        let Some(pm) = s.node(&id).and_then(|n| n.mesh()).map(|m| &m.mesh) else { continue };
+        let wm = s.world_matrix(&id);
+        for p in &pm.v {
+            let w = wm.transform_point3(*p);
+            if let Some(q) = cv.project(w, vp.rect) {
+                let d = q.distance(cursor);
+                if d < 40.0 && best.is_none_or(|b| d < b.0) {
+                    best = Some((d, w));
+                }
+            }
+        }
+    }
+    best.map(|b| b.1)
+}
+
 fn finish_drag(app: &mut IncaApp, d: GizmoDrag) {
     let delta = tf_matrix(&d.cur) * tf_matrix(&d.start).inverse();
     let (s, r, t) = delta.to_scale_rotation_translation();
@@ -1183,6 +1200,56 @@ fn hud(app: &IncaApp, idx: usize, cv: &CamView, p: &egui::Painter) {
     if app.pivot_mode {
         tag("Edit Pivot", Color32::from_rgb(95, 211, 255));
     }
+}
+
+/// In-View Editor: the channels of the history node an op just made, in the viewport (JS showHistoryEditor).
+fn inview_editor(app: &mut IncaApp, ui: &mut egui::Ui, rect: Rect) {
+    let Some((id, i)) = app.inview.clone() else { return };
+    let valid = app.s.node(&id).and_then(|n| n.mesh()).and_then(|m| m.history.get(i)).map(|h| h.name.clone());
+    let lead_ok = app.s.sel.contains(&id) || app.s.hilite().contains(&id);
+    let Some(name) = valid.filter(|_| lead_ok) else {
+        app.inview = None;
+        return;
+    };
+    let r = Rect::from_min_size(rect.min + vec2(8.0, 96.0), vec2(250.0, 10.0));
+    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(Rect::from_min_size(r.min, vec2(250.0, rect.height() - 110.0))));
+    let mut close = false;
+    egui::Frame::new().fill(Color32::from_rgba_unmultiplied(55, 55, 55, 235)).stroke(Stroke::new(1.0, Color32::from_gray(0x22))).corner_radius(3).inner_margin(egui::Margin::same(6)).show(&mut child, |ui| {
+        ui.set_width(238.0);
+        ui.horizontal(|ui| {
+            ui.label(RichText::new(&name).strong());
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                close = ui.small_button("✕").on_hover_text("Close the In-View Editor").clicked();
+            });
+        });
+        crate::panels::history_channels(app, ui, &id, i);
+    });
+    if close || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+        app.inview = None;
+    }
+}
+
+/// After +/-: the manipulator size with a bar and a Reset button (JS panel-manipsize).
+fn manip_size_readout(app: &mut IncaApp, ui: &mut egui::Ui, rect: Rect) {
+    if app.manip_size_shown <= 0.0 {
+        return;
+    }
+    app.manip_size_shown -= ui.input(|i| i.unstable_dt).min(0.1);
+    ui.ctx().request_repaint();
+    let r = Rect::from_min_size(pos2(rect.max.x - 230.0, rect.max.y - 34.0), vec2(222.0, 26.0));
+    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(r).layout(egui::Layout::left_to_right(egui::Align::Center)));
+    egui::Frame::new().fill(Color32::from_rgba_unmultiplied(40, 40, 40, 225)).stroke(Stroke::new(1.0, Color32::from_gray(0x1d))).corner_radius(3).inner_margin(egui::Margin::symmetric(8, 3)).show(&mut child, |ui| {
+        ui.label(RichText::new("Manipulator size").size(11.0));
+        let (bar, _) = ui.allocate_exact_size(vec2(60.0, 6.0), Sense::hover());
+        ui.painter().rect_filled(bar, 2.0, Color32::from_gray(0x55));
+        let f = ((app.manip_size - 0.2) / 3.8).clamp(0.0, 1.0);
+        ui.painter().rect_filled(Rect::from_min_size(bar.min, vec2(bar.width() * f, bar.height())), 2.0, Color32::from_rgb(0x5d, 0x9b, 0xd5));
+        ui.label(RichText::new(format!("{:.2}", app.manip_size)).size(11.0));
+        if ui.small_button("Reset").clicked() {
+            app.manip_size = 1.0;
+            app.manip_size_shown = 2.5;
+        }
+    });
 }
 
 /// Display > Polygons > Face Normals / Border Edges overlays.

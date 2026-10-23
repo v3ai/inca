@@ -82,7 +82,7 @@ pub fn status_line(app: &mut IncaApp, ui: &mut egui::Ui) {
             app.lock_selection = !app.lock_selection;
         }
         icons::separator(ui);
-        if ib(ui, "snapGrid", "Snap to grids (X)", app.snap_grid).clicked() {
+        if ib(ui, "snapGrid", "Snap to grids (hold X)", app.snap_grid).clicked() {
             app.snap_grid = !app.snap_grid;
         }
         if ib(ui, "snapCurve", "Snap to curves (hold C)", app.snap_curve).clicked() {
