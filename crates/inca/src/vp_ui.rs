@@ -102,6 +102,7 @@ fn pane(app: &mut IncaApp, ui: &mut egui::Ui, frame: &mut eframe::Frame, idx: us
     }
     let resp = ui.interact(img_rect, egui::Id::new(("vp", idx)), Sense::click_and_drag());
     let painter = ui.painter_at(img_rect);
+    viewport::draw_particles(&app.s, &app.vps[idx], &cv, &painter);
     viewport::draw_component_overlay(&app.s, &app.vps[idx], &cv, &painter);
     if resp.hovered() || resp.dragged() {
         if app.active_vp != idx && (resp.clicked() || resp.drag_started() || ui.input(|i| i.pointer.any_pressed())) {

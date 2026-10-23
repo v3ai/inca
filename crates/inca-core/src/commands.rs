@@ -107,7 +107,7 @@ pub const CORE_COMMANDS: &[&str] = &[
     "polyQuad", "polyNormal", "polyPoke", "polyCloseBorder", "polyMirrorFace", "polyMergeVertex", "polyDelFacet", "polyDelEdge", "polyDelVertex", "polyUnite", "polySeparate",
     "polyCBoolOp", "polyBoolOp", "polyBridgeEdge", "polySoftEdge", "polyProjection", "polySplitRing", "polyChipOff", "polyDuplicateAndConnect", "revolve", "loft", "extrude", "planarSrf",
     "rebuildCurve", "reverseCurve", "file", "undo", "redo", "connectAttr", "disconnectAttr", "listConnections", "isConnected", "warning", "error", "about", "selectMode", "selectType",
-    "polyCreateFacet", "polyBevel", "nonLinear", "joint", "skinCluster", "parentConstraint", "pointConstraint", "orientConstraint", "scaleConstraint", "aimConstraint", "assignMaterial", "nurbsToPoly", "displaySmoothness", "toggle", "layerEditor", "createDisplayLayer", "editDisplayLayerMembers", "help", "whatIs",
+    "polyCreateFacet", "polyBevel", "nonLinear", "emitter", "fireEffect", "smokeEffect", "gravity", "drag", "turbulence", "radial", "vortex", "air", "rigidBody", "joint", "skinCluster", "parentConstraint", "pointConstraint", "orientConstraint", "scaleConstraint", "aimConstraint", "assignMaterial", "nurbsToPoly", "displaySmoothness", "toggle", "layerEditor", "createDisplayLayer", "editDisplayLayerMembers", "help", "whatIs",
 ];
 
 pub fn exists(name: &str) -> bool {
@@ -506,6 +506,9 @@ pub fn run(s: &mut Scene, h: &mut dyn Host, name: &str, raw: &[Val]) -> Result<V
         "rename" => &[("is|ignoreShape", 0)],
         "polyExtrudeFacet" | "polyExtrudeFace" => &[("ltz|localTranslateZ", 1), ("ltx", 1), ("lty", 1), ("t|translate", 3), ("tx", 1), ("ty", 1), ("tz", 1), ("off|offset", 1), ("kft|keepFacesTogether", 1), ("d|divisions", 1), ("ch|constructionHistory", 1), ("thk|thickness", 1)],
         "polyProjection" => &[("t|type", 1), ("md|mapDirection", 1), ("ch", 1)],
+        "emitter" | "fireEffect" | "smokeEffect" => &[("pos|position", 3), ("type", 1), ("r|rate", 1), ("spd|speed", 1), ("sp|spread", 1), ("lsp|lifespan", 1), ("dx", 1), ("dy", 1), ("dz", 1), ("n|name", 1)],
+        "gravity" | "drag" | "turbulence" | "radial" | "vortex" | "air" => &[("pos|position", 3), ("m|magnitude", 1), ("dx", 1), ("dy", 1), ("dz", 1), ("mxd|maxDistance", 1), ("att|attenuation", 1), ("f|frequency", 1)],
+        "rigidBody" => &[("active", 0), ("passive", 0), ("pas", 0), ("m|mass", 1), ("b|bounciness", 1), ("sf|staticFriction", 1)],
         "joint" => &[("p|position", 3), ("n|name", 1), ("rad|radius", 1), ("a|absolute", 0)],
         "parentConstraint" | "pointConstraint" | "orientConstraint" | "scaleConstraint" | "aimConstraint" => &[("mo|maintainOffset", 0), ("w|weight", 1), ("aim|aimVector", 3), ("u|upVector", 3)],
         "skinCluster" => &[("tsb|toSelectedBones", 0), ("mi|maximumInfluences", 1), ("dr|dropoffRate", 1)],
@@ -1165,6 +1168,82 @@ pub fn run(s: &mut Scene, h: &mut dyn Host, name: &str, raw: &[Val]) -> Result<V
                 c.aim = aim;
             }
             Ok(strs(vec![c]))
+        }
+        "emitter" | "fireEffect" | "smokeEffect" => {
+            let ty = a.s(&["type"]).unwrap_or(if name == "emitter" { "omni".into() } else { "directional".into() });
+            let sel_mesh = s.sel.iter().find(|i| s.node(i).is_some_and(|n| n.mesh().is_some())).cloned();
+            let id = s.create_emitter(&ty, a.s(&["n", "name"]).as_deref().unwrap_or("emitter1"));
+            let set = |s: &mut Scene, k: &str, v: serde_json::Value| {
+                s.nodes.get_mut(&id).unwrap().extra[k] = v;
+            };
+            if let Some(src) = &sel_mesh {
+                if ty == "surface" {
+                    set(s, "source", json!(src));
+                }
+                let c = s.world_bbox(src).center();
+                s.nodes.get_mut(&id).unwrap().xf.t = c.to_array();
+            }
+            if let Some(p) = a.v3(&["pos", "position"]) {
+                s.nodes.get_mut(&id).unwrap().xf.t = p;
+            }
+            for (flag, key) in [("r", "rate"), ("spd", "speed"), ("sp", "spread"), ("lsp", "lifespan"), ("dx", "directionX"), ("dy", "directionY"), ("dz", "directionZ")] {
+                if let Some(v) = a.f(&[flag, key]) {
+                    set(s, key, json!(v));
+                }
+            }
+            match name {
+                "fireEffect" => {
+                    for (k, v) in [("rate", json!(400.0)), ("speed", json!(2.0)), ("spread", json!(0.35)), ("lifespan", json!(0.9)), ("color", json!([1.0, 0.75, 0.2])), ("endColor", json!([0.8, 0.1, 0.0])), ("size", json!(5.0))] {
+                        set(s, k, v);
+                    }
+                    let t = s.create_field("turbulence");
+                    s.nodes.get_mut(&t).unwrap().extra["magnitude"] = json!(3.0);
+                }
+                "smokeEffect" => {
+                    for (k, v) in [("rate", json!(120.0)), ("speed", json!(1.0)), ("spread", json!(0.25)), ("lifespan", json!(4.0)), ("color", json!([0.55, 0.55, 0.55])), ("endColor", json!([0.25, 0.25, 0.25])), ("size", json!(7.0))] {
+                        set(s, k, v);
+                    }
+                    let t = s.create_field("turbulence");
+                    s.nodes.get_mut(&t).unwrap().extra["magnitude"] = json!(1.0);
+                }
+                _ => {}
+            }
+            s.select(std::slice::from_ref(&id), SelMode::Replace);
+            s.dynamics.frame = None;
+            Ok(Val::Str(s.name_of(&id)))
+        }
+        "gravity" | "drag" | "turbulence" | "radial" | "vortex" | "air" => {
+            let id = s.create_field(name);
+            if let Some(m) = a.f(&["m", "magnitude"]) {
+                s.nodes.get_mut(&id).unwrap().extra["magnitude"] = json!(m);
+            }
+            for (flag, key) in [("dx", "directionX"), ("dy", "directionY"), ("dz", "directionZ"), ("mxd", "maxDistance"), ("att", "attenuation"), ("f", "frequency")] {
+                if let Some(v) = a.f(&[flag, key]) {
+                    s.nodes.get_mut(&id).unwrap().extra[key] = json!(v);
+                }
+            }
+            if let Some(p) = a.v3(&["pos", "position"]) {
+                s.nodes.get_mut(&id).unwrap().xf.t = p;
+            }
+            s.select(std::slice::from_ref(&id), SelMode::Replace);
+            s.dynamics.frame = None;
+            Ok(Val::Str(s.name_of(&id)))
+        }
+        "rigidBody" => {
+            let active = !a.has(&["passive", "pas"]);
+            let ids: Vec<Id> = targets(s, &a).into_iter().filter(|i| s.node(i).is_some_and(|n| n.mesh().is_some())).collect();
+            if ids.is_empty() {
+                return Err("rigidBody: select polygon objects".into());
+            }
+            for id in &ids {
+                s.make_rigid(id, active);
+                for (flag, key) in [("m", "mass"), ("b", "bounciness"), ("sf", "friction")] {
+                    if let Some(v) = a.f(&[flag, key]) {
+                        s.nodes.get_mut(id).unwrap().extra[key] = json!(v);
+                    }
+                }
+            }
+            Ok(strs(ids.iter().map(|i| format!("rigidBody_{}", s.name_of(i))).collect()))
         }
         "nonLinear" => {
             let kind = a.s(&["type"]).unwrap_or("bend".into());

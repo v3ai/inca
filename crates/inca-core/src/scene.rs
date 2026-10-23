@@ -341,6 +341,8 @@ pub struct Scene {
     /// bumped on every change (UI caches)
     pub rev: u64,
     pub version: String,
+    /// simulation state (not saved)
+    pub dynamics: crate::dynamics::Dynamics,
 }
 
 impl Default for Scene {
@@ -386,6 +388,7 @@ impl Scene {
             undo_limit: 100,
             rev: 0,
             version: env!("CARGO_PKG_VERSION").into(),
+            dynamics: Default::default(),
         };
         s.init_default_materials();
         s.create_startup_cameras();
@@ -1208,6 +1211,9 @@ impl Scene {
                     "rotateOrder" => return Some(json!(n.xf.ro)),
                     _ => {}
                 }
+                if let Some(v) = n.extra.as_object().and_then(|e| get_compound(e, attr)) {
+                    return Some(v);
+                }
                 match &n.shape {
                     Shape::Mesh(m) => match attr {
                         "smoothLevel" => Some(json!(m.smooth_level)),
@@ -1265,6 +1271,10 @@ impl Scene {
                                 Value::Number(k) => crate::math::ROTATE_ORDERS.get(k.as_u64().unwrap_or(0) as usize).copied().unwrap_or("xyz").to_string(),
                                 _ => v.as_str().unwrap_or("xyz").to_string(),
                             }
+                        }
+                        _ if n.extra.as_object().is_some_and(|e| e.contains_key(attr) || get_compound(e, attr).is_some()) => {
+                            set_compound(n.extra.as_object_mut().unwrap(), attr, v);
+                            self.dynamics.frame = None;
                         }
                         _ => match &mut n.shape {
                             Shape::Mesh(m) if attr == "smoothLevel" => {
@@ -1328,6 +1338,7 @@ impl Scene {
             Shape::Light(l) => l.attrs.iter().filter(|(_, v)| v.is_number() || v.is_boolean()).map(|(k, _)| k.clone()).collect(),
             Shape::Camera(_) => ["focalLength", "near", "far", "orthoWidth", "coi"].iter().map(|s| s.to_string()).collect(),
             Shape::Mesh(_) => vec!["smoothLevel".into()],
+            Shape::Locator if n.kind == "emitter" || n.kind == "field" => n.extra.as_object().map(|e| e.iter().filter(|(_, v)| v.is_number()).map(|(k, _)| k.clone()).collect()).unwrap_or_default(),
             _ => vec![],
         }
     }
@@ -1480,6 +1491,7 @@ impl Scene {
     pub fn set_time(&mut self, t: f64) {
         self.time.current = t;
         self.apply_anim();
+        self.step_dynamics(t);
         self.rev += 1;
     }
 
@@ -1770,6 +1782,7 @@ impl Scene {
         self.anim = Anim::default();
         self.conns.clear();
         self.constraints.clear();
+        self.dynamics = Default::default();
         self.sel.clear();
         self.comp.clear();
         self.comp_mode = None;

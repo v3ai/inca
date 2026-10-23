@@ -18,3 +18,4 @@ pub mod render;
 pub mod selection;
 pub mod deformers;
 pub mod skin;
+pub mod dynamics;

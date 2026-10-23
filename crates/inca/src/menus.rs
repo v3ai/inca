@@ -144,7 +144,11 @@ pub fn set_menus(ms: MenuSet) -> Vec<(&'static str, Vec<M>)> {
             ("Playback", vec![A("play"), A("nextFrame"), A("prevFrame"), A("nextKey"), A("prevKey"), A("goStart"), A("goEnd")]),
             ("Visualize", vec![A("graphEditor"), Todo("Create Editable Motion Trail"), Todo("Ghost Selected")]),
         ],
-        MenuSet::Fx => vec![("nParticles", vec![Todo("Create Emitter")]), ("Fields/Solvers", vec![Todo("Gravity"), Todo("Turbulence"), Todo("Create Active Rigid Body")])],
+        MenuSet::Fx => vec![
+            ("Particles", vec![A("emitterOmni"), A("emitterDir"), A("emitterSurface")]),
+            ("Fields/Solvers", vec![A("fieldGravity"), A("fieldDrag"), A("fieldTurbulence"), A("fieldRadial"), A("fieldVortex"), A("fieldAir"), Sep, A("rigidActive"), A("rigidPassive")]),
+            ("Effects", vec![A("fxFire"), A("fxSmoke")]),
+        ],
         MenuSet::Rendering => vec![
             ("Lighting/Shading", vec![Sub("Assign New Material", vec![A("matLambert"), A("matBlinn"), A("matPhong"), A("matStandard"), A("matSurface")]), A("hypershade")]),
             ("Render", vec![A("renderFrame"), A("renderView"), A("renderSettings")]),

@@ -352,6 +352,20 @@ pub fn icon_lines(s: &Scene, id: &str, col: [f32; 4]) -> Vec<LineVertex> {
             circle(&mut o, DVec3::ZERO, DVec3::Y, DVec3::Z, r, col);
             circle(&mut o, DVec3::ZERO, DVec3::Z, DVec3::X, r, col);
         }
+        Shape::Locator if n.kind == "emitter" => {
+            for ax in [DVec3::X, DVec3::Y, DVec3::Z, DVec3::new(1.0, 1.0, 0.0).normalize(), DVec3::new(0.0, 1.0, 1.0).normalize(), DVec3::new(1.0, 0.0, 1.0).normalize()] {
+                push_line(&mut o, -ax * 0.4, ax * 0.4, col);
+            }
+            circle(&mut o, DVec3::ZERO, DVec3::X, DVec3::Z, 0.25, col);
+        }
+        Shape::Locator if n.kind == "field" => {
+            circle(&mut o, DVec3::ZERO, DVec3::X, DVec3::Z, 0.5, col);
+            let d = DVec3::new(n.extra["directionX"].as_f64().unwrap_or(0.0), n.extra["directionY"].as_f64().unwrap_or(-1.0), n.extra["directionZ"].as_f64().unwrap_or(0.0)).normalize_or(-DVec3::Y);
+            push_line(&mut o, DVec3::ZERO, d, col);
+            let s = d.any_orthonormal_vector() * 0.15;
+            push_line(&mut o, d, d * 0.75 + s, col);
+            push_line(&mut o, d, d * 0.75 - s, col);
+        }
         Shape::Locator if n.kind == "deformer" => {
             push_line(&mut o, -DVec3::Y, DVec3::Y, col);
             for y in [-1.0, 0.0, 1.0] {
@@ -640,6 +654,8 @@ pub fn build_draws(s: &Scene, vp: &Viewport, cv: &CamView, g: &mut Gpu, smooth_c
                     [0.1, 0.35, 0.9, 1.0]
                 } else if n.kind == "deformer" {
                     [0.75, 0.3, 0.85, 1.0]
+                } else if n.kind == "emitter" || n.kind == "field" {
+                    [0.95, 0.6, 0.2, 1.0]
                 } else {
                     C_WIRE
                 };
@@ -879,6 +895,23 @@ pub fn marquee_components(s: &Scene, vp: &Viewport, cv: &CamView, id: &str, mode
         CompMode::Vertex => (0..pm.v.len()).filter(|&i| inside(pm.v[i]) && vis.vertex(i as u32)).map(|i| Comp::V(i as u32)).collect(),
         CompMode::Edge => pm.topo().edges.iter().filter(|&&(a, b)| inside((pm.v[a as usize] + pm.v[b as usize]) * 0.5) && vis.edge(a, b)).map(|&(a, b)| Comp::E(a, b)).collect(),
         CompMode::Face => (0..pm.f.len()).filter(|&f| inside(pm.face_center(f)) && vis.face(f)).map(Comp::F).collect(),
+    }
+}
+
+/// Particles as soft dots (drawn with egui on top of the image).
+pub fn draw_particles(s: &Scene, vp: &Viewport, cv: &CamView, painter: &egui::Painter) {
+    for (em, list) in &s.dynamics.particles {
+        let size = s.node(em).and_then(|n| n.extra["size"].as_f64()).unwrap_or(3.0) as f32;
+        for p in list {
+            if let Some(q) = cv.project(p.p, vp.rect) {
+                if !vp.rect.contains(q) {
+                    continue;
+                }
+                let c = inca_core::dynamics::Dynamics::particle_color(s, em, p);
+                let col = Color32::from_rgba_unmultiplied((c[0] * 255.0) as u8, (c[1] * 255.0) as u8, (c[2] * 255.0) as u8, (c[3] * 200.0) as u8);
+                painter.circle_filled(q, size * 0.5, col);
+            }
+        }
     }
 }
 

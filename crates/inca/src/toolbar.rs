@@ -160,7 +160,7 @@ pub fn shelves() -> Vec<(&'static str, Vec<ShelfItem>)> {
                 s("Settings", "renderSettings"),
             ],
         ),
-        ("FX", vec![]),
+        ("FX", vec![s("Emitter", "emitterOmni"), s("DirEmit", "emitterDir"), s("SurfEmit", "emitterSurface"), s("Gravity", "fieldGravity"), s("Turb", "fieldTurbulence"), s("Drag", "fieldDrag"), s("Vortex", "fieldVortex"), s("Active", "rigidActive"), s("Passive", "rigidPassive"), s("Fire", "fxFire"), s("Smoke", "fxSmoke")]),
         ("Custom", vec![s("Script", "scriptEditor"), s("Freeze", "freezeTransformations"), s("Center", "centerPivot"), s("DelHist", "deleteHistory")]),
     ]
 }

@@ -357,6 +357,7 @@ pub fn channel_box(app: &mut IncaApp, ui: &mut egui::Ui) {
     }
     // SHAPES
     let sh_channels = app.s.shape_channels(&lead);
+    let shape = shape.or_else(|| (!sh_channels.is_empty()).then(|| app.s.node(&lead).map(|n| n.kind.clone()).unwrap_or_default()));
     if let Some(sn) = shape {
         ui.add_space(4.0);
         theme::section_header(ui, "SHAPES");
@@ -556,6 +557,8 @@ pub fn attribute_editor(app: &mut IncaApp, ui: &mut egui::Ui) {
     let mut tabs: Vec<(String, NodeRef)> = vec![(n.name.clone(), NodeRef::Dag(lead.clone()))];
     if let Some(sn) = &n.shape_name {
         tabs.push((sn.clone(), NodeRef::Dag(lead.clone())));
+    } else if n.extra.as_object().is_some_and(|e| !e.is_empty()) {
+        tabs.push((format!("{} attributes", n.kind), NodeRef::Dag(lead.clone())));
     }
     if let Some(m) = n.mesh() {
         for (i, h) in m.history.iter().enumerate().rev() {
@@ -616,6 +619,20 @@ pub fn attribute_editor(app: &mut IncaApp, ui: &mut egui::Ui) {
 fn shape_tab(app: &mut IncaApp, ui: &mut egui::Ui, id: &str) {
     let Some(n) = app.s.node(id) else { return };
     let r = NodeRef::Dag(id.to_string());
+    let (kind, extra) = (n.kind.clone(), n.extra.clone());
+    if let Some(e) = extra.as_object().filter(|e| !e.is_empty()) {
+        let title = match kind.as_str() {
+            "emitter" => "Emitter Attributes",
+            "field" => "Field Attributes",
+            "deformer" => "Deformer Handle",
+            _ if e.contains_key("rigidBody") => "Rigid Body Attributes",
+            _ => "Extra Attributes",
+        };
+        theme::section_header(ui, title);
+        let keys: Vec<String> = e.keys().filter(|k| *k != "source").cloned().collect();
+        attr_map_editor(app, ui, &r, &keys);
+    }
+    let Some(n) = app.s.node(id) else { return };
     match &n.shape {
         Shape::Mesh(m) => {
             let (v, f, t) = (m.mesh.v.len(), m.mesh.f.len(), m.mesh.tri_count());
