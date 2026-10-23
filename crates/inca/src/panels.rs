@@ -17,6 +17,7 @@ pub struct PanelState {
     pub input_line: String,
     pub input_mode: usize,
     pub quit: bool,
+    pub quit_confirm: bool,
     /// a channel drag is in progress (one undo step per drag)
     pub editing: bool,
     pub ae_tab: usize,
@@ -405,12 +406,12 @@ fn n_template(app: &IncaApp, id: &str) -> bool {
 
 // ------------------------------------------------------------------ right panel
 
-/// Right dock panels as the JS side tabs list them (Modeling Toolkit is still planned).
+/// Right dock panels as the JS side tabs list them.
 const SIDE_TABS: &[(Option<RightTab>, &str)] = &[
     (Some(RightTab::ChannelBox), "Channel Box / Layer Editor"),
     (Some(RightTab::AttributeEditor), "Attribute Editor"),
     (Some(RightTab::ToolSettings), "Tool Settings"),
-    (None, "Modeling Toolkit"),
+    (Some(RightTab::ModelingToolkit), "Modeling Toolkit"),
 ];
 
 /// The vertical tab strip at the right edge: click shows a panel, clicking the shown one hides the dock.
@@ -438,7 +439,7 @@ pub fn side_tabs(app: &mut IncaApp, ui: &mut egui::Ui) {
                     app.right_tab = *t;
                     app.show_right = true;
                 }
-                None => app.help = "The Modeling Toolkit panel is planned".into(),
+                None => {}
             }
         }
         y += len + 2.0;
@@ -452,7 +453,7 @@ pub fn right_panel(app: &mut IncaApp, ui: &mut egui::Ui) {
         ui.label(RichText::new(title).strong());
     } else {
         ui.horizontal(|ui| {
-            for (t, l) in [(RightTab::ChannelBox, "Channel Box"), (RightTab::AttributeEditor, "Attribute Editor"), (RightTab::ToolSettings, "Tool Settings")] {
+            for (t, l) in [(RightTab::ChannelBox, "Channel Box"), (RightTab::AttributeEditor, "Attribute Editor"), (RightTab::ToolSettings, "Tool Settings"), (RightTab::ModelingToolkit, "Modeling Toolkit")] {
                 if ui.selectable_label(app.right_tab == t, l).clicked() {
                     app.right_tab = t;
                 }
@@ -469,7 +470,78 @@ pub fn right_panel(app: &mut IncaApp, ui: &mut egui::Ui) {
         }
         RightTab::AttributeEditor => attribute_editor(app, ui),
         RightTab::ToolSettings => tool_settings(app, ui),
+        RightTab::ModelingToolkit => modeling_toolkit(app, ui),
     }
+}
+
+/// Modeling Toolkit: selection modes, symmetry and the common mesh commands (right-click: options).
+fn modeling_toolkit(app: &mut IncaApp, ui: &mut egui::Ui) {
+    use inca_core::scene::CompMode;
+    ui.horizontal(|ui| {
+        let cm = app.s.comp_mode;
+        for (id, icon, tip, on) in [("objectMode", "selObject", "Object selection", cm.is_none()), ("vertexMode", "compVertex", "Vertex selection (F9)", cm == Some(CompMode::Vertex)), ("edgeMode", "compEdge", "Edge selection (F10)", cm == Some(CompMode::Edge)), ("faceMode", "compFace", "Face selection (F11)", cm == Some(CompMode::Face))] {
+            if crate::icons::button(ui, icon, tip, on, 24.0).clicked() {
+                if id == "objectMode" {
+                    if cm.is_some() {
+                        app.action("objectMode");
+                    }
+                } else {
+                    app.action(id);
+                }
+            }
+        }
+        ui.separator();
+        if crate::icons::button(ui, "softSelect", "Soft Select (B)", app.soft.on, 24.0).clicked() {
+            app.action("softSelect");
+        }
+    });
+    ui.horizontal(|ui| {
+        ui.label(RichText::new("Symmetry:").color(theme::TEXT_DIM));
+        let mut sym = app.symmetry;
+        egui::ComboBox::from_id_salt("mtksym").selected_text(["Off", "Object X", "World X", "World Y", "World Z"][sym.min(4)]).show_ui(ui, |ui| {
+            for (i, l) in ["Off", "Object X", "World X", "World Y", "World Z"].iter().enumerate() {
+                ui.selectable_value(&mut sym, i, *l);
+            }
+        });
+        app.symmetry = sym;
+    });
+    ui.separator();
+    const SECTIONS: &[(&str, &[&str])] = &[
+        ("Mesh", &["combine", "separate", "smooth", "mirror", "fillHole", "triangulate", "quadrangulate", "cleanup"]),
+        ("Components", &["extrude", "bevel", "bridge", "addDivisions", "poke", "chamferVertex", "merge", "mergeToCenter", "collapse", "deleteEdgeVertex", "extract", "duplicateFaces", "connect", "reverseNormals"]),
+        ("Tools", &["multiCutTool", "targetWeldTool", "insertEdgeLoopTool", "createPolygonTool", "quadDrawTool"]),
+        ("Normals & UVs", &["softenEdge", "hardenEdge", "planarMap", "automaticMap", "uvEditor"]),
+    ];
+    egui::ScrollArea::vertical().id_salt("mtk").show(ui, |ui| {
+        for (title, ids) in SECTIONS {
+            if !theme::fold(ui, title) {
+                continue;
+            }
+            egui::Grid::new(("mtkg", *title)).num_columns(2).spacing([4.0, 2.0]).show(ui, |ui| {
+                for (i, id) in ids.iter().enumerate() {
+                    let r = ui.horizontal(|ui| {
+                        let (ir, _) = ui.allocate_exact_size(egui::vec2(18.0, 18.0), egui::Sense::hover());
+                        crate::icons::paint(ui, ir, crate::icons::for_action(id), Color32::WHITE);
+                        ui.add(egui::Button::new(crate::actions::label(id)).frame(false))
+                    }).inner;
+                    let has_box = crate::options::has_box(id);
+                    let r = r.on_hover_text(if has_box { "Right-click for options" } else { "" });
+                    if r.clicked() {
+                        app.action(id);
+                    }
+                    if r.secondary_clicked() && has_box {
+                        crate::options::open(app, id);
+                    }
+                    if r.hovered() {
+                        app.help = crate::actions::label(id);
+                    }
+                    if i % 2 == 1 {
+                        ui.end_row();
+                    }
+                }
+            });
+        }
+    });
 }
 
 /// Apply a channel edit to every selected object (Maya edits all selected channels).

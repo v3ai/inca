@@ -1,6 +1,6 @@
 //! Main menu bar with Maya menu sets (Modeling, Rigging, Animation, FX, Rendering).
 
-use crate::actions::{hotkey_label, label};
+use crate::actions::label;
 use crate::app::{IncaApp, MenuSet};
 use inca_core::primitives::GEN_INFO;
 use inca_core::scene::LIGHT_TYPES;
@@ -142,7 +142,8 @@ pub fn common(name: &str) -> Vec<M> {
         "Windows" => vec![
             Dyn("Workspaces"),
             Sep,
-            Sub("General Editors", vec![A("scriptEditor"), A("melReference")]),
+            Sub("General Editors", vec![A("scriptEditor"), A("componentEditor"), A("connectionEditor"), A("hypergraph"), A("shelfEditor"), A("melReference")]),
+            A("modelingToolkit"),
             Sub("Modeling Editors", vec![A("uvEditor")]),
             Sub("Rendering Editors", vec![A("hypershade"), A("renderView"), A("renderSettings"), A("playblast")]),
             Sub("Animation Editors", vec![A("graphEditor"), A("dopeSheet")]),
@@ -152,7 +153,7 @@ pub fn common(name: &str) -> Vec<M> {
             A("channelBox"),
             A("toolSettings"),
             Sep,
-            Sub("Settings/Preferences", vec![A("preferences"), A("hotkeyList")]),
+            Sub("Settings/Preferences", vec![A("preferences"), A("hotkeyEditor"), A("shelfEditor")]),
         ],
         "Help" => vec![A("gettingStarted"), A("hotkeyList"), A("mouseHelp"), Sep, A("melReference"), Sep, A("about")],
         _ => vec![],
@@ -208,7 +209,7 @@ pub fn items(app: &mut IncaApp, ui: &mut egui::Ui, list: &[M]) {
                 if let Some(c) = checked {
                     text = format!("{} {text}", if c { "✔" } else { "  " });
                 }
-                let b = egui::Button::new(text).shortcut_text(hotkey_label(id));
+                let b = egui::Button::new(text).shortcut_text(crate::hotkey_editor::chords_for(app, id).first().cloned().unwrap_or_default());
                 if crate::options::has_box(id) {
                     // the option box opens the command's options dialog
                     let mut opened = false;

@@ -175,25 +175,39 @@ pub fn show(app: &mut IncaApp, ctx: &egui::Context, _frame: &mut eframe::Frame) 
     let mut open = app.win.render_settings;
     egui::Window::new("Render Settings").open(&mut open).default_size([340.0, 260.0]).show(ctx, |ui| render_settings(app, ui));
     app.win.render_settings = open;
-    let mut open = app.win.prefs;
-    egui::Window::new("Preferences").open(&mut open).show(ctx, |ui| prefs(app, ui));
-    app.win.prefs = open;
-    let mut open = app.win.hotkeys;
-    egui::Window::new("Hotkeys").open(&mut open).default_size([360.0, 500.0]).show(ctx, |ui| {
-        egui::ScrollArea::vertical().show(ui, |ui| {
-            egui::Grid::new("hk").striped(true).show(ui, |ui| {
-                for (id, l, hk) in crate::actions::ACTIONS {
-                    if !hk.is_empty() {
-                        ui.label(*l);
-                        ui.label(RichText::new(*hk).monospace());
-                        ui.label(RichText::new(*id).color(theme::TEXT_DIM));
-                        ui.end_row();
-                    }
+    crate::prefs::window(app, ctx);
+    if app.panels.quit_confirm {
+        let mut decided = None;
+        egui::Window::new("Quit Inca").collapsible(false).resizable(false).anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0]).show(ctx, |ui| {
+            ui.label("Save changes to the scene before quitting?");
+            ui.horizontal(|ui| {
+                if ui.button("Save").clicked() {
+                    decided = Some(1);
+                }
+                if ui.button("Don't Save").clicked() {
+                    decided = Some(2);
+                }
+                if ui.button("Cancel").clicked() {
+                    decided = Some(0);
                 }
             });
         });
-    });
-    app.win.hotkeys = open;
+        match decided {
+            Some(1) => {
+                app.panels.quit_confirm = false;
+                app.action("saveScene");
+                app.panels.quit = !app.s.modified;
+            }
+            Some(2) => {
+                app.panels.quit_confirm = false;
+                app.panels.quit = true;
+            }
+            Some(_) => app.panels.quit_confirm = false,
+            None => {}
+        }
+    }
+    crate::hotkey_editor::window(app, ctx);
+    crate::component_editor::window(app, ctx);
     let mut open = app.win.command_list;
     egui::Window::new("MEL Command Reference").open(&mut open).default_size([380.0, 480.0]).show(ctx, |ui| {
         ui.label("Commands available to MEL scripts, the command line and the Script Editor:");
@@ -709,29 +723,3 @@ fn render_settings(app: &mut IncaApp, ui: &mut egui::Ui) {
     }
 }
 
-fn prefs(app: &mut IncaApp, ui: &mut egui::Ui) {
-    theme::section_header(ui, "Undo");
-    ui.add(egui::Slider::new(&mut app.s.undo_limit, 10..=500).text("queue size"));
-    theme::section_header(ui, "Manipulators");
-    ui.add(egui::Slider::new(&mut app.manip_size, 0.2..=5.0).text("size"));
-    theme::section_header(ui, "Modeling");
-    ui.checkbox(&mut app.history_on, "Construction history on by default");
-    theme::section_header(ui, "Display");
-    egui::ComboBox::from_label("Background color").selected_text(crate::viewport::BG_MODES[app.bg_mode]).show_ui(ui, |ui| {
-        for (i, m) in crate::viewport::BG_MODES.iter().enumerate() {
-            ui.selectable_value(&mut app.bg_mode, i, *m);
-        }
-    });
-    theme::section_header(ui, "Files");
-    ui.horizontal(|ui| {
-        ui.checkbox(&mut app.autosave.0, "Autosave every");
-        ui.add(egui::DragValue::new(&mut app.autosave.1).speed(0.2).range(1.0..=240.0).suffix(" min"));
-    });
-    theme::section_header(ui, "Interface");
-    for (k, l) in crate::workspace::ELEMENTS {
-        let mut on = app.shown(k);
-        if ui.checkbox(&mut on, *l).changed() {
-            app.set_shown(k, on);
-        }
-    }
-}

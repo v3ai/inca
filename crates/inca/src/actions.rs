@@ -211,7 +211,10 @@ pub static ACTIONS: &[(&str, &str, &str)] = &[
     ("renderView", "Render View", ""),
     ("renderSettings", "Render Settings", ""),
     ("preferences", "Preferences", ""),
-    ("hotkeyList", "Hotkeys", ""),
+    ("hotkeyList", "Keyboard Shortcuts", ""),
+    ("hotkeyEditor", "Hotkey Editor...", ""),
+    ("componentEditor", "Component Editor", ""),
+    ("modelingToolkit", "Modeling Toolkit", ""),
     ("melReference", "MEL Command Reference", ""),
     ("about", "About Inca", ""),
     ("combine", "Combine", ""),
@@ -566,6 +569,7 @@ pub fn builtin(app: &mut IncaApp, id: &str) {
                 app.open_path(&p);
             }
         }
+        "saveScene" if app.prefs.incremental_save && app.s.file.is_some() => crate::project::increment_and_save(app),
         "saveScene" | "saveSceneAs" => {
             let path = if id == "saveScene" { app.s.file.clone() } else { None };
             let path = path.or_else(|| rfd::FileDialog::new().add_filter("Inca scene", &["inca"]).set_directory(crate::project::default_dir(app, "scenes")).set_file_name("untitled.inca").save_file());
@@ -593,7 +597,13 @@ pub fn builtin(app: &mut IncaApp, id: &str) {
                 let _ = app.exec_mel(&format!("file {flag} \"{}\";", p.display().to_string().replace('\\', "/")), true);
             }
         }
-        "quit" => app.panels.quit = true,
+        "quit" => {
+            if app.prefs.confirm_quit && app.s.modified {
+                app.panels.quit_confirm = true;
+            } else {
+                app.panels.quit = true;
+            }
+        }
         "cut" => {
             app.action("copy");
             app.action("deleteSel");
@@ -912,7 +922,12 @@ pub fn builtin(app: &mut IncaApp, id: &str) {
         "renderView" => app.win.render_view = !app.win.render_view,
         "renderSettings" => app.win.render_settings = !app.win.render_settings,
         "preferences" => app.win.prefs = !app.win.prefs,
-        "hotkeyList" => app.win.hotkeys = !app.win.hotkeys,
+        "hotkeyList" | "hotkeyEditor" => app.win.hotkeys = !app.win.hotkeys,
+        "componentEditor" => app.win.component_editor = !app.win.component_editor,
+        "modelingToolkit" => {
+            app.show_right = true;
+            app.right_tab = RightTab::ModelingToolkit;
+        }
         "melReference" => app.win.command_list = !app.win.command_list,
         "about" => app.win.about = true,
         "mergeToCenter" => {

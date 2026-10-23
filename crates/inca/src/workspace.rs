@@ -25,8 +25,7 @@ pub struct Workspace {
 
 pub const WORKSPACES: &[Workspace] = &[
     Workspace { name: "Maya Classic", right: RightTab::ChannelBox, outliner: false, hide: &[], after: None },
-    // the JS opens the Modeling Toolkit here; Tool Settings stands in until it exists
-    Workspace { name: "Modeling - Standard", right: RightTab::ToolSettings, outliner: true, hide: &[], after: None },
+    Workspace { name: "Modeling - Standard", right: RightTab::ModelingToolkit, outliner: true, hide: &[], after: None },
     Workspace { name: "Modeling - Expert", right: RightTab::ChannelBox, outliner: false, hide: &["shelf", "statusline", "toolbox", "helpline", "rangeslider"], after: None },
     Workspace { name: "Sculpting", right: RightTab::ToolSettings, outliner: false, hide: &["rangeslider"], after: None },
     Workspace { name: "Animation", right: RightTab::ChannelBox, outliner: true, hide: &[], after: Some("graphEditor") },

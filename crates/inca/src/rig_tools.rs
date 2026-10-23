@@ -239,12 +239,12 @@ pub fn influences(app: &IncaApp) -> Vec<String> {
     app.s.node(&m).and_then(|n| n.mesh()).and_then(|x| x.history[h].params.get("joints")).and_then(|v| v.as_array()).map(|a| a.iter().filter_map(|j| j.as_str().map(String::from)).collect()).unwrap_or_default()
 }
 
-fn weight_of(w: &Value, j: usize) -> f64 {
+pub fn weight_of(w: &Value, j: usize) -> f64 {
     w.as_array().and_then(|a| a.iter().find(|e| e[0].as_u64() == Some(j as u64))).and_then(|e| e[1].as_f64()).unwrap_or(0.0)
 }
 
 /// Set influence `j` of one vertex to `v`, scaling the others so the weights sum to 1.
-fn set_weight(w: &mut Value, j: usize, v: f64) {
+pub fn set_weight(w: &mut Value, j: usize, v: f64) {
     let v = v.clamp(0.0, 1.0);
     let mut list: Vec<(usize, f64)> = w.as_array().map(|a| a.iter().filter_map(|e| Some((e[0].as_u64()? as usize, e[1].as_f64()?))).collect()).unwrap_or_default();
     list.retain(|e| e.0 != j);

@@ -137,7 +137,9 @@ pub fn status_line(app: &mut IncaApp, ui: &mut egui::Ui) {
             if ib(ui, "attrEditor", "Show or hide the Attribute Editor (Ctrl+A)", right(app, RightTab::AttributeEditor)).clicked() {
                 toggle_right(app, RightTab::AttributeEditor);
             }
-            icons::button_ex(ui, "modelingToolkit", "Modeling Toolkit (planned)", false, 24.0, 20.0, false);
+            if ib(ui, "modelingToolkit", "Show or hide the Modeling Toolkit", right(app, RightTab::ModelingToolkit)).clicked() {
+                toggle_right(app, RightTab::ModelingToolkit);
+            }
         });
     });
 }

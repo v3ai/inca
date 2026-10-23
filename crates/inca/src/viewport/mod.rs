@@ -61,6 +61,8 @@ pub struct Viewport {
     pub rect: Rect,
     /// final-render look (hardware renderer): meshes only, no wires or highlights
     pub beauty: bool,
+    /// grid length/width, line spacing, major line every n lines (Preferences > Display)
+    pub grid_cfg: (f64, f64, i32),
 }
 
 impl Viewport {
@@ -103,6 +105,7 @@ impl Viewport {
             show_manips: true,
             show_sel_highlight: true,
             beauty: false,
+            grid_cfg: (12.0, 1.0, 5),
             film_gate: false,
             res_gate: false,
             exposure: 0.0,
@@ -193,11 +196,11 @@ pub fn cam_view(s: &Scene, cam: &str, size: [f32; 2]) -> CamView {
 // ------------------------------------------------------------------ navigation
 
 /// Alt+LMB tumble around the centre of interest.
-pub fn tumble(s: &mut Scene, cam: &str, dx: f32, dy: f32) {
+pub fn tumble(s: &mut Scene, cam: &str, dx: f32, dy: f32, allow_ortho: bool) {
     let Some(id) = camera_id(s, cam) else { return };
     let Some(n) = s.nodes.get(&id) else { return };
     let Shape::Camera(c) = &n.shape else { return };
-    if c.ortho {
+    if c.ortho && !allow_ortho {
         return;
     }
     let coi = c.coi;
@@ -430,11 +433,11 @@ pub fn build_mesh_buffers(pm: &PolyMesh, color_of: &dyn Fn(Option<&String>) -> [
 }
 
 /// Grid on the ground plane (or facing an ortho camera).
-pub fn grid_lines(cv: &CamView) -> Vec<LineVertex> {
+pub fn grid_lines(cv: &CamView, cfg: (f64, f64, i32)) -> Vec<LineVertex> {
     let mut out = vec![];
     // JS makeGrid colours
     let (sub, maj, axis) = (hex(0x5c5c5c), hex(0x4d4d4d), hex(0x1e1e1e));
-    let (size, step) = (12.0f64, 1.0f64);
+    let (size, step, major) = cfg;
     // ortho cameras get a grid in their view plane
     let (u, v) = if cv.ortho {
         let f = cv.fwd.abs();
@@ -448,9 +451,9 @@ pub fn grid_lines(cv: &CamView) -> Vec<LineVertex> {
     } else {
         (DVec3::X, DVec3::Z)
     };
-    let n = (size / step) as i32;
+    let n = ((size / step) as i32).min(2000);
     for i in -n..=n {
-        let c = if i == 0 { axis } else if i % 5 == 0 { maj } else { sub };
+        let c = if i == 0 { axis } else if i % major.max(1) == 0 { maj } else { sub };
         let k = i as f64 * step;
         for (a, b) in [(u * k - v * size, u * k + v * size), (v * k - u * size, v * k + u * size)] {
             out.push(LineVertex { pos: to_f32(a), color: c });
@@ -769,7 +772,7 @@ pub fn build_draws(s: &Scene, vp: &Viewport, cv: &CamView, g: &mut Gpu, smooth_c
     let mut draws = vec![];
     if vp.grid {
         // drawn first without depth so any geometry (e.g. a ground plane) covers it
-        draws.push(DrawCmd { pass: Pass::LinesUnder, geo: Geo::TransientLines(grid_lines(cv)), u: DrawUniform::new(Mat4::IDENTITY) });
+        draws.push(DrawCmd { pass: Pass::LinesUnder, geo: Geo::TransientLines(grid_lines(cv, vp.grid_cfg)), u: DrawUniform::new(Mat4::IDENTITY) });
     }
     let hilite = s.hilite();
     let lead = s.lead().cloned();

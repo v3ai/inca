@@ -338,6 +338,8 @@ pub struct Scene {
     pub undo_stack: Vec<Snapshot>,
     pub redo_stack: Vec<Snapshot>,
     pub undo_limit: usize,
+    /// default in / out tangents for new keys (Preferences > Animation)
+    pub key_tangents: (String, String),
     /// bumped on every change (UI caches)
     pub rev: u64,
     pub version: String,
@@ -386,6 +388,7 @@ impl Scene {
             undo_stack: vec![],
             redo_stack: vec![],
             undo_limit: 100,
+            key_tangents: ("auto".into(), "auto".into()),
             rev: 0,
             version: env!("CARGO_PKG_VERSION").into(),
             dynamics: Default::default(),
@@ -1348,9 +1351,13 @@ impl Scene {
     pub fn set_key(&mut self, id: &str, attr: &str, t: Option<f64>, v: Option<f64>) {
         let t = t.unwrap_or(self.time.current);
         let v = v.unwrap_or_else(|| self.get_attr_f(id, attr));
-        let tangent = "auto";
+        let (ti, to) = self.key_tangents.clone();
         if let Some(c) = self.anim.curve_mut(id, alias(attr), true) {
-            c.set_key(t, v, tangent);
+            let existed = c.find(t).is_some();
+            let i = c.set_key(t, v, &to);
+            if let Some(k) = c.keys.get_mut(i).filter(|_| !existed) {
+                k.it = ti;
+            }
         }
         self.touch();
     }

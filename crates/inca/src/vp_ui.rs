@@ -482,7 +482,7 @@ fn interact(app: &mut IncaApp, ui: &mut egui::Ui, idx: usize, resp: &egui::Respo
         if v == idx {
             let d = pointer.delta();
             match b {
-                egui::PointerButton::Primary => viewport::tumble(&mut app.s, &cam, d.x, d.y),
+                egui::PointerButton::Primary => viewport::tumble(&mut app.s, &cam, d.x, d.y, app.prefs.ortho_tumble),
                 egui::PointerButton::Middle => viewport::track(&mut app.s, cv, &cam, d.x, d.y),
                 _ => viewport::dolly(&mut app.s, &cam, (d.x + d.y) as f64 * 0.01),
             }

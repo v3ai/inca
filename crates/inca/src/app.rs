@@ -117,6 +117,7 @@ pub struct Windows {
     pub sdk: bool,
     pub assign_material: bool,
     pub help: bool,
+    pub component_editor: bool,
     pub rename: Option<String>,
 }
 
@@ -125,6 +126,7 @@ pub enum RightTab {
     ChannelBox,
     AttributeEditor,
     ToolSettings,
+    ModelingToolkit,
 }
 
 /// UI-side commands raised while MEL runs (tools, windows, viewports).
@@ -226,6 +228,12 @@ pub struct IncaApp {
     pub rig_tool: crate::rig_tools::RigToolState,
     /// Create > Type text
     pub type_text: String,
+    /// user hotkeys (Hotkey Editor)
+    pub keymap: crate::hotkey_editor::Keymap,
+    pub hk: crate::hotkey_editor::HkState,
+    pub ce: crate::component_editor::CeState,
+    pub prefs: crate::prefs::Prefs,
+    pub prefs_cat: usize,
     pub viz: crate::anim_extras::AnimViz,
     pub playblast: crate::anim_extras::PlayblastUi,
     pub mesh_opts: crate::mesh_tools::MeshToolOpts,
@@ -285,6 +293,7 @@ impl IncaApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         theme::apply(&cc.egui_ctx);
         let gpu = cc.wgpu_render_state.as_ref().map(Gpu::new);
+        let prefs: crate::prefs::Prefs = cc.storage.and_then(|s| eframe::get_value(s, "prefs")).unwrap_or_default();
         let test = match (std::env::var("INCA_TEST").ok(), std::env::var("INCA_SHOT").ok()) {
             (None, None) => None,
             (script, shot) => Some(TestRun { script: script.and_then(|p| std::fs::read_to_string(p).ok()), shot: shot.map(Into::into), frame: 0, requested: false }),
@@ -297,7 +306,7 @@ impl IncaApp {
             layout: Layout::Single,
             active_vp: 0,
             vps: vec![Viewport::new("persp"), Viewport::new("top"), Viewport::new("front"), Viewport::new("side")],
-            menu_set: MenuSet::Modeling,
+            menu_set: crate::prefs::default_menu_set(&prefs),
             win: Windows::default(),
             right_tab: cc.storage.and_then(|s| eframe::get_value(s, "rightTab")).unwrap_or(RightTab::ChannelBox),
             show_right: cc.storage.and_then(|s| eframe::get_value(s, "showRight")).unwrap_or(true),
@@ -360,6 +369,11 @@ impl IncaApp {
             mesh_tool: Default::default(),
             rig_tool: crate::rig_tools::RigToolState::new(),
             type_text: "Inca".into(),
+            keymap: cc.storage.and_then(|s| eframe::get_value(s, "keymap")).unwrap_or_default(),
+            hk: Default::default(),
+            ce: Default::default(),
+            prefs,
+            prefs_cat: 0,
             viz: Default::default(),
             playblast: Default::default(),
             uv_editor: Default::default(),
@@ -663,8 +677,8 @@ impl IncaApp {
         }
         for e in events {
             if let egui::Event::Key { key, pressed: true, modifiers, repeat: false, .. } = e {
-                if let Some(a) = crate::actions::hotkey(key, modifiers, self) {
-                    self.action(a);
+                if let Some(a) = crate::hotkey_editor::resolve(self, key, modifiers) {
+                    self.action(&a);
                 }
             }
         }
@@ -693,9 +707,10 @@ impl IncaApp {
             self.play_clock = now;
         }
         // play every frame steps one frame per redraw; otherwise follow the clock
-        let frames = if self.s.time.play_every { 1.0 } else { ((now - self.play_clock) * fps).floor() };
+        let speed = self.prefs.speed().unwrap_or(1.0);
+        let frames = if self.s.time.play_every { 1.0 } else { ((now - self.play_clock) * fps * speed).floor() };
         if frames >= 1.0 {
-            self.play_clock = if self.s.time.play_every { now } else { self.play_clock + frames / fps };
+            self.play_clock = if self.s.time.play_every { now } else { self.play_clock + frames / (fps * speed) };
             let (start, end) = (self.s.time.start, self.s.time.end);
             let len = (end - start + 1.0).max(1.0);
             let mut t = self.s.time.current + frames * self.play_dir;
@@ -749,6 +764,8 @@ impl eframe::App for IncaApp {
         eframe::set_value(storage, "softSelect", &self.soft);
         eframe::set_value(storage, "manipSize", &self.manip_size);
         eframe::set_value(storage, "options", &self.options);
+        eframe::set_value(storage, "keymap", &self.keymap);
+        eframe::set_value(storage, "prefs", &self.prefs);
         if let Some(p) = &self.s.project {
             eframe::set_value(storage, "lastProject", p);
         }
@@ -779,6 +796,7 @@ impl eframe::App for IncaApp {
         }
         self.hotkeys(&ctx);
         // constraints follow their targets live (gizmo drags, channel edits)
+        crate::prefs::apply(self, &ctx);
         crate::anim_extras::tick(self, &ctx);
         crate::render_view::tick(self, &ctx);
         crate::rig_tools::sync_lattice_divisions(self);

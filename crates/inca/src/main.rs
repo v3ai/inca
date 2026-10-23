@@ -3,8 +3,10 @@
 mod actions;
 mod anim_extras;
 mod app;
+mod component_editor;
 mod edit_cmds;
 mod hypershade;
+mod hotkey_editor;
 mod icons;
 mod icons_svg;
 mod marking;
@@ -12,6 +14,7 @@ mod menus;
 mod mesh_tools;
 mod options;
 mod panels;
+mod prefs;
 mod project;
 mod render_view;
 mod rig_tools;

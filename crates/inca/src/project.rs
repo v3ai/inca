@@ -185,10 +185,25 @@ pub fn autosave_tick(app: &mut IncaApp, now: f64) {
     }
     let name = app.s.file.as_ref().and_then(|f| f.file_stem()).map(|s| s.to_string_lossy().to_string()).unwrap_or("untitled".into());
     let dir = default_dir(app, "autosave");
-    let p = dir.join(format!("{name}.autosave.inca"));
+    // numbered autosaves, keeping the newest `autosave_limit`
+    let prefix = format!("{name}.autosave.");
+    let mut olds: Vec<(u32, PathBuf)> = std::fs::read_dir(&dir).map(|rd| rd.filter_map(|e| e.ok()).filter_map(|e| {
+        let f = e.file_name().to_string_lossy().to_string();
+        let n: u32 = f.strip_prefix(&prefix)?.strip_suffix(".inca")?.parse().ok()?;
+        Some((n, e.path()))
+    }).collect()).unwrap_or_default();
+    olds.sort();
+    let next = olds.last().map(|o| o.0 + 1).unwrap_or(1);
+    let p = dir.join(format!("{prefix}{next:04}.inca"));
     let data = app.s.serialize();
     if std::fs::create_dir_all(&dir).is_ok() && std::fs::write(&p, serde_json::to_string(&data).unwrap_or_default()).is_ok() {
         app.help = format!("Autosaved {}", p.display());
+        let keep = app.prefs.autosave_limit.max(1);
+        if olds.len() + 1 > keep {
+            for (_, o) in &olds[..olds.len() + 1 - keep] {
+                let _ = std::fs::remove_file(o);
+            }
+        }
     }
 }
 
