@@ -347,6 +347,102 @@ pub fn dup_special_window(app: &mut IncaApp, ctx: &egui::Context) {
     }
 }
 
+/// Heads Up Display options (JS prefs.hud).
+#[derive(Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct Hud {
+    pub poly_count: bool,
+    pub fps: bool,
+    pub frame: bool,
+    pub cam_names: bool,
+    pub view_axis: bool,
+}
+
+impl Default for Hud {
+    fn default() -> Self {
+        Hud { poly_count: false, fps: false, frame: false, cam_names: true, view_axis: true }
+    }
+}
+
+fn names(app: &IncaApp, ids: &[String]) -> String {
+    ids.iter().map(|i| app.s.name_of(i)).collect::<Vec<_>>().join(" ")
+}
+
+/// Display > Hide > Hide Unselected Objects: hide every top-level object without a selected node inside.
+pub fn hide_unselected(app: &mut IncaApp) {
+    let hide: Vec<String> = app
+        .s
+        .roots
+        .clone()
+        .into_iter()
+        .filter(|r| app.s.node(r).is_some_and(|n| !n.startup() && n.visible))
+        .filter(|r| !app.s.subtree(r).iter().any(|i| app.s.sel.contains(i)))
+        .collect();
+    if !hide.is_empty() {
+        let _ = app.run_mel("hide unselected", &format!("hide {};", names(app, &hide)));
+    }
+    app.last_hidden = hide;
+}
+
+/// Display > Hide / Show > Lights / Cameras / All Geometry.
+pub fn show_type(app: &mut IncaApp, ty: &str, vis: bool) {
+    let ids: Vec<String> = scene_nodes(app)
+        .into_iter()
+        .filter(|i| {
+            let n = app.s.node(i).unwrap();
+            match ty {
+                "light" => matches!(n.shape, Shape::Light(_)),
+                "camera" => matches!(n.shape, Shape::Camera(_)),
+                _ => matches!(n.shape, Shape::Mesh(_) | Shape::Curve(_)),
+            }
+        })
+        .collect();
+    if ids.is_empty() {
+        return;
+    }
+    if !vis {
+        app.last_hidden = ids.clone();
+    }
+    let _ = app.run_mel(if vis { "show" } else { "hide" }, &format!("{} {};", if vis { "showHidden" } else { "hide" }, names(app, &ids)));
+}
+
+pub fn show_last_hidden(app: &mut IncaApp) {
+    let ids: Vec<String> = app.last_hidden.iter().filter(|i| app.s.node(i).is_some()).cloned().collect();
+    if !ids.is_empty() {
+        let _ = app.run_mel("show last hidden", &format!("showHidden {};", names(app, &ids)));
+    }
+}
+
+/// Display > Object Display > Template / Untemplate / Untemplate All.
+pub fn template(app: &mut IncaApp, on: bool, all: bool) {
+    let ids: Vec<String> = if all { scene_nodes(app).into_iter().filter(|i| app.s.is_template(i)).collect() } else { app.s.sel.clone() };
+    if ids.is_empty() {
+        return;
+    }
+    let mel: String = ids.iter().map(|i| format!("setAttr {}.template {};\n", app.s.name_of(i), on as i32)).collect();
+    let _ = app.run_mel(if on { "template" } else { "untemplate" }, &mel);
+    if on {
+        app.select_names(&[], SelMode::Replace);
+    }
+}
+
+/// Face Normals / Border Edges: toggle the overlay on the selected meshes.
+pub fn toggle_overlay(app: &mut IncaApp, normals: bool) {
+    let meshes: Vec<String> = app.s.sel.iter().filter(|i| app.s.node(i).is_some_and(|n| n.mesh().is_some())).cloned().collect();
+    let set = if normals { &mut app.overlay_normals } else { &mut app.overlay_border };
+    if meshes.is_empty() {
+        set.clear();
+        return;
+    }
+    let on = !meshes.iter().all(|m| set.contains(m));
+    for m in meshes {
+        if on {
+            set.insert(m);
+        } else {
+            set.remove(&m);
+        }
+    }
+}
+
 /// Modify > Add Attribute dialog state.
 pub struct AddAttr {
     pub name: String,

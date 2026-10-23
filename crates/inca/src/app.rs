@@ -5,7 +5,7 @@ use crate::{panels, theme, timeline, toolbar, vp_ui, windows};
 use inca_core::commands::Host;
 use inca_core::mel::{Interp, Val};
 use inca_core::scene::{CompMode, MsgKind, Scene, SelMode};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Tool {
@@ -190,6 +190,12 @@ pub struct IncaApp {
     pub dup_opts: crate::edit_cmds::DupOpts,
     pub dup_special_open: bool,
     pub add_attr: Option<crate::edit_cmds::AddAttr>,
+    pub last_hidden: Vec<String>,
+    pub hud: crate::edit_cmds::Hud,
+    pub overlay_normals: HashSet<String>,
+    pub overlay_border: HashSet<String>,
+    /// measured redraw rate for the fps HUD
+    pub fps_measured: f32,
     /// (sources, duplicates) of the last Shift+D, to repeat its offset
     pub last_dup: Option<(Vec<String>, Vec<String>)>,
     /// viewport background (Alt+B cycles viewport::BG_MODES)
@@ -288,6 +294,11 @@ impl IncaApp {
             dup_opts: cc.storage.and_then(|s| eframe::get_value(s, "dupOpts")).unwrap_or_default(),
             dup_special_open: false,
             add_attr: None,
+            last_hidden: vec![],
+            hud: cc.storage.and_then(|s| eframe::get_value(s, "hud")).unwrap_or_default(),
+            overlay_normals: HashSet::new(),
+            overlay_border: HashSet::new(),
+            fps_measured: 0.0,
             last_dup: None,
             bg_mode: cc.storage.and_then(|s| eframe::get_value(s, "bgMode")).unwrap_or(0),
             hotbox: None,
@@ -622,6 +633,7 @@ impl eframe::App for IncaApp {
         eframe::set_value(storage, "recentProjects", &self.recent_projects);
         eframe::set_value(storage, "autosave", &self.autosave);
         eframe::set_value(storage, "dupOpts", &self.dup_opts);
+        eframe::set_value(storage, "hud", &self.hud);
         if let Some(p) = &self.s.project {
             eframe::set_value(storage, "lastProject", p);
         }
@@ -646,6 +658,10 @@ impl eframe::App for IncaApp {
         }
         ctx.send_viewport_cmd(egui::ViewportCommand::Title(self.title()));
         self.tick_playback(&ctx);
+        let dt = ctx.input(|i| i.unstable_dt);
+        if dt > 0.0 {
+            self.fps_measured = self.fps_measured * 0.9 + 0.1 / dt;
+        }
         self.hotkeys(&ctx);
         // constraints follow their targets live (gizmo drags, channel edits)
         let moved = self.s.eval_constraints();

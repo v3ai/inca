@@ -120,6 +120,7 @@ fn pane(app: &mut IncaApp, ui: &mut egui::Ui, frame: &mut eframe::Frame, idx: us
     viewport::draw_particles(&app.s, &app.vps[idx], &cv, &painter);
     viewport::draw_component_overlay(&app.s, &app.vps[idx], &cv, &painter);
     viewport::draw_gate(&app.s, &app.vps[idx], &painter);
+    mesh_overlays(app, &cv, img_rect, &painter);
     if (resp.hovered() || resp.dragged()) && app.active_vp != idx && (resp.clicked() || resp.drag_started() || ui.input(|i| i.pointer.any_pressed())) {
         app.active_vp = idx;
     }
@@ -403,9 +404,10 @@ fn panel_toolbar(app: &mut IncaApp, ui: &mut egui::Ui, idx: usize) {
     if ib(ui, "backface", "Backface culling", v.backface) {
         v.backface = !v.backface;
     }
-    if ib(ui, "hud", "Poly count HUD", v.hud) {
-        v.hud = !v.hud;
+    if ib(ui, "hud", "Poly count HUD", app.hud.poly_count) {
+        app.hud.poly_count = !app.hud.poly_count;
     }
+    let v = &mut app.vps[idx];
     separator(ui);
     let r = ui.allocate_exact_size(vec2(18.0, 18.0), Sense::hover()).0;
     icons::paint(ui, r.shrink(1.0), "exposure", Color32::WHITE);
@@ -1004,34 +1006,115 @@ fn finish_drag(app: &mut IncaApp, d: GizmoDrag) {
 fn hud(app: &IncaApp, idx: usize, cv: &CamView, p: &egui::Painter) {
     let vp = &app.vps[idx];
     let r = vp.rect;
+    let h = app.hud;
     // axis triad
-    let o = pos2(r.min.x + 32.0, r.max.y - 32.0);
-    for (ax, c, l) in [(DVec3::X, Color32::from_rgb(224, 57, 62), "x"), (DVec3::Y, Color32::from_rgb(92, 214, 92), "y"), (DVec3::Z, Color32::from_rgb(74, 132, 255), "z")] {
-        let v = cv.view.transform_vector3(ax);
-        let e = o + vec2(v.x as f32, -v.y as f32) * 20.0;
-        p.line_segment([o, e], Stroke::new(2.0, c));
-        p.text(e, egui::Align2::CENTER_CENTER, l, egui::FontId::proportional(11.0), c);
+    if h.view_axis {
+        let o = pos2(r.min.x + 32.0, r.max.y - 32.0);
+        for (ax, c, l) in [(DVec3::X, Color32::from_rgb(224, 57, 62), "x"), (DVec3::Y, Color32::from_rgb(92, 214, 92), "y"), (DVec3::Z, Color32::from_rgb(74, 132, 255), "z")] {
+            let v = cv.view.transform_vector3(ax);
+            let e = o + vec2(v.x as f32, -v.y as f32) * 20.0;
+            p.line_segment([o, e], Stroke::new(2.0, c));
+            p.text(e, egui::Align2::CENTER_CENTER, l, egui::FontId::proportional(11.0), c);
+        }
     }
     if !vp.hud {
         return;
     }
-    p.text(pos2(r.center().x, r.max.y - 12.0), egui::Align2::CENTER_CENTER, &vp.camera, egui::FontId::proportional(12.0), Color32::from_gray(220));
-    let (v, e, f, t) = app.s.poly_count();
-    let txt = format!("Verts: {v}\nEdges: {e}\nFaces: {f}\nTris:  {t}");
-    p.text(pos2(r.min.x + 8.0, r.min.y + 6.0), egui::Align2::LEFT_TOP, txt, egui::FontId::monospace(11.0), Color32::from_gray(210));
-    if app.s.comp_mode.is_some() {
-        let m = match app.s.comp_mode {
-            Some(CompMode::Vertex) => "Vertex",
-            Some(CompMode::Edge) => "Edge",
-            _ => "Face",
-        };
-        p.text(pos2(r.max.x - 8.0, r.min.y + 6.0), egui::Align2::RIGHT_TOP, format!("{m} mode"), egui::FontId::proportional(12.0), Color32::from_rgb(255, 200, 120));
+    let text = Color32::from_gray(0xe8);
+    if h.cam_names {
+        p.text(pos2(r.center().x, r.max.y - 12.0), egui::Align2::CENTER_CENTER, &vp.camera, egui::FontId::proportional(11.0), Color32::from_gray(0xe6));
     }
-    if app.pivot_mode {
-        p.text(pos2(r.max.x - 8.0, r.min.y + 38.0), egui::Align2::RIGHT_TOP, "Edit Pivot", egui::FontId::proportional(12.0), Color32::from_rgb(95, 211, 255));
+    // poly count: totals, the selected objects, selected components (JS drawHud)
+    if h.poly_count {
+        let (mut tot, mut sel) = ([0usize; 5], [0usize; 5]);
+        let hil = app.s.hilite();
+        for id in app.s.all_dag(false) {
+            let Some(m) = app.s.node(&id).and_then(|n| n.mesh()) else { continue };
+            if !app.s.is_visible(&id) {
+                continue;
+            }
+            let pm = &m.mesh;
+            let uvs = pm.uv.as_ref().map(|u| u.iter().flatten().map(|f| f.len()).sum()).unwrap_or(0);
+            let st = [pm.v.len(), pm.topo().edges.len(), pm.f.len(), pm.tri_count(), uvs];
+            let picked = app.s.sel.contains(&id) || hil.contains(&id);
+            for k in 0..5 {
+                tot[k] += st[k];
+                if picked {
+                    sel[k] += st[k];
+                }
+            }
+        }
+        let mut comp = [0usize; 3];
+        for id in &hil {
+            let cs = app.s.comp_sel(id);
+            comp[0] += cs.v.len();
+            comp[1] += cs.e.len();
+            comp[2] += cs.f.len();
+        }
+        let rows: String = ["Verts:", "Edges:", "Faces:", "Tris:", "UVs:"]
+            .iter()
+            .enumerate()
+            .map(|(k, l)| format!("{l:<7}{:>9}{:>9}{:>9}\n", tot[k], sel[k], comp.get(k).copied().unwrap_or(0)))
+            .collect();
+        p.text(pos2(r.min.x + 8.0, r.min.y + 6.0), egui::Align2::LEFT_TOP, rows.trim_end(), egui::FontId::monospace(11.0), text);
+    }
+    let mut right = String::new();
+    if h.frame {
+        right += &format!("Current Frame: {}\n", inca_core::math::fmt_num(app.s.time.current));
+    }
+    if h.fps {
+        right += &format!("{:.1} fps\n", app.fps_measured);
+    }
+    let mut y = r.min.y + 6.0;
+    if !right.is_empty() {
+        let g = p.text(pos2(r.max.x - 8.0, y), egui::Align2::RIGHT_TOP, right.trim_end(), egui::FontId::monospace(11.0), text);
+        y = g.max.y + 4.0;
+    }
+    let mut tag = |t: &str, c: Color32| {
+        let g = p.text(pos2(r.max.x - 8.0, y), egui::Align2::RIGHT_TOP, t, egui::FontId::proportional(12.0), c);
+        y = g.max.y + 2.0;
+    };
+    if let Some(m) = app.s.comp_mode {
+        let m = match m {
+            CompMode::Vertex => "Vertex",
+            CompMode::Edge => "Edge",
+            CompMode::Face => "Face",
+        };
+        tag(&format!("{m} mode"), Color32::from_rgb(255, 200, 120));
     }
     if vp.isolate.is_some() {
-        p.text(pos2(r.max.x - 8.0, r.min.y + 22.0), egui::Align2::RIGHT_TOP, "Isolate Select", egui::FontId::proportional(12.0), Color32::from_rgb(255, 230, 120));
+        tag("Isolate Select", Color32::from_rgb(255, 230, 120));
     }
-    p.text(pos2(r.max.x - 8.0, r.max.y - 12.0), egui::Align2::RIGHT_CENTER, format!("frame {}", inca_core::math::fmt_num_long(app.s.time.current)), egui::FontId::proportional(11.0), Color32::from_gray(200));
+    if app.pivot_mode {
+        tag("Edit Pivot", Color32::from_rgb(95, 211, 255));
+    }
+}
+
+/// Display > Polygons > Face Normals / Border Edges overlays.
+fn mesh_overlays(app: &IncaApp, cv: &CamView, rect: Rect, p: &egui::Painter) {
+    let line = |a: DVec3, b: DVec3, c: Color32| {
+        if let (Some(qa), Some(qb)) = (cv.project(a, rect), cv.project(b, rect)) {
+            p.line_segment([qa, qb], Stroke::new(1.0, c));
+        }
+    };
+    for id in &app.overlay_normals {
+        let Some(pm) = app.s.node(id).and_then(|n| n.mesh()).map(|m| &m.mesh) else { continue };
+        let wm = app.s.world_matrix(id);
+        let b = pm.bbox();
+        let len = (b.size().length() * 0.05).max(0.05);
+        for f in 0..pm.f.len() {
+            let c = pm.face_center(f);
+            line(wm.transform_point3(c), wm.transform_point3(c + pm.face_normal(f) * len), Color32::from_rgb(0xff, 0xff, 0x40));
+        }
+    }
+    for id in &app.overlay_border {
+        let Some(pm) = app.s.node(id).and_then(|n| n.mesh()).map(|m| &m.mesh) else { continue };
+        let wm = app.s.world_matrix(id);
+        let t = pm.topo();
+        for (e, &(a, b)) in t.edges.iter().enumerate() {
+            if t.edge_faces[e].len() == 1 {
+                line(wm.transform_point3(pm.v[a as usize]), wm.transform_point3(pm.v[b as usize]), Color32::from_rgb(0xff, 0x70, 0x30));
+            }
+        }
+    }
 }
