@@ -17,6 +17,7 @@ pub mod mel;
 pub mod render;
 pub mod selection;
 pub mod uv;
+pub mod rig;
 pub mod deformers;
 pub mod skin;
 pub mod dynamics;

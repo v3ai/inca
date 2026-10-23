@@ -14,6 +14,18 @@ pub trait OpCtx {
     fn world_matrix(&self, _id: &str) -> Option<crate::math::DMat4> {
         None
     }
+    /// A node's rig record (lattice points ...).
+    fn node_rig(&self, _id: &str) -> Option<serde_json::Value> {
+        None
+    }
+    /// A node's keyable extra attribute.
+    fn node_extra(&self, _id: &str, _key: &str) -> Option<f64> {
+        None
+    }
+    /// A mesh node's current (local) vertices.
+    fn local_verts(&self, _id: &str) -> Option<Vec<glam::DVec3>> {
+        None
+    }
 }
 
 pub struct NoCtx;
@@ -59,6 +71,10 @@ pub static OPS: &[OpInfo] = &[
     OpInfo { ty: "polyChamferVtx", base: "polyChamfer", hidden: false, channels: &[ch("width", F, Some(0.001), None)] },
     OpInfo { ty: "polySplit", base: "polySplit", hidden: false, channels: &[] },
     OpInfo { ty: "polyUVSet", base: "polyUVSet", hidden: true, channels: &[] },
+    OpInfo { ty: "cluster", base: "cluster", hidden: false, channels: &[ch("envelope", F, Some(0.0), Some(1.0))] },
+    OpInfo { ty: "softMod", base: "softMod", hidden: false, channels: &[ch("envelope", F, Some(0.0), Some(1.0)), ch("falloffRadius", F, Some(0.0001), None)] },
+    OpInfo { ty: "ffd", base: "ffd", hidden: false, channels: &[ch("envelope", F, Some(0.0), Some(1.0))] },
+    OpInfo { ty: "blendShape", base: "blendShape", hidden: false, channels: &[ch("envelope", F, Some(0.0), Some(1.0))] },
     OpInfo { ty: "polySmoothFace", base: "polySmoothFace", hidden: false, channels: &[ch("divisions", I, Some(0.0), Some(4.0))] },
     OpInfo { ty: "polySubdFace", base: "polySubdFace", hidden: false, channels: &[ch("divisions", I, Some(1.0), Some(4.0))] },
     OpInfo { ty: "polyTriangulate", base: "polyTriangulate", hidden: false, channels: &[] },
@@ -254,6 +270,36 @@ pub fn apply(ty: &str, pm: &PolyMesh, p: &Params, ctx: &dyn OpCtx) -> Result<OpO
         "planarTrim" => {
             let cs: Vec<Curve> = ids(p, "curves").iter().filter_map(|id| ctx.world_curve(id)).collect();
             curves::planar(&cs, num_or(p, "segments", 8.0) as usize).into()
+        }
+        "cluster" | "softMod" => {
+            let mut m = pm.clone();
+            let mw = ctx.world_matrix(str_or(p, "owner", "")).unwrap_or(crate::math::DMat4::IDENTITY);
+            let hw = ctx.world_matrix(str_or(p, "handle", "")).ok_or("cluster handle missing")?;
+            if ty == "cluster" {
+                crate::deformers::cluster(&mut m.v, mw, hw, p);
+            } else {
+                crate::deformers::soft_mod(&mut m.v, mw, hw, p);
+            }
+            m.into()
+        }
+        "ffd" => {
+            let mut m = pm.clone();
+            let h = str_or(p, "handle", "");
+            let mw = ctx.world_matrix(str_or(p, "owner", "")).unwrap_or(crate::math::DMat4::IDENTITY);
+            let lw = ctx.world_matrix(h).ok_or("lattice missing")?;
+            let rig = ctx.node_rig(h).unwrap_or_default();
+            let base = rig.get("base").and_then(|b| serde_json::from_value::<Vec<f64>>(b.clone()).ok()).filter(|b| b.len() == 16).map(|b| crate::math::DMat4::from_cols_slice(&b)).unwrap_or(lw);
+            let div = [("sDivisions", 2.0), ("tDivisions", 5.0), ("uDivisions", 2.0)].map(|(k, d)| ctx.node_extra(h, k).unwrap_or(d).round().clamp(2.0, 12.0) as usize);
+            let pts: Vec<[f64; 3]> = rig.get("pts").and_then(|v| serde_json::from_value(v.clone()).ok()).unwrap_or_default();
+            let env = num_or(p, "envelope", 1.0) * ctx.node_extra(h, "envelope").unwrap_or(1.0);
+            crate::deformers::ffd(&mut m.v, mw, lw, base, div, &pts, env);
+            m.into()
+        }
+        "blendShape" => {
+            let mut m = pm.clone();
+            let owner = str_or(p, "owner", "").to_string();
+            crate::deformers::blend_shape(&mut m.v, p, &|name| ctx.node_extra(&owner, name).unwrap_or(0.0), &|id| ctx.local_verts(id));
+            m.into()
         }
         k if crate::deformers::KINDS.contains(&k) => {
             let mut m = pm.clone();

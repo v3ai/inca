@@ -146,3 +146,131 @@ mod tests {
         assert_eq!(pts[0], DVec3::new(1.0, 1.0, 0.0));
     }
 }
+
+// ---------------------------------------------------------------- cluster, soft mod, lattice, blend shape
+// (src/js/core/deformers.js). History ops on the deformed mesh; the handle / lattice is a node.
+
+fn mat16(v: Option<&serde_json::Value>) -> Option<DMat4> {
+    let a: Vec<f64> = v?.as_array()?.iter().filter_map(|x| x.as_f64()).collect();
+    (a.len() == 16).then(|| DMat4::from_cols_slice(&a))
+}
+
+/// Cluster: the weighted vertices follow the handle's motion since bind.
+pub fn cluster(pts: &mut [DVec3], mesh_world: DMat4, handle_world: DMat4, p: &Params) {
+    let env = num_or(p, "envelope", 1.0);
+    let Some(bind) = mat16(p.get("bind")) else { return };
+    let x = mesh_world.inverse() * handle_world * bind.inverse() * mesh_world;
+    let Some(w) = p.get("weights").and_then(|w| w.as_object()) else { return };
+    for (k, v) in w {
+        let (Ok(i), Some(wt)) = (k.parse::<usize>(), v.as_f64()) else { continue };
+        if let Some(q) = pts.get_mut(i) {
+            *q = q.lerp(x.transform_point3(*q), wt * env);
+        }
+    }
+}
+
+/// Soft Modification: like a cluster with a smooth volume falloff around the bind centre.
+pub fn soft_mod(pts: &mut [DVec3], mesh_world: DMat4, handle_world: DMat4, p: &Params) {
+    let env = num_or(p, "envelope", 1.0);
+    let Some(bind) = mat16(p.get("bind")) else { return };
+    let c: [f64; 3] = p.get("center").and_then(|v| serde_json::from_value(v.clone()).ok()).unwrap_or_default();
+    let c = DVec3::from_array(c);
+    let r = num_or(p, "falloffRadius", 5.0).max(1e-4);
+    let x = mesh_world.inverse() * handle_world * bind.inverse() * mesh_world;
+    for q in pts.iter_mut() {
+        let d = (mesh_world.transform_point3(*q) - c).length() / r;
+        if d >= 1.0 {
+            continue;
+        }
+        let w = (1.0 - d * d * (3.0 - 2.0 * d)) * env;
+        *q = q.lerp(x.transform_point3(*q), w);
+    }
+}
+
+fn bern(n: usize, i: usize, t: f64) -> f64 {
+    let mut c = 1.0;
+    for k in 1..=i {
+        c = c * (n - k + 1) as f64 / k as f64;
+    }
+    c * t.powi(i as i32) * (1.0 - t).powi((n - i) as i32)
+}
+
+/// Lattice points in lattice space (-0.5..0.5), index (i * t + j) * u + k.
+pub fn lattice_grid(div: [usize; 3]) -> Vec<[f64; 3]> {
+    let mut pts = vec![];
+    for i in 0..div[0] {
+        for j in 0..div[1] {
+            for k in 0..div[2] {
+                pts.push([i as f64 / (div[0] - 1) as f64 - 0.5, j as f64 / (div[1] - 1) as f64 - 0.5, k as f64 / (div[2] - 1) as f64 - 0.5]);
+            }
+        }
+    }
+    pts
+}
+
+pub fn lattice_index(div: [usize; 3], i: usize, j: usize, k: usize) -> usize {
+    (i * div[1] + j) * div[2] + k
+}
+
+/// Lattice (free-form deformation): Bernstein blend of the lattice points.
+pub fn ffd(pts: &mut [DVec3], mesh_world: DMat4, lattice_world: DMat4, base: DMat4, div: [usize; 3], lpts: &[[f64; 3]], env: f64) {
+    if lpts.len() != div[0] * div[1] * div[2] || div.iter().any(|d| *d < 2) {
+        return;
+    }
+    let a = base.inverse() * mesh_world;
+    let b = mesh_world.inverse() * lattice_world;
+    let e = 1e-4;
+    for q in pts.iter_mut() {
+        let l = a.transform_point3(*q);
+        let (s, t, u) = (l.x + 0.5, l.y + 0.5, l.z + 0.5);
+        if [s, t, u].iter().any(|x| *x < -e || *x > 1.0 + e) {
+            continue;
+        }
+        let bs: Vec<f64> = (0..div[0]).map(|i| bern(div[0] - 1, i, s.clamp(0.0, 1.0))).collect();
+        let bt: Vec<f64> = (0..div[1]).map(|j| bern(div[1] - 1, j, t.clamp(0.0, 1.0))).collect();
+        let bu: Vec<f64> = (0..div[2]).map(|k| bern(div[2] - 1, k, u.clamp(0.0, 1.0))).collect();
+        let mut acc = DVec3::ZERO;
+        for i in 0..div[0] {
+            for j in 0..div[1] {
+                let w0 = bs[i] * bt[j];
+                if w0 == 0.0 {
+                    continue;
+                }
+                for k in 0..div[2] {
+                    acc += DVec3::from_array(lpts[lattice_index(div, i, j, k)]) * (w0 * bu[k]);
+                }
+            }
+        }
+        let out = b.transform_point3(acc);
+        *q = q.lerp(out, env);
+    }
+}
+
+/// Blend shape: add each target's deltas scaled by its weight.
+pub fn blend_shape(pts: &mut [DVec3], p: &Params, weight: &dyn Fn(&str) -> f64, target_mesh: &dyn Fn(&str) -> Option<Vec<DVec3>>) {
+    let env = num_or(p, "envelope", 1.0);
+    let base: Vec<DVec3> = pts.to_vec();
+    for t in p.get("targets").and_then(|t| t.as_array()).into_iter().flatten() {
+        let name = t["name"].as_str().unwrap_or("");
+        let w = weight(name) * env;
+        if w.abs() < 1e-7 {
+            continue;
+        }
+        // a live target mesh with the same vertex count drives it; otherwise the stored deltas
+        match t["id"].as_str().and_then(target_mesh).filter(|v| v.len() == base.len()) {
+            Some(tv) => {
+                for (i, q) in pts.iter_mut().enumerate() {
+                    *q += (tv[i] - base[i]) * w;
+                }
+            }
+            None => {
+                for d in t["d"].as_array().into_iter().flatten() {
+                    let (Some(i), Some(dx), Some(dy), Some(dz)) = (d[0].as_u64(), d[1].as_f64(), d[2].as_f64(), d[3].as_f64()) else { continue };
+                    if let Some(q) = pts.get_mut(i as usize) {
+                        *q += DVec3::new(dx, dy, dz) * w;
+                    }
+                }
+            }
+        }
+    }
+}

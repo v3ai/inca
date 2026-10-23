@@ -1389,8 +1389,11 @@ impl Scene {
     // ------------------------------------------------------------ constraints
     /// Apply all constraints; returns the nodes that moved.
     pub fn eval_constraints(&mut self) -> Vec<Id> {
-        let mut moved = vec![];
+        let mut moved = self.eval_rig_pre();
         for c in self.constraints.clone() {
+            if c.kind == "poleVector" {
+                continue;
+            }
             if !self.nodes.contains_key(&c.driven) || c.targets.iter().any(|t| !self.nodes.contains_key(t)) || c.targets.is_empty() {
                 continue;
             }
@@ -1448,6 +1451,7 @@ impl Scene {
                 moved.push(c.driven.clone());
             }
         }
+        moved.extend(self.eval_rig_post());
         moved
     }
 
@@ -1660,6 +1664,10 @@ impl Scene {
         for (k, v) in &n.passthrough {
             o.insert(k.clone(), v.clone());
         }
+        // the JS app reads rig nodes' keyable attributes from extraAttrs
+        if (crate::rig::RIG_KINDS.contains(&n.kind.as_str()) || n.passthrough.contains_key("rig")) && n.extra.as_object().is_some_and(|e| !e.is_empty()) {
+            o.insert("extraAttrs".into(), n.extra.clone());
+        }
         if n.xf.jo != [0.0; 3] || n.kind == "joint" {
             o.insert("jo".into(), json!(n.xf.jo));
         }
@@ -1829,6 +1837,7 @@ impl Scene {
         self.render = data["render"].as_object().cloned().unwrap_or_default();
         self.sel = data["sel"].as_array().map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).filter(|i| self.nodes.contains_key(i)).collect()).unwrap_or_default();
         self.project = data["project"].as_str().map(String::from);
+        self.import_js_rig();
         self.touch();
         Ok(())
     }
@@ -1908,6 +1917,16 @@ impl OpCtx for Scene {
     }
     fn world_matrix(&self, id: &str) -> Option<DMat4> {
         self.nodes.contains_key(id).then(|| Scene::world_matrix(self, id))
+    }
+    fn node_rig(&self, id: &str) -> Option<Value> {
+        self.nodes.get(id)?.passthrough.get("rig").cloned()
+    }
+    fn node_extra(&self, id: &str, key: &str) -> Option<f64> {
+        let v = self.nodes.get(id)?.extra.get(key)?;
+        v.as_f64().or_else(|| v.as_bool().map(|b| b as i32 as f64))
+    }
+    fn local_verts(&self, id: &str) -> Option<Vec<DVec3>> {
+        self.nodes.get(id)?.mesh().map(|m| m.mesh.v.clone())
     }
 }
 

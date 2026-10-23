@@ -109,6 +109,7 @@ pub const CORE_COMMANDS: &[&str] = &[
     "rebuildCurve", "reverseCurve", "file", "undo", "redo", "connectAttr", "disconnectAttr", "listConnections", "isConnected", "warning", "error", "about", "selectMode", "selectType",
     "polyCreateFacet", "polyBevel", "nonLinear", "emitter", "fireEffect", "smokeEffect", "gravity", "drag", "turbulence", "radial", "vortex", "air", "rigidBody", "joint", "skinCluster", "parentConstraint", "pointConstraint", "orientConstraint", "scaleConstraint", "aimConstraint", "assignMaterial", "nurbsToPoly", "displaySmoothness", "toggle", "layerEditor", "createDisplayLayer", "editDisplayLayerMembers", "help", "whatIs",
     "matchTransform", "addAttr", "deleteAttr", "polyChamferVtx", "polyConnectComponents", "polyCollapseEdge", "polyCollapseFacet", "polyToCurve", "polyCleanup", "closeCurve", "openCurve",
+    "ikHandle", "insertJoint", "mirrorJoint", "cluster", "softMod", "lattice", "blendShape", "poleVectorConstraint", "setDrivenKeyframe", "pathAnimation", "removeConstraints", "deleteDeformers",
 ];
 
 pub fn exists(name: &str) -> bool {
@@ -517,9 +518,17 @@ pub fn run(s: &mut Scene, h: &mut dyn Host, name: &str, raw: &[Val]) -> Result<V
         "emitter" | "fireEffect" | "smokeEffect" => &[("pos|position", 3), ("type", 1), ("r|rate", 1), ("spd|speed", 1), ("sp|spread", 1), ("lsp|lifespan", 1), ("dx", 1), ("dy", 1), ("dz", 1), ("n|name", 1)],
         "gravity" | "drag" | "turbulence" | "radial" | "vortex" | "air" => &[("pos|position", 3), ("m|magnitude", 1), ("dx", 1), ("dy", 1), ("dz", 1), ("mxd|maxDistance", 1), ("att|attenuation", 1), ("f|frequency", 1)],
         "rigidBody" => &[("active", 0), ("passive", 0), ("pas", 0), ("m|mass", 1), ("b|bounciness", 1), ("sf|staticFriction", 1)],
-        "joint" => &[("p|position", 3), ("n|name", 1), ("rad|radius", 1), ("a|absolute", 0)],
+        "joint" => &[("p|position", 3), ("n|name", 1), ("rad|radius", 1), ("a|absolute", 0), ("e|edit", 0), ("oj|orientJoint", 1), ("sao|secondaryAxisOrient", 1), ("ch|children", 0), ("zso|zeroScaleOrient", 0)],
+        "ikHandle" => &[("sj|startJoint", 1), ("ee|endEffector", 1), ("sol|solver", 1), ("n|name", 1)],
+        "mirrorJoint" => &[("myz|mirrorYZ", 0), ("mxz|mirrorXZ", 0), ("mxy|mirrorXY", 0), ("mb|mirrorBehavior", 0), ("sr|searchReplace", 2)],
+        "cluster" | "softMod" => &[("n|name", 1), ("fr|falloffRadius", 1), ("rel|relative", 0)],
+        "lattice" => &[("dv|divisions", 3), ("oc|objectCentered", 1), ("n|name", 1)],
+        "blendShape" => &[("n|name", 1)],
+        "poleVectorConstraint" => &[("w|weight", 1)],
+        "setDrivenKeyframe" => &[("cd|currentDriver", 1), ("at|attribute", 1), ("dv|driverValue", 1), ("v|value", 1)],
+        "pathAnimation" => &[("c|curve", 1), ("f|follow", 1), ("fa|followAxis", 1), ("ua|upAxis", 1), ("fm|fractionMode", 1), ("stu|startTimeU", 1), ("etu|endTimeU", 1), ("wut|worldUpType", 1)],
         "parentConstraint" | "pointConstraint" | "orientConstraint" | "scaleConstraint" | "aimConstraint" => &[("mo|maintainOffset", 0), ("w|weight", 1), ("aim|aimVector", 3), ("u|upVector", 3)],
-        "skinCluster" => &[("tsb|toSelectedBones", 0), ("mi|maximumInfluences", 1), ("dr|dropoffRate", 1)],
+        "skinCluster" => &[("tsb|toSelectedBones", 0), ("mi|maximumInfluences", 1), ("dr|dropoffRate", 1), ("e|edit", 0), ("ub|unbind", 0), ("bm|bindMethod", 1), ("sm|skinMethod", 1), ("nw|normalizeWeights", 1), ("wd|weightDistribution", 1)],
         "nurbsToPoly" => &[("f|format", 1), ("pt|polygonType", 1), ("ch", 1)],
         _ => &[("ch|constructionHistory", 1), ("n|name", 1)],
     };
@@ -1120,6 +1129,244 @@ pub fn run(s: &mut Scene, h: &mut dyn Host, name: &str, raw: &[Val]) -> Result<V
             }
             Ok(strs(out))
         }
+        "joint" if a.has(&["e", "edit"]) => {
+            // joint -e -oj xyz: orient the joints (and their children)
+            let js: Vec<Id> = targets(s, &a).into_iter().filter(|i| s.node(i).is_some_and(|n| n.kind == "joint")).collect();
+            if js.is_empty() {
+                return Err("joint -e: select joints".into());
+            }
+            s.orient_hierarchy(&js);
+            Ok(Val::None)
+        }
+        "ikHandle" => {
+            let ts = targets(s, &a);
+            let sj = a.s(&["sj", "startJoint"]).and_then(|n| s.find(&n)).or_else(|| ts.first().cloned()).ok_or("ikHandle: no start joint")?;
+            let ee = a.s(&["ee", "endEffector"]).and_then(|n| s.find(&n)).or_else(|| ts.last().cloned()).ok_or("ikHandle: no end joint")?;
+            let sol = a.s(&["sol", "solver"]).unwrap_or("ikRPsolver".into());
+            let h = s.create_ik_handle(&sj, &ee, &sol)?;
+            if let Some(n) = a.s(&["n", "name"]) {
+                rename(s, &h, &n);
+            }
+            s.select(std::slice::from_ref(&h), SelMode::Replace);
+            Ok(Val::Array(vec![Val::Str(s.name_of(&h))]))
+        }
+        "insertJoint" => {
+            let j = targets(s, &a).into_iter().find(|i| s.node(i).is_some_and(|n| n.kind == "joint")).ok_or("insertJoint: select a joint")?;
+            let n = s.insert_joint(&j)?;
+            s.select(std::slice::from_ref(&n), SelMode::Replace);
+            Ok(Val::Str(s.name_of(&n)))
+        }
+        "mirrorJoint" => {
+            let j = targets(s, &a).into_iter().find(|i| s.node(i).is_some_and(|n| n.kind == "joint")).ok_or("mirrorJoint: select the root joint")?;
+            let axis = if a.has(&["mxz", "mirrorXZ"]) { 1 } else if a.has(&["mxy", "mirrorXY"]) { 2 } else { 0 };
+            let sr: Vec<String> = a.flags.iter().find(|(k, _)| k == "sr" || k == "searchReplace").map(|(_, v)| v.iter().map(|x| x.str()).collect()).unwrap_or_default();
+            let n = s.mirror_joints(&j, axis, sr.first().map(|x| x.as_str()).unwrap_or(""), sr.get(1).map(|x| x.as_str()).unwrap_or(""));
+            s.select(std::slice::from_ref(&n), SelMode::Replace);
+            Ok(Val::Str(s.name_of(&n)))
+        }
+        "cluster" | "softMod" => {
+            // components (or whole meshes) get a cluster / soft mod handle at their centre
+            let meshes = mesh_targets(s, &a);
+            if meshes.is_empty() {
+                return Err(format!("{name}: select vertices or meshes"));
+            }
+            let mut entries = vec![];
+            let mut c = DVec3::ZERO;
+            let mut n = 0.0f64;
+            for m in &meshes {
+                let comps = s.comp_mode.is_some() || a.strings().iter().any(|t| t.contains('['));
+                let vs: Vec<u32> = if comps { op_verts(s, &a, m) } else { (0..s.node(m).unwrap().mesh().unwrap().mesh.v.len() as u32).collect() };
+                let wm = s.world_matrix(m);
+                let pm = &s.node(m).unwrap().mesh().unwrap().mesh;
+                for v in &vs {
+                    c += wm.transform_point3(pm.v[*v as usize]);
+                    n += 1.0;
+                }
+                entries.push((m.clone(), vs));
+            }
+            let c = c / n.max(1.0);
+            let kind = "clusterHandle";
+            let base = a.s(&["n", "name"]).unwrap_or(format!("{name}1"));
+            let h = s.create_handle(kind, &format!("{base}Handle"));
+            s.nodes.get_mut(&h).unwrap().xf.t = c.to_array();
+            let bind = s.world_matrix(&h).to_cols_array();
+            s.set_rig(&h, json!({ "deformer": name, "name": base }));
+            let mut out = vec![];
+            for (m, vs) in entries {
+                let mut p = Params::new();
+                p.insert("handle".into(), json!(h));
+                p.insert("owner".into(), json!(m));
+                p.insert("bind".into(), json!(bind));
+                p.insert("envelope".into(), json!(1.0));
+                if name == "cluster" {
+                    let w: serde_json::Map<String, serde_json::Value> = vs.iter().map(|v| (v.to_string(), json!(1.0))).collect();
+                    p.insert("weights".into(), serde_json::Value::Object(w));
+                } else {
+                    p.insert("center".into(), json!(c.to_array()));
+                    p.insert("falloffRadius".into(), json!(a.f(&["fr", "falloffRadius"]).unwrap_or(5.0)));
+                }
+                s.add_history(&m, name, p);
+                s.comp.remove(&m);
+                out.push(last_history_name(s, &m));
+            }
+            s.comp_mode = None;
+            s.select(std::slice::from_ref(&h), SelMode::Replace);
+            out.push(s.name_of(&h));
+            Ok(strs(out))
+        }
+        "lattice" => {
+            let meshes: Vec<Id> = targets(s, &a).iter().flat_map(|t| s.subtree(t)).filter(|i| s.node(i).is_some_and(|n| n.mesh().is_some())).collect();
+            if meshes.is_empty() {
+                return Err("lattice: select meshes".into());
+            }
+            let dv = a.v3(&["dv", "divisions"]).unwrap_or([2.0, 5.0, 2.0]).map(|x| x.round().clamp(2.0, 12.0) as usize);
+            let mut bb = Aabb::EMPTY;
+            for m in &meshes {
+                bb.union(&s.world_bbox(m));
+            }
+            let sz = (bb.size() * 1.02).max(DVec3::splat(0.1));
+            let base = a.s(&["n", "name"]).unwrap_or("ffd1".into());
+            let h = s.create_handle("lattice", &format!("{base}Lattice"));
+            {
+                let n = s.nodes.get_mut(&h).unwrap();
+                n.xf.t = bb.center().to_array();
+                n.xf.s = sz.to_array();
+                n.extra = json!({ "envelope": 1.0, "sDivisions": dv[0], "tDivisions": dv[1], "uDivisions": dv[2] });
+            }
+            let wm = s.world_matrix(&h).to_cols_array();
+            s.set_rig(&h, json!({ "deformer": "ffd", "name": base, "base": wm, "pts": crate::deformers::lattice_grid(dv), "sel": [] }));
+            let mut out = vec![];
+            for m in &meshes {
+                let mut p = Params::new();
+                p.insert("handle".into(), json!(h));
+                p.insert("owner".into(), json!(m));
+                p.insert("envelope".into(), json!(1.0));
+                s.add_history(m, "ffd", p);
+                out.push(last_history_name(s, m));
+            }
+            s.select(std::slice::from_ref(&h), SelMode::Replace);
+            out.push(s.name_of(&h));
+            Ok(strs(out))
+        }
+        "blendShape" => {
+            // blendShape target1 target2 ... base: weights become channels on the base mesh
+            let ms: Vec<Id> = targets(s, &a).into_iter().filter(|i| s.node(i).is_some_and(|n| n.mesh().is_some())).collect();
+            if ms.len() < 2 {
+                return Err("blendShape: select the target shapes, then the base mesh last".into());
+            }
+            let base = ms.last().unwrap().clone();
+            let bv = s.node(&base).unwrap().mesh().unwrap().mesh.v.clone();
+            let mut tlist = vec![];
+            for t in &ms[..ms.len() - 1] {
+                let tv = &s.node(t).unwrap().mesh().unwrap().mesh.v;
+                if tv.len() != bv.len() {
+                    s.msg(MsgKind::Warning, format!("// Warning: {} has a different number of vertices than {}; skipped.", s.name_of(t), s.name_of(&base)));
+                    continue;
+                }
+                let d: Vec<serde_json::Value> = bv.iter().zip(tv).enumerate().filter(|(_, (b, t))| (**t - **b).abs().max_element() > 1e-7).map(|(i, (b, t))| json!([i, t.x - b.x, t.y - b.y, t.z - b.z])).collect();
+                let mut nm = s.name_of(t);
+                while s.node(&base).and_then(|n| n.extra.get(&nm)).is_some() {
+                    nm.push('_');
+                }
+                s.set_extra(&base, &nm, json!(0.0));
+                tlist.push(json!({ "name": nm, "id": t, "d": d }));
+            }
+            // add to an existing blend shape node on the base, or make one
+            let existing = s.node(&base).and_then(|n| n.mesh()).and_then(|m| m.history.iter().position(|h| h.ty == "blendShape"));
+            match existing {
+                Some(i) => {
+                    let mut all = s.node(&base).unwrap().mesh().unwrap().history[i].params.get("targets").cloned().unwrap_or(json!([]));
+                    all.as_array_mut().unwrap().extend(tlist);
+                    s.set_history_param(&base, i, "targets", all);
+                }
+                None => {
+                    let mut p = Params::new();
+                    p.insert("owner".into(), json!(base));
+                    p.insert("targets".into(), serde_json::Value::Array(tlist));
+                    p.insert("envelope".into(), json!(1.0));
+                    s.add_history(&base, "blendShape", p);
+                }
+            }
+            s.select(std::slice::from_ref(&base), SelMode::Replace);
+            Ok(Val::Str(last_history_name(s, &base)))
+        }
+        "poleVectorConstraint" => {
+            let mut ts = targets(s, &a);
+            let driven = ts.pop().ok_or("poleVectorConstraint: select the target, then the IK handle")?;
+            if s.node(&driven).map(|n| n.kind.as_str()) != Some("ikHandle") || ts.is_empty() {
+                return Err("Pole vector constraint needs a target and an IK handle (rotate plane solver) selected last".into());
+            }
+            let name = s.add_constraint("poleVector", ts, &driven, false);
+            Ok(Val::Str(name))
+        }
+        "setDrivenKeyframe" => {
+            // setDrivenKeyframe -cd driver.attr driven.attr ...
+            let cd = a.s(&["cd", "currentDriver"]).ok_or("setDrivenKeyframe: -cd driver.attribute required")?;
+            let (dn, da) = cd.split_once('.').ok_or("setDrivenKeyframe: -cd expects node.attribute")?;
+            let drv = s.find(dn).ok_or(format!("No object matches name: {dn}"))?;
+            let mut n = 0;
+            for t in a.strings() {
+                let (on, oa) = match t.split_once('.') {
+                    Some((o, at)) => (o.to_string(), at.to_string()),
+                    None => (t.clone(), a.s(&["at", "attribute"]).ok_or("setDrivenKeyframe: -at attribute required")?),
+                };
+                let id = s.find(&on).ok_or(format!("No object matches name: {on}"))?;
+                s.set_driven_key(&id, &oa, &drv, da);
+                n += 1;
+            }
+            if n == 0 {
+                return Err("setDrivenKeyframe: name the driven node.attribute".into());
+            }
+            Ok(Val::Int(n))
+        }
+        "pathAnimation" => {
+            let c = a.s(&["c", "curve"]).and_then(|n| s.find(&n)).ok_or("pathAnimation: -c curve required")?;
+            let follow = a.b(&["f", "follow"], true);
+            let fa = a.s(&["fa", "followAxis"]).unwrap_or("x".into());
+            let ua = a.s(&["ua", "upAxis"]).unwrap_or("y".into());
+            let objs: Vec<Id> = targets(s, &a).into_iter().filter(|i| *i != c).collect();
+            if objs.is_empty() {
+                return Err("pathAnimation: select the objects to animate".into());
+            }
+            for o in &objs {
+                s.attach_motion_path(o, &c, follow, &fa, &ua);
+            }
+            Ok(strs(objs.iter().map(|o| s.name_of(o)).collect()))
+        }
+        "removeConstraints" => {
+            let ts = targets(s, &a);
+            Ok(Val::Int(s.remove_constraints(&ts) as i64))
+        }
+        "deleteDeformers" => {
+            // deformer history on the selected meshes, and the selected handles
+            let ts = targets(s, &a);
+            let mut n = 0;
+            for t in ts.iter().flat_map(|t| s.subtree(t)).collect::<Vec<_>>() {
+                if s.node(&t).is_some_and(|n| n.mesh().is_some()) {
+                    let removed = s.remove_history_types(&t, &["cluster", "softMod", "ffd", "blendShape", "skinCluster", "bend", "flare", "sine", "squash", "twist", "wave"]);
+                    n += removed;
+                    if let Some(x) = s.nodes.get_mut(&t) {
+                        if let Some(e) = x.extra.as_object_mut() {
+                            e.retain(|_, v| !v.is_number() || removed == 0);
+                        }
+                    }
+                }
+            }
+            for h in ts.iter().filter(|t| s.node(t).is_some_and(|n| matches!(n.kind.as_str(), "deformer" | "clusterHandle" | "lattice"))).cloned().collect::<Vec<_>>() {
+                for m in s.nodes.values().filter(|n| n.mesh().is_some_and(|m| m.history.iter().any(|x| x.params.get("handle").and_then(|v| v.as_str()) == Some(h.as_str())))).map(|n| n.id.clone()).collect::<Vec<_>>() {
+                    if let Some(mm) = s.nodes.get_mut(&m).and_then(|n| n.mesh_mut()) {
+                        mm.history.retain(|x| x.params.get("handle").and_then(|v| v.as_str()) != Some(h.as_str()));
+                    }
+                    s.evaluate(&m, 0);
+                    n += 1;
+                }
+            }
+            for h in s.orphan_deformer_handles() {
+                s.delete_node(&h);
+            }
+            s.touch();
+            Ok(Val::Int(n as i64))
+        }
         "joint" => {
             // a selected joint becomes the parent, like Maya's Joint Tool
             let parent = s.lead().filter(|l| s.node(l).is_some_and(|n| n.kind == "joint")).cloned();
@@ -1139,6 +1386,13 @@ pub fn run(s: &mut Scene, h: &mut dyn Host, name: &str, raw: &[Val]) -> Result<V
             }
             s.select(std::slice::from_ref(&id), SelMode::Replace);
             Ok(Val::Str(s.name_of(&id)))
+        }
+        "skinCluster" if a.has(&["ub", "unbind"]) => {
+            let mut n = 0;
+            for t in targets(s, &a).iter().flat_map(|t| s.subtree(t)).collect::<Vec<_>>() {
+                n += s.remove_history_types(&t, &["skinCluster"]);
+            }
+            Ok(Val::Int(n as i64))
         }
         "skinCluster" => {
             let ts = targets(s, &a);
@@ -2222,6 +2476,45 @@ mod tests {
         let r = mel(&mut s, "polyCube -n g; select -r g.e[0] g.e[1]; polyToCurve -form 2 -degree 1;").unwrap();
         let cv = s.find(&r.str()).unwrap();
         assert!(matches!(&s.node(&cv).unwrap().shape, Shape::Curve(_)));
+    }
+
+    #[test]
+    fn rig_commands() {
+        let mut s = Scene::new();
+        mel(&mut s, "select -cl; joint -p 0 0 0 -n a; joint -p 2 0 -0.2 -n b; joint -p 4 0 0 -n c; select -r a; joint -e -oj xyz;").unwrap();
+        let r = mel(&mut s, "ikHandle -sj a -ee c;").unwrap();
+        let h = s.find(&r.str()).unwrap();
+        let hn = s.name_of(&h);
+        mel(&mut s, &format!("move 2.5 1.5 0 {hn};")).unwrap();
+        s.eval_constraints();
+        assert!((s.world_pos(&s.find("c").unwrap()) - DVec3::new(2.5, 1.5, 0.0)).length() < 1e-4);
+        // cluster: moving the handle moves the clustered vertex
+        mel(&mut s, "polyCube -n box; select -r box.vtx[0]; cluster;").unwrap();
+        let bx = s.find("box").unwrap();
+        let v0 = s.node(&bx).unwrap().mesh().unwrap().mesh.v[0];
+        mel(&mut s, "move -r 0 1 0 cluster1Handle;").unwrap();
+        let v1 = s.node(&bx).unwrap().mesh().unwrap().mesh.v[0];
+        assert!((v1 - v0 - DVec3::Y).length() < 1e-9, "{v0} {v1}");
+        assert_eq!(s.node(&bx).unwrap().mesh().unwrap().mesh.v[1], s.node(&bx).unwrap().mesh().unwrap().history[0].out.as_ref().unwrap().v[1]);
+        // blend shape weight on the base
+        mel(&mut s, "polyCube -n tgt; move -r 0 0 0 tgt; polyCube -n base;").unwrap();
+        let t = s.find("tgt").unwrap();
+        let mut pm = s.node(&t).unwrap().mesh().unwrap().mesh.clone();
+        pm.v[0].y += 2.0;
+        s.bake_mesh(&t, pm);
+        mel(&mut s, "select -r tgt base; blendShape; setAttr base.tgt 0.5;").unwrap();
+        let b = s.find("base").unwrap();
+        let base0 = s.node(&b).unwrap().mesh().unwrap().history[0].out.as_ref().unwrap().v[0];
+        assert!((s.node(&b).unwrap().mesh().unwrap().mesh.v[0].y - base0.y - 1.0).abs() < 1e-9);
+        // lattice: identity until points move
+        mel(&mut s, "polySphere -n ball; select -r ball; lattice -dv 2 3 2;").unwrap();
+        let ball = s.find("ball").unwrap();
+        let before = s.node(&ball).unwrap().mesh().unwrap().history[0].out.as_ref().unwrap().v.clone();
+        let after = &s.node(&ball).unwrap().mesh().unwrap().mesh.v;
+        assert!(before.iter().zip(after).all(|(a, b)| (*a - *b).length() < 1e-9));
+        // delete deformers removes the history and the handle
+        mel(&mut s, "select -r box; deleteDeformers;").unwrap();
+        assert!(s.find("cluster1Handle").is_none());
     }
 
     #[test]
