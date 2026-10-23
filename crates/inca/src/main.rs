@@ -14,6 +14,7 @@ mod toolbar;
 mod viewport;
 mod vp_ui;
 mod windows;
+mod workspace;
 
 fn icon() -> Option<egui::IconData> {
     let img = image::load_from_memory(include_bytes!("../../../build/icon256.png")).ok()?.to_rgba8();

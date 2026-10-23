@@ -11,6 +11,8 @@ pub enum M {
     Sep,
     /// planned item (shown disabled)
     Todo(&'static str),
+    /// submenu built by code ("Workspaces", "UI Elements")
+    Dyn(&'static str),
 }
 use M::*;
 
@@ -104,9 +106,11 @@ pub fn common(name: &str) -> Vec<M> {
             Sep,
             Sub("Polygons", vec![A("smoothOff"), A("smoothCage"), A("smoothOn")]),
             Sep,
-            Sub("UI Elements", vec![A("toggleShelf"), A("toggleToolbox"), A("toggleTimeline"), A("toggleCmdline"), A("channelBox"), A("outlinerWindow")]),
+            Dyn("UI Elements"),
         ],
         "Windows" => vec![
+            Dyn("Workspaces"),
+            Sep,
             Sub("General Editors", vec![A("scriptEditor"), A("melReference")]),
             Sub("Rendering Editors", vec![A("hypershade"), A("renderView"), A("renderSettings")]),
             Sub("Animation Editors", vec![A("graphEditor"), A("dopeSheet")]),
@@ -180,6 +184,12 @@ pub fn items(app: &mut IncaApp, ui: &mut egui::Ui, list: &[M]) {
             Todo(l) => {
                 ui.add_enabled(false, egui::Button::new(format!("{l} (planned)")));
             }
+            Dyn(l) => {
+                ui.menu_button(*l, |ui| match *l {
+                    "Workspaces" => crate::workspace::menu(app, ui),
+                    _ => crate::workspace::elements_menu(app, ui),
+                });
+            }
         }
     }
 }
@@ -193,10 +203,10 @@ pub fn toggle_state(app: &IncaApp, id: &str) -> Option<bool> {
         "toggleWireOnShaded" => v.wire_on_shaded,
         "toggleXray" => v.xray,
         "toggleBackface" => v.backface,
-        "toggleShelf" => app.show_shelf,
-        "toggleTimeline" => app.show_timeline,
-        "toggleCmdline" => app.show_cmdline,
-        "toggleToolbox" => app.show_toolbox,
+        "toggleShelf" => app.shown("shelf"),
+        "toggleTimeline" => app.shown("timeslider"),
+        "toggleCmdline" => app.shown("cmdline"),
+        "toggleToolbox" => app.shown("toolbox"),
         "outlinerWindow" => app.show_outliner,
         "toggleAutoKey" => app.s.time.auto_key,
         _ => return None,
@@ -231,6 +241,7 @@ pub fn menu_bar(app: &mut IncaApp, ui: &mut egui::Ui) {
         }
         let help = common("Help");
         ui.menu_button("Help", |ui| items(app, ui, &help));
+        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| crate::workspace::selector(app, ui));
     });
 }
 

@@ -699,8 +699,10 @@ fn prefs(app: &mut IncaApp, ui: &mut egui::Ui) {
     theme::section_header(ui, "Modeling");
     ui.checkbox(&mut app.history_on, "Construction history on by default");
     theme::section_header(ui, "Interface");
-    ui.checkbox(&mut app.show_shelf, "Shelf");
-    ui.checkbox(&mut app.show_toolbox, "Tool Box");
-    ui.checkbox(&mut app.show_timeline, "Time Slider");
-    ui.checkbox(&mut app.show_cmdline, "Command Line");
+    for (k, l) in crate::workspace::ELEMENTS {
+        let mut on = app.shown(k);
+        if ui.checkbox(&mut on, *l).changed() {
+            app.set_shown(k, on);
+        }
+    }
 }

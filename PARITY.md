@@ -10,13 +10,13 @@ registry, menus, UI modules and a 0.1.12 screenshot.
 - [x] A2. Shelves: same shelf tabs and buttons as `shelf.js` (Curves/Surfaces, Poly Modeling, Sculpting, Rigging, Animation, Rendering, FX, Custom), icon buttons with labels on hover
 - [x] A3. Status line: same groups and icons — menu set, new/open/save, undo/redo, hierarchy/object/component mode, selection masks, snap toggles (grid/curve/point/live), history, render/IPR/render settings, input line (Absolute / Relative / Rename / Select) with "x y z or name", Symmetry dropdown, panel toggles on the right
 - [x] A4. Tool box: Select, Lasso, Paint, Move, Rotate, Scale, Last Tool; Quick Layout buttons at the bottom (single, four, side by side, outliner + persp, …)
-- [ ] A5. Default workspace: Outliner docked on the left and Attribute Editor on the right at start-up (as in 0.1.12), Workspace selector on the right of the menu bar, workspaces (Maya Classic, Modeling Standard/Expert, Sculpting, Animation, Rigging, Rendering, UV Editing)
+- [x] A5. Workspaces: dock layout remembered between sessions (0.1.12 restores Outliner left + Attribute Editor right from prefs), Workspace selector on the right of the menu bar, workspaces (Maya Classic, Modeling Standard/Expert, Sculpting, Animation, Rigging, Rendering, UV Editing)
 - [ ] A6. Viewport defaults: flat grey background (Alt+B cycles grey / black / dark / light / gradient), grid colours, larger UI font sizes matching the JS CSS
 - [ ] A7. Viewport panel: menus View / Shading / Lighting / Show / Renderer / Panels with the JS items; icon toolbar row (camera attrs, bookmarks, grid, film/resolution gate, wireframe/shaded/textured/lights/shadows/x-ray/isolate, exposure + gamma fields, colour management dropdown)
 - [ ] A8. Outliner: its own menu bar (Edit / Display / Show / Help), type icons, defaultLightSet / defaultObjectSet, shapes / materials / sets display options
 - [ ] A9. Attribute Editor: List / Selected / Focus / Attributes / Show / Help menus, node field + Focus + lock, bottom buttons Select / Load Attributes / Copy Tab / Close, collapsible sections
 - [ ] A10. Time / Range Slider: play backwards, step key buttons, frame field, "film (24 fps)" style fps names, character set / anim layer menus (placeholders), auto key + playback prefs buttons, shift-drag range edits
-- [ ] A11. Side tabs and dock resizing like the JS docks; Hide/Show UI elements (Ctrl+Space)
+- [ ] A11. Side tabs and dock resizing like the JS docks (Hide/Show UI elements, Ctrl+Space: done)
 
 ## B. Commands & menus missing in Rust
 

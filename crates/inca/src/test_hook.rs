@@ -18,7 +18,11 @@ pub fn step(app: &mut IncaApp, ctx: &egui::Context) {
                 eprintln!("INCA_TEST error: {e}");
             }
             for l in ui_lines {
-                app.action(l.trim_start_matches("//!ui ").trim());
+                let a = l.trim_start_matches("//!ui ").trim();
+                match a.strip_prefix("workspace ") {
+                    Some(w) => crate::workspace::apply(app, w),
+                    None => app.action(a),
+                }
             }
         }
     }

@@ -91,7 +91,7 @@ pub struct Windows {
     pub rename: Option<String>,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum RightTab {
     ChannelBox,
     AttributeEditor,
@@ -128,10 +128,11 @@ pub struct IncaApp {
     pub right_tab: RightTab,
     pub show_right: bool,
     pub show_outliner: bool,
-    pub show_shelf: bool,
-    pub show_timeline: bool,
-    pub show_cmdline: bool,
-    pub show_toolbox: bool,
+    /// UI elements switched off (workspace::ELEMENTS keys)
+    pub hidden: std::collections::BTreeSet<String>,
+    /// what Ctrl+Space hid, to bring back
+    pub ui_stash: Option<(std::collections::BTreeSet<String>, bool)>,
+    pub workspace: String,
     pub cmdline: String,
     pub cmd_history: Vec<String>,
     pub help: String,
@@ -185,6 +186,16 @@ pub struct TestRun {
 }
 
 impl IncaApp {
+    pub fn shown(&self, element: &str) -> bool {
+        !self.hidden.contains(element)
+    }
+    pub fn set_shown(&mut self, element: &str, on: bool) {
+        if on {
+            self.hidden.remove(element);
+        } else {
+            self.hidden.insert(element.to_string());
+        }
+    }
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         theme::apply(&cc.egui_ctx);
         let gpu = cc.wgpu_render_state.as_ref().map(Gpu::new);
@@ -202,13 +213,12 @@ impl IncaApp {
             vps: vec![Viewport::new("persp"), Viewport::new("top"), Viewport::new("front"), Viewport::new("side")],
             menu_set: MenuSet::Modeling,
             win: Windows::default(),
-            right_tab: RightTab::ChannelBox,
-            show_right: true,
-            show_outliner: false,
-            show_shelf: true,
-            show_timeline: true,
-            show_cmdline: true,
-            show_toolbox: true,
+            right_tab: cc.storage.and_then(|s| eframe::get_value(s, "rightTab")).unwrap_or(RightTab::ChannelBox),
+            show_right: cc.storage.and_then(|s| eframe::get_value(s, "showRight")).unwrap_or(true),
+            show_outliner: cc.storage.and_then(|s| eframe::get_value(s, "showOutliner")).unwrap_or(false),
+            hidden: cc.storage.and_then(|s| eframe::get_value(s, "hiddenUi")).unwrap_or_default(),
+            ui_stash: None,
+            workspace: cc.storage.and_then(|s| eframe::get_value(s, "workspace")).unwrap_or_else(|| "Maya Classic".into()),
             cmdline: String::new(),
             cmd_history: vec![],
             help: String::new(),
@@ -517,6 +527,13 @@ impl eframe::App for IncaApp {
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         eframe::set_value(storage, "recent", &self.recent);
         eframe::set_value(storage, "customShelf", &self.custom_shelf);
+        eframe::set_value(storage, "workspace", &self.workspace);
+        eframe::set_value(storage, "rightTab", &self.right_tab);
+        eframe::set_value(storage, "showRight", &self.show_right);
+        eframe::set_value(storage, "showOutliner", &self.show_outliner);
+        // a Ctrl+Space hide isn't remembered
+        let hidden = self.ui_stash.as_ref().map_or(&self.hidden, |s| &s.0);
+        eframe::set_value(storage, "hiddenUi", hidden);
     }
 
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
@@ -540,19 +557,25 @@ impl eframe::App for IncaApp {
         }
         // ---- layout (Maya order: menus, status line, shelf, then the work area)
         egui::Panel::top("menubar").exact_size(22.0).resizable(false).frame(theme::bar_frame()).show(ui, |ui| crate::menus::menu_bar(self, ui));
-        egui::Panel::top("statusline").exact_size(28.0).resizable(false).frame(theme::bar_frame()).show(ui, |ui| toolbar::status_line(self, ui));
-        if self.show_shelf {
+        if self.shown("statusline") {
+            egui::Panel::top("statusline").exact_size(28.0).resizable(false).frame(theme::bar_frame()).show(ui, |ui| toolbar::status_line(self, ui));
+        }
+        if self.shown("shelf") {
             egui::Panel::top("shelf").exact_size(64.0).resizable(false).frame(theme::bar_frame()).show(ui, |ui| toolbar::shelf(self, ui));
         }
-        if self.show_cmdline {
+        if self.shown("helpline") {
             egui::Panel::bottom("helpline").exact_size(20.0).resizable(false).frame(theme::bar_frame()).show(ui, |ui| timeline::help_line(self, ui));
+        }
+        if self.shown("cmdline") {
             egui::Panel::bottom("cmdline").exact_size(24.0).resizable(false).frame(theme::bar_frame()).show(ui, |ui| timeline::command_line(self, ui));
         }
-        if self.show_timeline {
+        if self.shown("rangeslider") {
             egui::Panel::bottom("range").exact_size(26.0).resizable(false).frame(theme::bar_frame()).show(ui, |ui| timeline::range_slider(self, ui));
+        }
+        if self.shown("timeslider") {
             egui::Panel::bottom("timeslider").exact_size(36.0).resizable(false).frame(theme::bar_frame()).show(ui, |ui| timeline::time_slider(self, ui));
         }
-        if self.show_toolbox {
+        if self.shown("toolbox") {
             egui::Panel::left("toolbox").exact_size(38.0).resizable(false).frame(theme::bar_frame()).show(ui, |ui| toolbar::tool_box(self, ui));
         }
         if self.show_outliner {

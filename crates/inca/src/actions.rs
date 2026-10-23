@@ -196,6 +196,7 @@ pub static ACTIONS: &[(&str, &str, &str)] = &[
     ("toggleTimeline", "Time Slider", ""),
     ("toggleCmdline", "Command Line", ""),
     ("toggleToolbox", "Tool Box", ""),
+    ("toggleUIElements", "Hide/Show UI Elements", "Ctrl+Space"),
     ("manipBigger", "Increase Manipulator Size", "="),
     ("manipSmaller", "Decrease Manipulator Size", "-"),
 ];
@@ -666,10 +667,11 @@ pub fn builtin(app: &mut IncaApp, id: &str) {
         }
         "toggleWorld" => app.world_space = !app.world_space,
         "toggleHistory" => app.history_on = !app.history_on,
-        "toggleShelf" => app.show_shelf = !app.show_shelf,
-        "toggleTimeline" => app.show_timeline = !app.show_timeline,
-        "toggleCmdline" => app.show_cmdline = !app.show_cmdline,
-        "toggleToolbox" => app.show_toolbox = !app.show_toolbox,
+        "toggleShelf" => app.set_shown("shelf", !app.shown("shelf")),
+        "toggleTimeline" => app.set_shown("timeslider", !app.shown("timeslider")),
+        "toggleCmdline" => app.set_shown("cmdline", !app.shown("cmdline")),
+        "toggleToolbox" => app.set_shown("toolbox", !app.shown("toolbox")),
+        "toggleUIElements" => crate::workspace::toggle_all(app),
         "manipBigger" => app.manip_size = (app.manip_size * 1.2).min(5.0),
         "manipSmaller" => app.manip_size = (app.manip_size / 1.2).max(0.2),
         _ => app.last_result = format!("// Warning: {} is not available yet.", label(id)),
@@ -688,6 +690,7 @@ pub fn hotkey(key: Key, m: Modifiers, app: &IncaApp) -> Option<&'static str> {
         }
     }
     Some(match (key, ctrl, m.shift, m.alt) {
+        (Key::Space, true, false, false) => "toggleUIElements",
         (Key::N, true, false, _) => "newScene",
         (Key::O, true, false, _) => "openScene",
         (Key::S, true, false, _) => "saveScene",
