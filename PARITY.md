@@ -34,7 +34,7 @@ registry, menus, UI modules and a 0.1.12 screenshot.
 - [ ] B10b. Ctrl+click axis lock and MMB drag along the active handle (needs a custom manipulator instead of transform-gizmo)
 - [x] B11. Marking menus: RMB object/component menus, Shift+RMB tool menus, Ctrl+RMB conversion; In-View Editor for new history nodes; option boxes (smooth, mirror, add divisions, extrude, bridge, bevel, merge, planar map, revolve, group, chamfer, duplicate special)
 - [x] B12. Rigging: IK handles (RP / SC, pole vector, twist), Insert / Mirror / Orient Joint, Unbind Skin, Paint Skin Weights, Cluster, Lattice (+ point tool), Soft Modification, Blend Shape, Delete Deformers, Pole Vector constraint, Remove Constraints, Set Driven Key window; load the JS rig nodes (joints, IK, lattices, constraints) instead of keeping them as locators
-- [ ] B13. Animation: (Play Backwards, Stop, Copy/Paste Keys done) Bake, Ghosting, Motion Trails, Playblast (video / PNG sequence)
+- [x] B13. Animation: (Play Backwards, Stop, Copy/Paste Keys done) Bake, Ghosting, Motion Trails, Playblast (video / PNG sequence)
 - [ ] B14. FX: Create Particles (particle tool), Rewind Simulation, Remove Rigid Body, per-field connections
 - [ ] B15. Rendering: IPR, Render Sequence (batch to the project images folder), keep/compare images, exposure / gamma / alpha display in Render View, Hardware renderer option, Assign New Material dialog, Material Attributes
 - [ ] B16. Editors: Hypergraph (hierarchy + input/output connections), Connection Editor, Shelf Editor, Hotkey Editor (editable keymap), Modeling Toolkit panel, Component Editor, Preferences window with all JS sections (interface, display, manipulators, animation, time slider, units, undo, files, autosave)

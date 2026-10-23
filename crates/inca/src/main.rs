@@ -1,6 +1,7 @@
 //! Inca — a free 3D modeling, animation and rendering application (Rust edition).
 
 mod actions;
+mod anim_extras;
 mod app;
 mod edit_cmds;
 mod icons;

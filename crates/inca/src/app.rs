@@ -220,6 +220,8 @@ pub struct IncaApp {
     pub fps_measured: f32,
     pub mesh_tool: crate::mesh_tools::MeshToolState,
     pub rig_tool: crate::rig_tools::RigToolState,
+    pub viz: crate::anim_extras::AnimViz,
+    pub playblast: crate::anim_extras::PlayblastUi,
     pub mesh_opts: crate::mesh_tools::MeshToolOpts,
     pub uv_editor: crate::uv_editor::UvEditor,
     pub soft: SoftSel,
@@ -351,6 +353,8 @@ impl IncaApp {
             fps_measured: 0.0,
             mesh_tool: Default::default(),
             rig_tool: crate::rig_tools::RigToolState::new(),
+            viz: Default::default(),
+            playblast: Default::default(),
             uv_editor: Default::default(),
             manip_size_shown: 0.0,
             marking: None,
@@ -767,6 +771,7 @@ impl eframe::App for IncaApp {
         }
         self.hotkeys(&ctx);
         // constraints follow their targets live (gizmo drags, channel edits)
+        crate::anim_extras::tick(self, &ctx);
         crate::rig_tools::sync_lattice_divisions(self);
         let moved = self.s.eval_constraints();
         if !moved.is_empty() {

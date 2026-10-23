@@ -40,6 +40,7 @@ pub const SPECS: &[(&str, &[Opt])] = &[
     ("mirrorJoint", &[o("axis", "Mirror across", Kind::Radio(&["YZ", "XZ", "XY"]), 0.0)]),
     ("softModDeformer", &[o("falloffRadius", "Falloff radius", Kind::Float, 5.0)]),
     ("createLattice", &[o("s", "S divisions", Kind::Int, 2.0), o("t", "T divisions", Kind::Int, 5.0), o("u", "U divisions", Kind::Int, 2.0)]),
+    ("createGhost", &[o("steps", "Steps before/after", Kind::Int, 3.0), o("every", "Frame step (0 = keys)", Kind::Int, 0.0)]),
     ("attachToMotionPath", &[o("follow", "Follow", Kind::Bool, 1.0)]),
 ];
 

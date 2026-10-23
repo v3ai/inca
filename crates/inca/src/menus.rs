@@ -10,6 +10,7 @@ pub enum M {
     Sub(&'static str, Vec<M>),
     Sep,
     /// planned item (shown disabled)
+    #[allow(dead_code)]
     Todo(&'static str),
     /// submenu built by code ("Workspaces", "UI Elements")
     Dyn(&'static str),
@@ -139,7 +140,7 @@ pub fn common(name: &str) -> Vec<M> {
             Sep,
             Sub("General Editors", vec![A("scriptEditor"), A("melReference")]),
             Sub("Modeling Editors", vec![A("uvEditor")]),
-            Sub("Rendering Editors", vec![A("hypershade"), A("renderView"), A("renderSettings")]),
+            Sub("Rendering Editors", vec![A("hypershade"), A("renderView"), A("renderSettings"), A("playblast")]),
             Sub("Animation Editors", vec![A("graphEditor"), A("dopeSheet")]),
             Sep,
             A("outlinerWindow"),
@@ -173,9 +174,9 @@ pub fn set_menus(ms: MenuSet) -> Vec<(&'static str, Vec<M>)> {
             ("Control", vec![A("createLocator"), A("group"), Sep, A("setDrivenKeyWindow")]),
         ],
         MenuSet::Animation => vec![
-            ("Key", vec![A("setKey"), A("keyTranslate"), A("keyRotate"), A("keyScale"), Sep, A("deleteKeysCurrent"), A("toggleAutoKey")]),
-            ("Playback", vec![A("playToggle"), A("nextFrame"), A("prevFrame"), A("nextKey"), A("prevKey"), A("goToStart"), A("goToEnd")]),
-            ("Visualize", vec![A("graphEditor"), A("dopeSheet"), Todo("Create Editable Motion Trail"), Todo("Ghost Selected")]),
+            ("Key", vec![A("setKey"), A("keyTranslate"), A("keyRotate"), A("keyScale"), Sep, A("setDrivenKeyWindow"), Sep, A("copyKeys"), A("pasteKeys"), A("deleteKeysCurrent"), A("bakeKeys"), Sep, A("toggleAutoKey")]),
+            ("Playback", vec![A("playToggle"), A("playBackwards"), A("stopPlayback"), Sep, A("nextFrame"), A("prevFrame"), A("nextKey"), A("prevKey"), A("goToStart"), A("goToEnd"), Sep, A("playblast")]),
+            ("Visualize", vec![A("graphEditor"), A("dopeSheet"), Sep, A("createGhost"), A("unghostAll"), A("motionTrail")]),
         ],
         MenuSet::Fx => vec![
             ("Particles", vec![A("createEmitter"), A("createDirectionalEmitter"), A("emitFromObject")]),

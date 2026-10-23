@@ -46,7 +46,7 @@ pub fn step(app: &mut IncaApp, ctx: &egui::Context) {
     }
     let shot = ctx.input(|i| {
         i.events.iter().find_map(|e| match e {
-            egui::Event::Screenshot { image, .. } => Some(image.clone()),
+            egui::Event::Screenshot { image, user_data, .. } if user_data.data.is_none() => Some(image.clone()),
             _ => None,
         })
     });

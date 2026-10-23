@@ -110,7 +110,8 @@ fn pane(app: &mut IncaApp, ui: &mut egui::Ui, frame: &mut eframe::Frame, idx: us
             gpu.target(&mut r, idx, px)
         };
         let live = app.vp_state.live_meshes();
-        let draws = viewport::build_draws(&app.s, &app.vps[idx], &cv, gpu, &mut app.smooth_cache, &live);
+        let mut draws = viewport::build_draws(&app.s, &app.vps[idx], &cv, gpu, &mut app.smooth_cache, &live);
+        draws.extend(crate::anim_extras::draws(&app.viz));
         let fu = viewport::frame_uniform(&app.s, &app.vps[idx], &cv, app.bg_mode);
         gpu.render(idx, &fu, &draws);
         ui.painter().image(tex, img_rect, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
@@ -121,6 +122,7 @@ fn pane(app: &mut IncaApp, ui: &mut egui::Ui, frame: &mut eframe::Frame, idx: us
     let resp = ui.interact(img_rect, egui::Id::new(("vp", idx)), Sense::click_and_drag());
     let painter = ui.painter_at(img_rect);
     viewport::draw_particles(&app.s, &app.vps[idx], &cv, &painter);
+    crate::anim_extras::overlay(app, &cv, img_rect, &painter);
     let hover = if app.vp_state.drag.is_none() && app.tool.is_select() { resp.hover_pos() } else { None };
     viewport::draw_component_overlay(&app.s, &app.vps[idx], &cv, &painter, app.soft.on.then_some((app.soft.radius, app.soft.linear)), hover);
     viewport::draw_gate(&app.s, &app.vps[idx], &painter);
