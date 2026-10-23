@@ -207,7 +207,7 @@ fn delete_keys(app: &mut IncaApp, lo: f64, hi: f64) {
     app.s.rev += 1;
 }
 
-fn copy_keys(app: &mut IncaApp, lo: f64, hi: f64) {
+pub fn copy_keys(app: &mut IncaApp, lo: f64, hi: f64) {
     app.key_clip = app
         .s
         .anim
@@ -223,7 +223,7 @@ fn copy_keys(app: &mut IncaApp, lo: f64, hi: f64) {
 }
 
 /// Paste copied keys at the current time (onto the same node, or by attribute onto the selection).
-fn paste_keys(app: &mut IncaApp) {
+pub fn paste_keys(app: &mut IncaApp) {
     if app.key_clip.is_empty() {
         return;
     }

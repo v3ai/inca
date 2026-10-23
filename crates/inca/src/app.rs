@@ -186,6 +186,11 @@ pub struct IncaApp {
     /// autosave on, interval in minutes
     pub autosave: (bool, f64),
     pub last_autosave: f64,
+    pub prompt: Option<crate::edit_cmds::Prompt>,
+    pub dup_opts: crate::edit_cmds::DupOpts,
+    pub dup_special_open: bool,
+    /// (sources, duplicates) of the last Shift+D, to repeat its offset
+    pub last_dup: Option<(Vec<String>, Vec<String>)>,
     /// viewport background (Alt+B cycles viewport::BG_MODES)
     pub bg_mode: usize,
     /// Space: tap toggles the layout, hold shows the hotbox
@@ -278,6 +283,10 @@ impl IncaApp {
             project_win: None,
             autosave: cc.storage.and_then(|s| eframe::get_value(s, "autosave")).unwrap_or((false, 10.0)),
             last_autosave: 0.0,
+            prompt: None,
+            dup_opts: cc.storage.and_then(|s| eframe::get_value(s, "dupOpts")).unwrap_or_default(),
+            dup_special_open: false,
+            last_dup: None,
             bg_mode: cc.storage.and_then(|s| eframe::get_value(s, "bgMode")).unwrap_or(0),
             hotbox: None,
         };
@@ -517,7 +526,7 @@ impl IncaApp {
             }
             // holding D edits the pivot
             if let egui::Event::Key { key: egui::Key::D, pressed, repeat: false, modifiers, .. } = e {
-                if !modifiers.ctrl && !modifiers.command && !modifiers.alt {
+                if !modifiers.ctrl && !modifiers.command && !modifiers.alt && !modifiers.shift {
                     self.pivot_mode = *pressed;
                 }
             }
@@ -610,6 +619,7 @@ impl eframe::App for IncaApp {
         eframe::set_value(storage, "outliner", &self.panels.ol);
         eframe::set_value(storage, "recentProjects", &self.recent_projects);
         eframe::set_value(storage, "autosave", &self.autosave);
+        eframe::set_value(storage, "dupOpts", &self.dup_opts);
         if let Some(p) = &self.s.project {
             eframe::set_value(storage, "lastProject", p);
         }
@@ -676,6 +686,8 @@ impl eframe::App for IncaApp {
         windows::show(self, &ctx, frame);
         panels::ae_copies(self, &ctx);
         crate::project::project_window(self, &ctx);
+        crate::edit_cmds::prompt_window(self, &ctx);
+        crate::edit_cmds::dup_special_window(self, &ctx);
         crate::project::autosave_tick(self, ctx.input(|i| i.time));
         crate::menus::hotbox(self, &ctx);
         crate::test_hook::step(self, &ctx);

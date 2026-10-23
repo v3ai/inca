@@ -14,6 +14,24 @@ pub static ACTIONS: &[(&str, &str, &str)] = &[
     ("openScene", "Open Scene...", "Ctrl+O"),
     ("saveScene", "Save Scene", "Ctrl+S"),
     ("saveSceneAs", "Save Scene As...", "Ctrl+Shift+S"),
+    ("cut", "Cut", "Ctrl+X"),
+    ("copyKeys", "Copy Keys", ""),
+    ("pasteKeys", "Paste Keys", ""),
+    ("bakeKeys", "Bake Simulation", ""),
+    ("deleteAllLights", "Lights (All)", ""),
+    ("deleteAllCameras", "Cameras (All)", ""),
+    ("deleteAllCurves", "NURBS Curves (All)", ""),
+    ("duplicateSpecial", "Duplicate Special", "Ctrl+Shift+D"),
+    ("duplicateSpecialOptions", "Duplicate Special Options...", ""),
+    ("duplicateWithTransform", "Duplicate with Transform", "Shift+D"),
+    ("searchReplace", "Search and Replace Names...", ""),
+    ("prefixHierarchy", "Prefix Hierarchy Names...", ""),
+    ("selectByName", "Select by Name...", ""),
+    ("selectAllGeometry", "Geometry", ""),
+    ("selectAllLights", "Lights", ""),
+    ("selectAllCameras", "Cameras", ""),
+    ("selectAllCurves", "NURBS Curves", ""),
+    ("selectSimilar", "Similar", ""),
     ("incrementAndSave", "Increment & Save", "Ctrl+Alt+S"),
     ("revertScene", "Revert to Saved", ""),
     ("projectWindow", "Project Window", ""),
@@ -346,7 +364,7 @@ pub fn mel_for(app: &IncaApp, id: &str) -> Option<String> {
             "keyTranslate" => "setKeyframe -at translate;".into(),
             "keyRotate" => "setKeyframe -at rotate;".into(),
             "keyScale" => "setKeyframe -at scale;".into(),
-            "deleteKeysCurrent" => "cutKey;".into(),
+            "deleteKeysCurrent" => format!("cutKey -t {};", inca_core::math::fmt_num_long(app.s.time.current)),
             "assignNew_lambert" => "string $m = `shadingNode -asShader lambert`; hyperShade -assign $m;".into(),
             "assignNew_blinn" => "string $m = `shadingNode -asShader blinn`; hyperShade -assign $m;".into(),
             "assignNew_phong" => "string $m = `shadingNode -asShader phong`; hyperShade -assign $m;".into(),
@@ -439,6 +457,41 @@ pub fn builtin(app: &mut IncaApp, id: &str) {
             }
         }
         "quit" => app.panels.quit = true,
+        "cut" => {
+            app.action("copy");
+            app.action("deleteSel");
+        }
+        "copyKeys" => {
+            let ks = app.s.anim.key_times(&app.s.sel);
+            if let (Some(a), Some(b)) = (ks.first().copied(), ks.last().copied()) {
+                crate::timeline::copy_keys(app, a, b);
+            }
+        }
+        "pasteKeys" => crate::timeline::paste_keys(app),
+        "bakeKeys" => crate::edit_cmds::bake(app),
+        "deleteAllLights" => crate::edit_cmds::delete_by_type(app, "light"),
+        "deleteAllCameras" => crate::edit_cmds::delete_by_type(app, "camera"),
+        "deleteAllCurves" => crate::edit_cmds::delete_by_type(app, "curve"),
+        "duplicateSpecial" => {
+            let o = app.dup_opts.clone();
+            crate::edit_cmds::duplicate_special(app, &o);
+        }
+        "duplicateSpecialOptions" => app.dup_special_open = true,
+        "duplicateWithTransform" => crate::edit_cmds::duplicate_with_transform(app),
+        "searchReplace" => crate::edit_cmds::ask(app, crate::edit_cmds::PromptKind::SearchFor),
+        "prefixHierarchy" => {
+            if app.s.sel.is_empty() {
+                app.last_result = "// Warning: Nothing selected".into();
+            } else {
+                crate::edit_cmds::ask(app, crate::edit_cmds::PromptKind::Prefix);
+            }
+        }
+        "selectByName" => crate::edit_cmds::ask(app, crate::edit_cmds::PromptKind::SelectByName),
+        "selectAllGeometry" => crate::edit_cmds::select_by_type(app, "geometry"),
+        "selectAllLights" => crate::edit_cmds::select_by_type(app, "light"),
+        "selectAllCameras" => crate::edit_cmds::select_by_type(app, "camera"),
+        "selectAllCurves" => crate::edit_cmds::select_by_type(app, "curve"),
+        "selectSimilar" => crate::edit_cmds::select_similar(app),
         "copy" => {
             let data: Vec<serde_json::Value> = app.s.sel.iter().flat_map(|i| app.s.subtree(i)).map(|i| app.s.serialize_node(&i)).collect();
             app.clipboard = Some(serde_json::Value::Array(data));
@@ -720,7 +773,10 @@ pub fn hotkey(key: Key, m: Modifiers, app: &IncaApp) -> Option<&'static str> {
         (Key::Z, true, true, _) | (Key::Y, true, _, _) => "redo",
         (Key::C, true, _, _) => "copy",
         (Key::V, true, _, _) => "paste",
-        (Key::D, true, _, _) => "duplicate",
+        (Key::D, true, true, _) => "duplicateSpecial",
+        (Key::D, true, false, _) => "duplicate",
+        (Key::D, false, true, false) => "duplicateWithTransform",
+        (Key::X, true, false, false) => "cut",
         (Key::G, true, true, _) => "createEmptyGroup",
         (Key::G, true, false, _) => "group",
         (Key::H, true, false, _) => "hideSelection",

@@ -2,6 +2,7 @@
 
 mod actions;
 mod app;
+mod edit_cmds;
 mod icons;
 mod icons_svg;
 mod menus;
