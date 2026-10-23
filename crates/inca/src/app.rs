@@ -175,6 +175,12 @@ pub struct IncaApp {
     /// 0 off, 1 object X, 2 world X, 3 world Y, 4 world Z
     pub symmetry: usize,
     pub paint_radius: f32,
+    pub play_dir: f64,
+    /// Shift-drag time selection on the Time Slider
+    pub range_sel: Option<(f64, f64)>,
+    /// copied keys: (node, attr, keys with times relative to the copy start)
+    pub key_clip: Vec<(String, String, Vec<inca_core::anim::Key>)>,
+    pub prev_range: Option<(f64, f64)>,
     /// viewport background (Alt+B cycles viewport::BG_MODES)
     pub bg_mode: usize,
     /// Space: tap toggles the layout, hold shows the hotbox
@@ -259,6 +265,10 @@ impl IncaApp {
             live_surface: None,
             symmetry: 0,
             paint_radius: 24.0,
+            play_dir: 1.0,
+            range_sel: None,
+            key_clip: vec![],
+            prev_range: None,
             bg_mode: cc.storage.and_then(|s| eframe::get_value(s, "bgMode")).unwrap_or(0),
             hotbox: None,
         };
@@ -507,6 +517,19 @@ impl IncaApp {
         }
     }
 
+    /// Play forwards (dir 1) or backwards (-1); the same direction again stops.
+    pub fn toggle_play(&mut self, dir: f64) {
+        if self.playing && self.play_dir == dir {
+            self.playing = false;
+            let t = self.s.time.current.round();
+            self.s.set_time(t);
+            return;
+        }
+        self.playing = true;
+        self.play_dir = dir;
+        self.play_clock = 0.0;
+    }
+
     fn tick_playback(&mut self, ctx: &egui::Context) {
         if !self.playing {
             return;
@@ -516,18 +539,46 @@ impl IncaApp {
         if self.play_clock == 0.0 {
             self.play_clock = now;
         }
-        let frames = ((now - self.play_clock) * fps).floor();
+        // play every frame steps one frame per redraw; otherwise follow the clock
+        let frames = if self.s.time.play_every { 1.0 } else { ((now - self.play_clock) * fps).floor() };
         if frames >= 1.0 {
-            self.play_clock += frames / fps;
-            let mut t = self.s.time.current + frames;
-            if t > self.s.time.end {
-                t = self.s.time.start + (t - self.s.time.end - 1.0).rem_euclid((self.s.time.end - self.s.time.start + 1.0).max(1.0));
+            self.play_clock = if self.s.time.play_every { now } else { self.play_clock + frames / fps };
+            let (start, end) = (self.s.time.start, self.s.time.end);
+            let len = (end - start + 1.0).max(1.0);
+            let mut t = self.s.time.current + frames * self.play_dir;
+            let lp = self.s.time.r#loop.clone();
+            if t > end {
+                match lp.as_str() {
+                    "once" => {
+                        self.s.set_time(end);
+                        self.playing = false;
+                        return;
+                    }
+                    "oscillate" => {
+                        self.play_dir = -1.0;
+                        t = end - (t - end);
+                    }
+                    _ => t = start + (t - start).rem_euclid(len),
+                }
             }
-            self.s.set_time(t);
+            if t < start {
+                match lp.as_str() {
+                    "once" => {
+                        self.s.set_time(start);
+                        self.playing = false;
+                        return;
+                    }
+                    "oscillate" => {
+                        self.play_dir = 1.0;
+                        t = start + (start - t);
+                    }
+                    _ => t = end - (start - t - 1.0).rem_euclid(len),
+                }
+            }
+            self.s.set_time(t.round());
         }
         ctx.request_repaint();
     }
-
 }
 
 impl eframe::App for IncaApp {

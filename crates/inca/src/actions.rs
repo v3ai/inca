@@ -179,6 +179,8 @@ pub static ACTIONS: &[(&str, &str, &str)] = &[
     ("keyScale", "Key Scale", "Shift+R"),
     ("deleteKeysCurrent", "Delete Keys", ""),
     ("playToggle", "Play / Stop", "Alt+V"),
+    ("playBackwards", "Play Backwards", ""),
+    ("stopPlayback", "Stop", "Esc"),
     ("nextFrame", "Next Frame", "Alt+."),
     ("prevFrame", "Previous Frame", "Alt+,"),
     ("nextKey", "Next Key", "."),
@@ -625,9 +627,12 @@ pub fn builtin(app: &mut IncaApp, id: &str) {
                 let _ = app.run_mel("merge to center", &m);
             }
         }
-        "playToggle" => {
-            app.playing = !app.playing;
-            app.play_clock = 0.0;
+        "playToggle" => app.toggle_play(1.0),
+        "playBackwards" => app.toggle_play(-1.0),
+        "stopPlayback" => {
+            if app.playing {
+                app.toggle_play(app.play_dir);
+            }
         }
         "nextFrame" | "prevFrame" | "goToStart" | "goToEnd" => {
             let t = &app.s.time;
@@ -761,7 +766,7 @@ pub fn hotkey(key: Key, m: Modifiers, app: &IncaApp) -> Option<&'static str> {
         (Key::Equals | Key::Plus, false, _, false) => "manipBigger",
         (Key::Minus, false, _, false) => "manipSmaller",
         (Key::X, false, false, false) => "snapGrid",
-        (Key::Escape, ..) if app.playing => "playToggle",
+        (Key::Escape, ..) if app.playing => "stopPlayback",
         _ => return None,
     })
 }

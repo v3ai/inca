@@ -15,7 +15,7 @@ registry, menus, UI modules and a 0.1.12 screenshot.
 - [x] A7. Viewport panel (shadow maps still planned, toggle disabled): menus View / Shading / Lighting / Show / Renderer / Panels with the JS items; icon toolbar row (camera attrs, bookmarks, grid, film/resolution gate, wireframe/shaded/textured/lights/shadows/x-ray/isolate, exposure + gamma fields, colour management dropdown)
 - [x] A8. Outliner: its own menu bar (Edit / Display / Show / Help), type icons, defaultLightSet / defaultObjectSet, shapes / materials / sets display options
 - [x] A9. Attribute Editor: List / Selected / Focus / Attributes / Show / Help menus, node field + Focus + lock, bottom buttons Select / Load Attributes / Copy Tab / Close, collapsible sections
-- [ ] A10. Time / Range Slider: play backwards, step key buttons, frame field, "film (24 fps)" style fps names, character set / anim layer menus (placeholders), auto key + playback prefs buttons, shift-drag range edits
+- [x] A10. Time / Range Slider: play backwards, step key buttons, frame field, "film (24 fps)" style fps names, character set / anim layer menus (placeholders), auto key + playback prefs buttons, shift-drag range edits
 - [ ] A11. Side tabs and dock resizing like the JS docks (Hide/Show UI elements, Ctrl+Space: done)
 
 ## B. Commands & menus missing in Rust
@@ -32,7 +32,7 @@ registry, menus, UI modules and a 0.1.12 screenshot.
 - [ ] B10. Manipulators: Ctrl+click axis lock, MMB drag along active handle, point snap (V), discrete rotate (J), hold W/E/R marking menus, manipulator size readout + reset
 - [ ] B11. Marking menus: RMB object/component menus, Shift+RMB tool menus, Ctrl+RMB conversion; In-View Editor for history nodes; option boxes for menu items
 - [ ] B12. Rigging: IK handles (RP / SC, pole vector, twist), Insert / Mirror / Orient Joint, Unbind Skin, Paint Skin Weights, Cluster, Lattice (+ point tool), Soft Modification, Blend Shape, Delete Deformers, Pole Vector constraint, Remove Constraints, Set Driven Key window; load the JS rig nodes (joints, IK, lattices, constraints) instead of keeping them as locators
-- [ ] B13. Animation: Play Backwards, Stop, Copy/Paste Keys, Bake, Ghosting, Motion Trails, Attach to Motion Path, Playblast (video / PNG sequence)
+- [ ] B13. Animation: (Play Backwards, Stop, Copy/Paste Keys done) Bake, Ghosting, Motion Trails, Attach to Motion Path, Playblast (video / PNG sequence)
 - [ ] B14. FX: Create Particles (particle tool), Rewind Simulation, Remove Rigid Body, per-field connections
 - [ ] B15. Rendering: IPR, Render Sequence (batch to the project images folder), keep/compare images, exposure / gamma / alpha display in Render View, Hardware renderer option, Assign New Material dialog, Material Attributes
 - [ ] B16. Editors: Hypergraph (hierarchy + input/output connections), Connection Editor, Shelf Editor, Hotkey Editor (editable keymap), Modeling Toolkit panel, Component Editor, Preferences window with all JS sections (interface, display, manipulators, animation, time slider, units, undo, files, autosave)
