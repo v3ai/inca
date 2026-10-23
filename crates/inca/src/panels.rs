@@ -644,8 +644,23 @@ pub fn channel_box(app: &mut IncaApp, ui: &mut egui::Ui) {
         let kind = if c == "visibility" { ChanKind::Bool } else { ChanKind::Float };
         channel_row(app, ui, &targets, c, &ops::nice_name(c), kind, None, None);
     }
-    // SHAPES
+    // added (dynamic) attributes, unless the SHAPES section lists them
     let sh_channels = app.s.shape_channels(&lead);
+    let extra: Vec<(String, ChanKind)> = app.s.node(&lead).and_then(|n| n.extra.as_object()).map(|e| {
+        e.iter()
+            .filter(|(k, _)| !sh_channels.contains(k))
+            .filter_map(|(k, v)| match v {
+                Value::Bool(_) => Some((k.clone(), ChanKind::Bool)),
+                Value::Number(n) if n.is_f64() => Some((k.clone(), ChanKind::Float)),
+                Value::Number(_) => Some((k.clone(), ChanKind::Int)),
+                _ => None,
+            })
+            .collect()
+    }).unwrap_or_default();
+    for (k, kind) in extra {
+        channel_row(app, ui, &targets, &k, &ops::nice_name(&k), kind, None, None);
+    }
+    // SHAPES
     let shape = shape.or_else(|| (!sh_channels.is_empty()).then(|| app.s.node(&lead).map(|n| n.kind.clone()).unwrap_or_default()));
     if let Some(sn) = shape {
         ui.add_space(4.0);

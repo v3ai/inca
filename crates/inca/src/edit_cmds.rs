@@ -347,6 +347,61 @@ pub fn dup_special_window(app: &mut IncaApp, ctx: &egui::Context) {
     }
 }
 
+/// Modify > Add Attribute dialog state.
+pub struct AddAttr {
+    pub name: String,
+    pub ty: usize,
+    pub default: f64,
+}
+
+pub const ATTR_TYPES: &[(&str, &str)] = &[("Float", "double"), ("Integer", "long"), ("Boolean", "bool"), ("Vector", "double3"), ("String", "string")];
+
+pub fn add_attr_window(app: &mut IncaApp, ctx: &egui::Context) {
+    let Some(w) = app.add_attr.as_mut() else { return };
+    let mut open = true;
+    let (mut add, mut close) = (false, false);
+    egui::Window::new("Add Attribute").open(&mut open).resizable(false).show(ctx, |ui| {
+        egui::Grid::new("addattr").num_columns(2).show(ui, |ui| {
+            ui.label("Long name:");
+            ui.text_edit_singleline(&mut w.name);
+            ui.end_row();
+            ui.label("Data type:");
+            ui.horizontal(|ui| {
+                for (i, (l, _)) in ATTR_TYPES.iter().enumerate() {
+                    ui.radio_value(&mut w.ty, i, *l);
+                }
+            });
+            ui.end_row();
+            ui.label("Default:");
+            ui.add_enabled(ATTR_TYPES[w.ty].1 != "string", egui::DragValue::new(&mut w.default).speed(0.1));
+            ui.end_row();
+        });
+        ui.separator();
+        ui.horizontal(|ui| {
+            if ui.button("OK").clicked() {
+                add = true;
+                close = true;
+            }
+            add |= ui.button("Add").clicked();
+            close |= ui.button("Cancel").clicked();
+        });
+    });
+    if add {
+        let name: String = w.name.trim().chars().filter(|c| c.is_alphanumeric() || *c == '_').collect();
+        let (ty, dv) = (ATTR_TYPES[w.ty].1, w.default);
+        let targets: Vec<String> = app.s.sel.iter().map(|i| app.s.name_of(i)).collect();
+        if name.is_empty() || targets.is_empty() {
+            app.last_result = "// Warning: Give the attribute a name and select an object".into();
+        } else {
+            let flag = if ty == "string" { "-dt string".to_string() } else { format!("-at {ty} -dv {}", inca_core::math::fmt_num_long(dv)) };
+            let _ = app.run_mel("add attribute", &format!("addAttr -ln {name} {flag} {};", targets.join(" ")));
+        }
+    }
+    if close || !open {
+        app.add_attr = None;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::glob;

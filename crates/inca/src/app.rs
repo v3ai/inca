@@ -189,6 +189,7 @@ pub struct IncaApp {
     pub prompt: Option<crate::edit_cmds::Prompt>,
     pub dup_opts: crate::edit_cmds::DupOpts,
     pub dup_special_open: bool,
+    pub add_attr: Option<crate::edit_cmds::AddAttr>,
     /// (sources, duplicates) of the last Shift+D, to repeat its offset
     pub last_dup: Option<(Vec<String>, Vec<String>)>,
     /// viewport background (Alt+B cycles viewport::BG_MODES)
@@ -286,6 +287,7 @@ impl IncaApp {
             prompt: None,
             dup_opts: cc.storage.and_then(|s| eframe::get_value(s, "dupOpts")).unwrap_or_default(),
             dup_special_open: false,
+            add_attr: None,
             last_dup: None,
             bg_mode: cc.storage.and_then(|s| eframe::get_value(s, "bgMode")).unwrap_or(0),
             hotbox: None,
@@ -688,6 +690,7 @@ impl eframe::App for IncaApp {
         crate::project::project_window(self, &ctx);
         crate::edit_cmds::prompt_window(self, &ctx);
         crate::edit_cmds::dup_special_window(self, &ctx);
+        crate::edit_cmds::add_attr_window(self, &ctx);
         crate::project::autosave_tick(self, ctx.input(|i| i.time));
         crate::menus::hotbox(self, &ctx);
         crate::test_hook::step(self, &ctx);

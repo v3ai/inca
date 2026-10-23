@@ -108,6 +108,7 @@ pub const CORE_COMMANDS: &[&str] = &[
     "polyCBoolOp", "polyBoolOp", "polyBridgeEdge", "polySoftEdge", "polyProjection", "polySplitRing", "polyChipOff", "polyDuplicateAndConnect", "revolve", "loft", "extrude", "planarSrf",
     "rebuildCurve", "reverseCurve", "file", "undo", "redo", "connectAttr", "disconnectAttr", "listConnections", "isConnected", "warning", "error", "about", "selectMode", "selectType",
     "polyCreateFacet", "polyBevel", "nonLinear", "emitter", "fireEffect", "smokeEffect", "gravity", "drag", "turbulence", "radial", "vortex", "air", "rigidBody", "joint", "skinCluster", "parentConstraint", "pointConstraint", "orientConstraint", "scaleConstraint", "aimConstraint", "assignMaterial", "nurbsToPoly", "displaySmoothness", "toggle", "layerEditor", "createDisplayLayer", "editDisplayLayerMembers", "help", "whatIs",
+    "matchTransform", "addAttr", "deleteAttr",
 ];
 
 pub fn exists(name: &str) -> bool {
@@ -489,6 +490,9 @@ pub fn run(s: &mut Scene, h: &mut dyn Host, name: &str, raw: &[Val]) -> Result<V
         "polyEvaluate" => &[("v|vertex", 0), ("e|edge", 0), ("f|face", 0), ("t|triangle", 0), ("b|boundingBox", 0), ("a|area", 0)],
         "file" => &[("new|newFile", 0), ("f|force", 0), ("o|open", 0), ("s|save", 0), ("i|import", 0), ("ea|exportAll", 0), ("es|exportSelected", 0), ("rn|rename", 1), ("q|query", 0), ("sn|sceneName", 0), ("type", 1), ("typ", 1), ("pr|preserveReferences", 0), ("op|options", 1)],
         "hide" | "showHidden" => &[("all", 0), ("a|above", 0), ("b|below", 0)],
+        "matchTransform" => &[("pos|position", 0), ("rot|rotation", 0), ("scl|scale", 0)],
+        "addAttr" => &[("ln|longName", 1), ("sn|shortName", 1), ("at|attributeType", 1), ("dt|dataType", 1), ("dv|defaultValue", 1), ("min|minValue", 1), ("max|maxValue", 1), ("k|keyable", 1)],
+        "deleteAttr" => &[("at|attribute", 1)],
         "group" => &[("em|empty", 0), ("w|world", 0), ("n|name", 1), ("p|parent", 1), ("a|absolute", 0), ("r|relative", 0)],
         "shadingNode" => &[("asShader", 0), ("asTexture", 0), ("asUtility", 0), ("n|name", 1)],
         "hyperShade" => &[("assign", 1), ("objects", 1)],
@@ -1393,6 +1397,86 @@ pub fn run(s: &mut Scene, h: &mut dyn Host, name: &str, raw: &[Val]) -> Result<V
             Ok(Val::None)
         }
         "file" => file_cmd(s, &a),
+        "matchTransform" => {
+            // the last object is the target (Modify > Match Transformations)
+            let ts = targets(s, &a);
+            let Some((tgt, rest)) = ts.split_last().filter(|(_, r)| !r.is_empty()) else {
+                return Err("matchTransform: select the objects to move, then the target".into());
+            };
+            let (pos, rot, scl) = (a.has(&["pos", "position"]), a.has(&["rot", "rotation"]), a.has(&["scl", "scale"]));
+            let all = !(pos || rot || scl);
+            let tw = s.world_matrix(tgt);
+            let (tr, ts_) = s.node(tgt).map(|n| (n.xf.r, n.xf.s)).unwrap_or_default();
+            for id in rest {
+                if all {
+                    s.set_world_matrix(id, tw);
+                    continue;
+                }
+                if pos {
+                    let d = s.world_pivot(tgt) - s.world_pivot(id);
+                    let pl = s.parent_world(id).inverse();
+                    let d = pl.transform_vector3(d);
+                    if let Some(n) = s.nodes.get_mut(id) {
+                        n.xf.t = [n.xf.t[0] + d.x, n.xf.t[1] + d.y, n.xf.t[2] + d.z];
+                    }
+                }
+                if let Some(n) = s.nodes.get_mut(id) {
+                    if rot {
+                        n.xf.r = tr;
+                    }
+                    if scl {
+                        n.xf.s = ts_;
+                    }
+                }
+                s.touch();
+                s.refresh_dependents(id);
+            }
+            Ok(Val::None)
+        }
+        "addAttr" => {
+            let ln = a.s(&["ln", "longName"]).ok_or("addAttr: -longName required")?;
+            let at = a.s(&["at", "attributeType"]).or_else(|| a.s(&["dt", "dataType"])).unwrap_or_else(|| "double".into());
+            let dv = a.f(&["dv", "defaultValue"]).unwrap_or(0.0);
+            let v = match at.as_str() {
+                "bool" => json!(dv != 0.0),
+                "long" | "short" | "byte" | "int" => json!(dv.round() as i64),
+                "string" => json!(""),
+                "double3" | "float3" => json!([dv, dv, dv]),
+                _ => json!(dv),
+            };
+            let mut out = vec![];
+            for id in targets(s, &a) {
+                let Some(n) = s.nodes.get_mut(&id) else { continue };
+                if !n.extra.is_object() {
+                    n.extra = json!({});
+                }
+                let e = n.extra.as_object_mut().unwrap();
+                if e.contains_key(&ln) {
+                    return Err(format!("addAttr: {} already has an attribute '{ln}'", n.name));
+                }
+                e.insert(ln.clone(), v.clone());
+                out.push(format!("{}.{ln}", n.name));
+            }
+            s.touch();
+            Ok(strs(out))
+        }
+        "deleteAttr" => {
+            let target = a.strings().first().cloned().ok_or("deleteAttr: no attribute")?;
+            let (obj, attr) = match target.split_once('.') {
+                Some((o, at)) => (o.to_string(), at.to_string()),
+                None => (target.clone(), a.s(&["at", "attribute"]).ok_or("deleteAttr: expected node.attribute")?),
+            };
+            let id = s.resolve(&obj).and_then(|r| match r {
+                NodeRef::Dag(i) => Some(i),
+                _ => None,
+            });
+            let removed = id.and_then(|i| s.nodes.get_mut(&i)).and_then(|n| n.extra.as_object_mut()).is_some_and(|e| e.remove(&attr).is_some());
+            if !removed {
+                return Err(format!("deleteAttr: no dynamic attribute '{attr}' on {obj}"));
+            }
+            s.touch();
+            Ok(Val::None)
+        }
         "undo" => {
             let l = s.undo().ok_or("There are no more commands to undo.")?;
             s.msg(MsgKind::Result, format!("// Undo: {l}"));
@@ -1966,6 +2050,26 @@ mod tests {
         mel(&mut s, "setAttr polyExtrudeFace1.localTranslateZ 4;").unwrap();
         let b = s.world_bbox(&id);
         assert!((b.max.y - 4.5).abs() < 1e-9, "{:?}", b);
+    }
+
+    #[test]
+    fn match_transform_and_add_attr() {
+        let mut s = Scene::new();
+        mel(&mut s, "polyCube -n a; polyCube -n b; move 3 4 5 b; rotate 0 30 0 b; select -r a b; matchTransform -pos;").unwrap();
+        let a = s.find("a").unwrap();
+        assert_eq!(s.node(&a).unwrap().xf.t, [3.0, 4.0, 5.0]);
+        assert_eq!(s.node(&a).unwrap().xf.r, [0.0, 0.0, 0.0]);
+        mel(&mut s, "select -r a b; matchTransform -rot;").unwrap();
+        assert_eq!(s.node(&a).unwrap().xf.r, [0.0, 30.0, 0.0]);
+        // parented: the world position still matches
+        mel(&mut s, "group -n g a; move 1 0 0 g; select -r a b; matchTransform;").unwrap();
+        assert!((s.world_pivot(&a) - s.world_pivot(&s.find("b").unwrap())).length() < 1e-9);
+        mel(&mut s, "addAttr -ln speed -at double -dv 2.5 b;").unwrap();
+        assert_eq!(mel(&mut s, "getAttr b.speed;").unwrap().num(), 2.5);
+        mel(&mut s, "setAttr b.speed 4;").unwrap();
+        assert_eq!(mel(&mut s, "getAttr b.speed;").unwrap().num(), 4.0);
+        mel(&mut s, "deleteAttr b.speed;").unwrap();
+        assert!(mel(&mut s, "getAttr b.speed;").is_err());
     }
 
     #[test]

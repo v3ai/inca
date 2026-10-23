@@ -119,6 +119,10 @@ pub static ACTIONS: &[(&str, &str, &str)] = &[
     ("freezeTransformations", "Freeze Transformations", ""),
     ("centerPivot", "Center Pivot", ""),
     ("snapToGround", "Snap to Ground", ""),
+    ("matchTranslation", "Match Translation", ""),
+    ("matchRotation", "Match Rotation", ""),
+    ("matchAll", "Match Transformations", ""),
+    ("addAttribute", "Add Attribute...", ""),
     ("convertNurbsToPoly", "NURBS to Polygons", ""),
     ("toggleGrid", "Grid", ""),
     ("toggleHud", "Heads Up Display", ""),
@@ -364,6 +368,9 @@ pub fn mel_for(app: &IncaApp, id: &str) -> Option<String> {
             "keyTranslate" => "setKeyframe -at translate;".into(),
             "keyRotate" => "setKeyframe -at rotate;".into(),
             "keyScale" => "setKeyframe -at scale;".into(),
+            "matchTranslation" => "matchTransform -pos;".into(),
+            "matchRotation" => "matchTransform -rot;".into(),
+            "matchAll" => "matchTransform;".into(),
             "deleteKeysCurrent" => format!("cutKey -t {};", inca_core::math::fmt_num_long(app.s.time.current)),
             "assignNew_lambert" => "string $m = `shadingNode -asShader lambert`; hyperShade -assign $m;".into(),
             "assignNew_blinn" => "string $m = `shadingNode -asShader blinn`; hyperShade -assign $m;".into(),
@@ -492,6 +499,7 @@ pub fn builtin(app: &mut IncaApp, id: &str) {
         "selectAllCameras" => crate::edit_cmds::select_by_type(app, "camera"),
         "selectAllCurves" => crate::edit_cmds::select_by_type(app, "curve"),
         "selectSimilar" => crate::edit_cmds::select_similar(app),
+        "addAttribute" => app.add_attr = Some(crate::edit_cmds::AddAttr { name: String::new(), ty: 0, default: 0.0 }),
         "copy" => {
             let data: Vec<serde_json::Value> = app.s.sel.iter().flat_map(|i| app.s.subtree(i)).map(|i| app.s.serialize_node(&i)).collect();
             app.clipboard = Some(serde_json::Value::Array(data));
