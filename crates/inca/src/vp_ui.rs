@@ -35,6 +35,8 @@ pub struct GizmoDrag {
     pub objects: Vec<(String, DMat4)>,
     pub comps: Vec<(String, Vec<u32>, inca_core::mesh::PolyMesh)>,
     pub tool: Tool,
+    /// Edit Pivot drag: start world pivots of the objects
+    pub pivots: Option<Vec<DVec3>>,
 }
 
 impl VpState {
@@ -473,7 +475,9 @@ fn gizmo(app: &mut IncaApp, ui: &mut egui::Ui, idx: usize, resp: &egui::Response
         let rot = if app.world_space && app.tool != Tool::Scale { DQuat::IDENTITY } else { app.s.world_matrix(lead).to_scale_rotation_translation().1 };
         (app.s.world_pivot(lead), rot)
     };
+    let pivot_mode = app.pivot_mode && app.s.comp_mode.is_none();
     let modes = match app.tool {
+        _ if pivot_mode => GizmoMode::all_translate(),
         Tool::Move => GizmoMode::all_translate(),
         Tool::Rotate => GizmoMode::all_rotate(),
         _ => GizmoMode::all_scale(),
@@ -528,7 +532,8 @@ fn gizmo(app: &mut IncaApp, ui: &mut egui::Ui, idx: usize, resp: &egui::Response
                 app.s.checkpoint(label);
                 let objs: Vec<(String, DMat4)> = objects.iter().filter(|o| !objects.iter().any(|p| p != *o && app.s.is_ancestor(p, o))).map(|o| (o.clone(), app.s.world_matrix(o))).collect();
                 let comps = comp_targets.iter().map(|(id, v)| (id.clone(), v.clone(), app.s.node(id).unwrap().mesh().unwrap().mesh.clone())).collect();
-                app.vp_state.drag = Some(GizmoDrag { vp: idx, start: tf, cur: tf, objects: objs, comps, tool: app.tool });
+                let pivots = pivot_mode.then(|| objs.iter().map(|(o, _)| app.s.world_pivot(o)).collect());
+                app.vp_state.drag = Some(GizmoDrag { vp: idx, start: tf, cur: tf, objects: objs, comps, tool: if pivot_mode { Tool::Move } else { app.tool }, pivots });
             }
             let d = app.vp_state.drag.as_mut().unwrap();
             if let Some(n) = new_tfs.first() {
@@ -536,9 +541,19 @@ fn gizmo(app: &mut IncaApp, ui: &mut egui::Ui, idx: usize, resp: &egui::Response
             }
             let delta = tf_matrix(&d.cur) * tf_matrix(&d.start).inverse();
             let objs = d.objects.clone();
+            let pivots = d.pivots.clone();
             let comps: Vec<(String, Vec<u32>, inca_core::mesh::PolyMesh)> = d.comps.iter().map(|(a, b, c)| (a.clone(), b.clone(), c.clone())).collect();
-            for (id, start) in objs {
-                app.s.set_world_matrix(&id, delta * start);
+            match pivots {
+                Some(pv) => {
+                    for ((id, _), p0) in objs.iter().zip(pv) {
+                        app.s.set_pivot_world(id, delta.transform_point3(p0));
+                    }
+                }
+                None => {
+                    for (id, start) in objs {
+                        app.s.set_world_matrix(&id, delta * start);
+                    }
+                }
             }
             for (id, verts, orig) in comps {
                 let wm = app.s.world_matrix(&id);
@@ -670,6 +685,14 @@ fn finish_drag(app: &mut IncaApp, d: GizmoDrag) {
         p.insert("deltas".into(), serde_json::json!(deltas));
         app.s.apply_op(id, "polyTweak", p, true);
     }
+    if d.pivots.is_some() {
+        for (id, _) in &d.objects {
+            let p = app.s.world_pivot(id);
+            let n = app.s.name_of(id);
+            app.echo(format!("xform -ws -piv {} {} {} {n};", f(p.x), f(p.y), f(p.z)));
+        }
+        return;
+    }
     let echo = match d.tool {
         Tool::Move => format!("move -r {} {} {}{};", f(t.x), f(t.y), f(t.z), if names.is_empty() { String::new() } else { format!(" {}", names.join(" ")) }),
         Tool::Rotate => {
@@ -714,6 +737,9 @@ fn hud(app: &IncaApp, idx: usize, cv: &CamView, p: &egui::Painter) {
             _ => "Face",
         };
         p.text(pos2(r.max.x - 8.0, r.min.y + 6.0), egui::Align2::RIGHT_TOP, format!("{m} mode"), egui::FontId::proportional(12.0), Color32::from_rgb(255, 200, 120));
+    }
+    if app.pivot_mode {
+        p.text(pos2(r.max.x - 8.0, r.min.y + 38.0), egui::Align2::RIGHT_TOP, "Edit Pivot", egui::FontId::proportional(12.0), Color32::from_rgb(95, 211, 255));
     }
     if vp.isolate.is_some() {
         p.text(pos2(r.max.x - 8.0, r.min.y + 22.0), egui::Align2::RIGHT_TOP, "Isolate Select", egui::FontId::proportional(12.0), Color32::from_rgb(255, 230, 120));

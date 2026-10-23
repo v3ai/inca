@@ -127,6 +127,7 @@ pub fn shelves() -> Vec<(&'static str, Vec<ShelfItem>)> {
                 s("Combine", "combine"),
                 s("Separate", "separate"),
                 s("Extrude", "extrude"),
+                s("Bevel", "bevel"),
                 s("Bridge", "bridge"),
                 s("Loop", "insertEdgeLoop"),
                 s("Merge", "merge"),

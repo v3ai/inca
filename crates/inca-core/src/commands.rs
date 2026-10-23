@@ -107,7 +107,7 @@ pub const CORE_COMMANDS: &[&str] = &[
     "polyQuad", "polyNormal", "polyPoke", "polyCloseBorder", "polyMirrorFace", "polyMergeVertex", "polyDelFacet", "polyDelEdge", "polyDelVertex", "polyUnite", "polySeparate",
     "polyCBoolOp", "polyBoolOp", "polyBridgeEdge", "polySoftEdge", "polyProjection", "polySplitRing", "polyChipOff", "polyDuplicateAndConnect", "revolve", "loft", "extrude", "planarSrf",
     "rebuildCurve", "reverseCurve", "file", "undo", "redo", "connectAttr", "disconnectAttr", "listConnections", "isConnected", "warning", "error", "about", "selectMode", "selectType",
-    "polyCreateFacet", "assignMaterial", "nurbsToPoly", "displaySmoothness", "toggle", "layerEditor", "createDisplayLayer", "editDisplayLayerMembers", "help", "whatIs",
+    "polyCreateFacet", "polyBevel", "assignMaterial", "nurbsToPoly", "displaySmoothness", "toggle", "layerEditor", "createDisplayLayer", "editDisplayLayerMembers", "help", "whatIs",
 ];
 
 pub fn exists(name: &str) -> bool {
@@ -1078,6 +1078,34 @@ pub fn run(s: &mut Scene, h: &mut dyn Host, name: &str, raw: &[Val]) -> Result<V
             s.select(std::slice::from_ref(&o), SelMode::Replace);
             Ok(result_names(s, &o))
         }
+        "polyBevel" | "polyBevel3" => {
+            let mut out = vec![];
+            for id in mesh_targets(s, &a) {
+                let mut e = op_edges(s, &a, &id);
+                if e.is_empty() {
+                    // faces bevel their border edges; an object bevels every edge
+                    let f = op_faces(s, &a, &id, false);
+                    if !f.is_empty() {
+                        let pm = &s.node(&id).unwrap().mesh().unwrap().mesh;
+                        let set: std::collections::HashSet<usize> = f.iter().copied().collect();
+                        let topo = pm.topo();
+                        e = topo.edges.iter().enumerate().filter(|(i, _)| topo.edge_faces[*i].iter().filter(|x| set.contains(x)).count() == 1).map(|(_, e)| *e).collect();
+                    }
+                }
+                let mut p = Params::new();
+                if !e.is_empty() {
+                    p.insert("edges".into(), crate::params::edges_value(&e));
+                }
+                p.insert("fraction".into(), json!(a.f(&["f", "fraction"]).unwrap_or(0.5)));
+                let r = s.apply_op(&id, "polyBevel", p, history_on(&a));
+                apply_op_selection(s, &id, &r);
+                out.push(last_history_name(s, &id));
+            }
+            if out.is_empty() {
+                return Err("Select edges, faces or a polygon object.".into());
+            }
+            Ok(strs(out))
+        }
         "polyBridgeEdge" => simple_edge_op(s, &a, "polyBridgeEdge", |a, p| {
             p.insert("divisions".into(), json!(a.f(&["dv", "divisions"]).unwrap_or(0.0)));
         }),
@@ -1782,6 +1810,17 @@ mod tests {
         mel(&mut s, "string $m = `shadingNode -asShader blinn`; select pCube1; hyperShade -assign $m;").unwrap();
         let c = s.find("pCube1").unwrap();
         assert_eq!(s.mats[&s.node(&c).unwrap().mesh().unwrap().material].name, "blinn1");
+    }
+
+    #[test]
+    fn bevel_command_and_history() {
+        let mut s = Scene::new();
+        mel(&mut s, "polyCube; polyBevel -f 0.3;").unwrap();
+        let id = s.find("pCube1").unwrap();
+        assert_eq!(s.node(&id).unwrap().mesh().unwrap().mesh.f.len(), 26);
+        mel(&mut s, "setAttr polyBevel1.fraction 0.8;").unwrap();
+        assert_eq!(s.node(&id).unwrap().mesh().unwrap().mesh.f.len(), 26);
+        mel(&mut s, "select -r pCube1.e[0]; polyBevel;").unwrap();
     }
 
     #[test]

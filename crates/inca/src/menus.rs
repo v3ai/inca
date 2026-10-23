@@ -90,6 +90,7 @@ pub fn common(name: &str) -> Vec<M> {
             A("freezeTransformations"),
             Sep,
             A("centerPivot"),
+            A("pivotMode"),
             A("snapToGround"),
             Sep,
             Sub("Convert", vec![A("convertNurbsToPoly")]),
@@ -126,7 +127,7 @@ pub fn set_menus(ms: MenuSet) -> Vec<(&'static str, Vec<M>)> {
     match ms {
         MenuSet::Modeling => vec![
             ("Mesh", vec![A("combine"), A("separate"), Sep, Sub("Booleans", vec![A("booleanUnion"), A("booleanDifference"), A("booleanIntersection")]), Sep, A("smooth"), A("triangulate"), A("quadrangulate"), A("mirror"), A("fillHole"), A("addDivisions")]),
-            ("Edit Mesh", vec![A("extrude"), A("bridge"), A("insertEdgeLoop"), Sep, A("merge"), A("mergeCenter"), A("poke"), A("deleteEdgeVertex"), Sep, A("extractFaces"), A("duplicateFaces")]),
+            ("Edit Mesh", vec![A("extrude"), A("bevel"), A("bridge"), A("insertEdgeLoop"), Sep, A("merge"), A("mergeCenter"), A("poke"), A("deleteEdgeVertex"), Sep, A("extractFaces"), A("duplicateFaces")]),
             ("Mesh Display", vec![A("reverseNormals"), A("softenEdge"), A("hardenEdge")]),
             ("UV", vec![A("uvPlanar"), A("uvCylindrical"), A("uvSpherical"), A("uvAutomatic")]),
             ("Surfaces", vec![A("revolve"), A("loft"), A("extrudeCurve"), A("planar")]),

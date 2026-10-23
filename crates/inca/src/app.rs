@@ -124,6 +124,8 @@ pub struct IncaApp {
     pub snap_grid: bool,
     pub history_on: bool,
     pub manip_size: f32,
+    /// Edit Pivot: the move manipulator moves pivots instead of objects
+    pub pivot_mode: bool,
     pub gpu: Option<Gpu>,
     pub smooth_cache: HashMap<String, (u64, inca_core::mesh::PolyMesh)>,
     pub vp_state: vp_ui::VpState,
@@ -182,6 +184,7 @@ impl IncaApp {
             snap_grid: false,
             history_on: true,
             manip_size: 1.0,
+            pivot_mode: false,
             gpu,
             smooth_cache: HashMap::new(),
             vp_state: Default::default(),
@@ -395,6 +398,14 @@ impl IncaApp {
             return;
         }
         let events = ctx.input(|i| i.events.clone());
+        for e in &events {
+            // holding D edits the pivot
+            if let egui::Event::Key { key: egui::Key::D, pressed, repeat: false, modifiers, .. } = e {
+                if !modifiers.ctrl && !modifiers.command && !modifiers.alt {
+                    self.pivot_mode = *pressed;
+                }
+            }
+        }
         for e in events {
             if let egui::Event::Key { key, pressed: true, modifiers, repeat: false, .. } = e {
                 if let Some(a) = crate::actions::hotkey(key, modifiers, self) {

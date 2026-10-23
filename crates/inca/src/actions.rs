@@ -120,7 +120,9 @@ pub static ACTIONS: &[(&str, &str, &str)] = &[
     ("fillHole", "Fill Hole", ""),
     ("addDivisions", "Add Divisions", ""),
     ("extrude", "Extrude", "Ctrl+E"),
+    ("bevel", "Bevel", "Ctrl+B"),
     ("bridge", "Bridge", ""),
+    ("pivotMode", "Edit Pivot", "Insert / hold D"),
     ("insertEdgeLoop", "Insert Edge Loop (on selected edge)", ""),
     ("merge", "Merge", ""),
     ("mergeCenter", "Merge To Center", ""),
@@ -251,6 +253,7 @@ pub fn mel_for(app: &IncaApp, id: &str) -> Option<String> {
                 _ => format!("polyExtrudeFacet -ltz 0.5 -kft 1 -ch {ch};"),
             },
             "bridge" => "polyBridgeEdge -dv 0;".into(),
+            "bevel" => format!("polyBevel -f 0.5 -ch {ch};"),
             "insertEdgeLoop" => "polySplitRing -wt 0.5;".into(),
             "merge" => "polyMergeVertex -d 0.01;".into(),
             "poke" => "polyPoke;".into(),
@@ -593,6 +596,12 @@ pub fn builtin(app: &mut IncaApp, id: &str) {
             app.windows_state.start_render(&app.s, &cam, 0);
         }
         "snapGrid" => app.snap_grid = !app.snap_grid,
+        "pivotMode" => {
+            app.pivot_mode = !app.pivot_mode;
+            if app.pivot_mode && !app.tool.is_manip() {
+                app.set_tool(Tool::Move);
+            }
+        }
         "toggleWorld" => app.world_space = !app.world_space,
         "toggleHistory" => app.history_on = !app.history_on,
         "toggleShelf" => app.show_shelf = !app.show_shelf,
@@ -635,6 +644,8 @@ pub fn hotkey(key: Key, m: Modifiers, app: &IncaApp) -> Option<&'static str> {
         (Key::A, true, false, _) => "attributeEditor",
         (Key::I, true, true, _) => "invertSelection",
         (Key::E, true, _, _) => "extrude",
+        (Key::B, true, _, _) => "bevel",
+        (Key::Insert, ..) => "pivotMode",
         (Key::Num1, true, _, _) => "isolateSelect",
         (Key::Delete, true, _, _) => "deleteEdgeVertex",
         (Key::Delete | Key::Backspace, false, _, _) => "deleteSel",

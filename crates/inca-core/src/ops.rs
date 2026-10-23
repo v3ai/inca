@@ -47,6 +47,7 @@ pub static OPS: &[OpInfo] = &[
         channels: &[ch("translateX", F, None, None), ch("translateY", F, None, None), ch("translateZ", F, None, None), ch("localTranslateZ", F, None, None), ch("offset", F, Some(-1.0), Some(1.0)), ch("divisions", I, Some(1.0), Some(50.0)), ch("keepFacesTogether", B, None, None)],
     },
     OpInfo { ty: "polyExtrudeEdge", base: "polyExtrudeEdge", hidden: false, channels: &[ch("offset", F, None, None), ch("translateY", F, None, None)] },
+    OpInfo { ty: "polyBevel", base: "polyBevel", hidden: false, channels: &[ch("fraction", F, Some(0.001), Some(1.0))] },
     OpInfo { ty: "polySplitRing", base: "polySplitRing", hidden: false, channels: &[Channel { key: "t", kind: F, min: Some(0.001), max: Some(0.999), label: Some("Weight") }, Channel { key: "multiple", kind: I, min: Some(1.0), max: Some(50.0), label: Some("Number Of Edge Loops") }] },
     OpInfo { ty: "deleteComponent", base: "deleteComponent", hidden: false, channels: &[] },
     OpInfo { ty: "polyMergeVert", base: "polyMergeVert", hidden: false, channels: &[ch("threshold", F, Some(0.0), None)] },
@@ -138,6 +139,13 @@ pub fn apply(ty: &str, pm: &PolyMesh, p: &Params, ctx: &dyn OpCtx) -> Result<OpO
             },
         ),
         "polyExtrudeEdge" => mesh::op_extrude_edges(pm, &edges().unwrap_or_default(), num_or(p, "offset", 0.0), DVec3::new(0.0, num_or(p, "translateY", 0.0), 0.0)),
+        "polyBevel" => {
+            let es = match edges() {
+                Some(e) => e,
+                None => pm.topo().edges,
+            };
+            mesh::op_bevel(pm, &es, num_or(p, "fraction", 0.5))
+        }
         "polySplitRing" => {
             let e = p.get("edge").and_then(|e| e.as_array()).ok_or("polySplitRing needs an edge")?;
             let a = e.first().and_then(|x| x.as_u64()).ok_or("bad edge")? as u32;

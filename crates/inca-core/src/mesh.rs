@@ -646,6 +646,119 @@ pub fn op_extrude_edges(pm: &PolyMesh, edges: &[(u32, u32)], offset: f64, transl
     OpOut { mesh: m, select_edges: Some(out_edges), ..Default::default() }
 }
 
+/// Bevel (chamfer) edges with one segment. `fraction` is the bevel width relative to half of the
+/// shortest edge at each end.
+pub fn op_bevel(pm: &PolyMesh, edges: &[(u32, u32)], fraction: f64) -> OpOut {
+    let topo = pm.topo();
+    let bev: HashSet<(u32, u32)> = edges.iter().map(|&(a, b)| epair(a, b)).filter(|e| topo.edge(e.0, e.1).is_some_and(|i| topo.edge_faces[i].len() == 2)).collect();
+    if bev.is_empty() {
+        return pm.clone().into();
+    }
+    let fraction = fraction.clamp(0.001, 1.0);
+    let touched: HashSet<u32> = bev.iter().flat_map(|&(a, b)| [a, b]).collect();
+    // bevel width per vertex
+    let width = |v: u32| -> f64 {
+        let m = topo.vert_edges[v as usize].iter().map(|&e| {
+            let (a, b) = topo.edges[e];
+            pm.v[a as usize].distance(pm.v[b as usize])
+        }).fold(f64::INFINITY, f64::min);
+        fraction * 0.5 * m
+    };
+    // Maya's polyBevel smoothing angle: bevels read as facets
+    let mut out = PolyMesh { v: pm.v.clone(), soft_angle: pm.soft_angle.min(30.0), ..Default::default() };
+    // points on non-bevelled edges, shared by the faces on both sides
+    let mut on_edge: HashMap<(u32, u32), u32> = HashMap::new();
+    let mut edge_pt = |out: &mut PolyMesh, v: u32, x: u32| -> u32 {
+        *on_edge.entry((v, x)).or_insert_with(|| {
+            let d = (pm.v[x as usize] - pm.v[v as usize]).normalize_or_zero();
+            out.v.push(pm.v[v as usize] + d * width(v));
+            (out.v.len() - 1) as u32
+        })
+    };
+    let mut new_verts: HashSet<u32> = HashSet::new();
+    // corner vertex next to a bevelled edge, per (face, vertex)
+    let mut corner: HashMap<(usize, u32), u32> = HashMap::new();
+    let is_bev = |a: u32, b: u32| bev.contains(&epair(a, b));
+    for (fi, f) in pm.f.iter().enumerate() {
+        let n = f.len();
+        let mut nf = vec![];
+        let mut nuv = vec![];
+        let fuv = pm.face_uv(fi);
+        for i in 0..n {
+            let v = f[i];
+            let p = f[(i + n - 1) % n];
+            let x = f[(i + 1) % n];
+            let uvc = fuv.map(|u| u[i]);
+            if !touched.contains(&v) {
+                nf.push(v);
+                nuv.push(uvc);
+                continue;
+            }
+            let (bin, bout) = (is_bev(p, v), is_bev(v, x));
+            match (bin, bout) {
+                (true, true) => {
+                    let d = (pm.v[p as usize] - pm.v[v as usize]).normalize_or_zero() + (pm.v[x as usize] - pm.v[v as usize]).normalize_or_zero();
+                    out.v.push(pm.v[v as usize] + d * width(v));
+                    let id = (out.v.len() - 1) as u32;
+                    corner.insert((fi, v), id);
+                    new_verts.insert(id);
+                    nf.push(id);
+                    nuv.push(uvc);
+                }
+                (true, false) => {
+                    let id = edge_pt(&mut out, v, x);
+                    corner.insert((fi, v), id);
+                    new_verts.insert(id);
+                    nf.push(id);
+                    nuv.push(uvc);
+                }
+                (false, true) => {
+                    let id = edge_pt(&mut out, v, p);
+                    corner.insert((fi, v), id);
+                    new_verts.insert(id);
+                    nf.push(id);
+                    nuv.push(uvc);
+                }
+                (false, false) => {
+                    let a = edge_pt(&mut out, v, p);
+                    let b = edge_pt(&mut out, v, x);
+                    new_verts.insert(a);
+                    new_verts.insert(b);
+                    nf.push(a);
+                    nf.push(b);
+                    nuv.push(uvc);
+                    nuv.push(uvc);
+                }
+            }
+        }
+        let uv = if fuv.is_some() { Some(nuv.into_iter().map(|u| u.unwrap_or_default()).collect()) } else { None };
+        out.add_face(nf, uv, pm.face_mat(fi).cloned());
+    }
+    // bevel faces along each edge
+    let mut sel = vec![];
+    for &(a, b) in &bev {
+        let e = topo.edge(a, b).unwrap();
+        let (f1, f2) = (topo.edge_faces[e][0], topo.edge_faces[e][1]);
+        // orient so f1 runs a -> b
+        let f1_ab = {
+            let f = &pm.f[f1];
+            let i = f.iter().position(|&x| x == a).unwrap();
+            f[(i + 1) % f.len()] == b
+        };
+        let (f1, f2) = if f1_ab { (f1, f2) } else { (f2, f1) };
+        let (c1a, c1b, c2a, c2b) = (corner[&(f1, a)], corner[&(f1, b)], corner[&(f2, a)], corner[&(f2, b)]);
+        sel.push(out.add_face(vec![c1b, c1a, c2a, c2b], None, pm.face_mat(f1).cloned()));
+    }
+    // fill the holes left at vertices where several bevelled edges meet
+    for l in out.boundary_loops() {
+        if l.iter().all(|v| new_verts.contains(v)) {
+            sel.push(out.add_face(l, None, None));
+        }
+    }
+    out.compact();
+    OpOut { mesh: out, select_faces: Some(sel), ..Default::default() }
+}
+
 /// Walk the edge ring (across quads) starting at edge (a,b). Returns directed ring edges,
 /// all oriented the same way as (a,b).
 pub fn edge_ring(pm: &PolyMesh, topo: &Topo, a: u32, b: u32) -> Vec<(u32, u32)> {
@@ -1445,6 +1558,23 @@ mod tests {
         assert_eq!(t.f.len(), 12);
         let q = op_quadrangulate(&t, 30.0);
         assert_eq!(q.f.len(), 6);
+    }
+
+    #[test]
+    fn bevel_edges_stays_closed() {
+        let c = cube();
+        let topo = c.topo();
+        // one edge
+        let r = op_bevel(&c, &[topo.edges[0]], 0.5);
+        assert!(is_closed(&r.mesh));
+        assert_eq!(r.mesh.f.len(), 7);
+        assert!(r.mesh.signed_volume() < 1.0 && r.mesh.signed_volume() > 0.9);
+        // all edges: 6 faces + 12 bevels + 8 corner triangles
+        let all: Vec<(u32, u32)> = topo.edges.clone();
+        let r = op_bevel(&c, &all, 0.5);
+        assert!(is_closed(&r.mesh), "not closed");
+        assert_eq!(r.mesh.f.len(), 26);
+        assert!(r.mesh.signed_volume() > 0.0);
     }
 
     #[test]
