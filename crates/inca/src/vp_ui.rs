@@ -510,6 +510,10 @@ fn interact(app: &mut IncaApp, ui: &mut egui::Ui, idx: usize, resp: &egui::Respo
         crate::mesh_tools::interact(app, idx, resp, cv, painter);
         return;
     }
+    if crate::rig_tools::is_rig_tool(app.tool) {
+        crate::rig_tools::interact(app, idx, resp, cv, painter);
+        return;
+    }
     if app.tool.is_creation() {
         creation_tool(app, idx, resp, cv, painter);
         return;
@@ -1023,7 +1027,17 @@ fn simplify(pts: &[DVec3], tol: f64) -> Vec<DVec3> {
 /// Complete the active creation tool (Enter).
 pub fn finish_creation(app: &mut IncaApp) {
     if app.tool == Tool::Joint {
-        // finish the chain: the next click starts a new one
+        // finish the chain: orient it, then the next click starts a new one
+        let root = app.s.lead().filter(|l| app.s.node(l).is_some_and(|n| n.kind == "joint")).map(|l| {
+            let mut r = l.clone();
+            while let Some(p) = app.s.node(&r).and_then(|n| n.parent.clone()).filter(|p| app.s.node(p).is_some_and(|n| n.kind == "joint")) {
+                r = p;
+            }
+            r
+        });
+        if let Some(r) = root {
+            let _ = app.run_mel("orient joints", &format!("joint -e -oj xyz -sao yup -ch {};", app.s.name_of(&r)));
+        }
         app.select_names(&[], SelMode::Replace);
         return;
     }

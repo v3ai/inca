@@ -166,10 +166,11 @@ pub fn set_menus(ms: MenuSet) -> Vec<(&'static str, Vec<M>)> {
             ("Curves", vec![A("cvCurveTool"), A("epCurveTool"), A("pencilCurveTool"), Sep, A("reverseCurve"), A("rebuildCurve"), A("openCloseCurve"), Sep, A("curveFromEdges")]),
         ],
         MenuSet::Rigging => vec![
-            ("Skeleton", vec![A("jointTool"), Todo("Create IK Handle")]),
-            ("Skin", vec![A("smoothBind"), Todo("Paint Skin Weights")]),
-            ("Deform", vec![Sub("Nonlinear", vec![A("bendDeformer"), A("flareDeformer"), A("sineDeformer"), A("squashDeformer"), A("twistDeformer"), A("waveDeformer")]), Todo("Lattice"), Todo("Blend Shape")]),
-            ("Constrain", vec![A("parentConstraint"), A("pointConstraint"), A("orientConstraint"), A("scaleConstraint"), A("aimConstraint")]),
+            ("Skeleton", vec![A("jointTool"), A("ikHandleTool"), Sep, A("insertJoint"), A("mirrorJoint"), A("orientJoint")]),
+            ("Skin", vec![A("smoothBind"), A("unbindSkin"), Sep, A("paintWeights")]),
+            ("Deform", vec![Sub("Nonlinear", vec![A("bendDeformer"), A("flareDeformer"), A("sineDeformer"), A("squashDeformer"), A("twistDeformer"), A("waveDeformer")]), Sep, A("createCluster"), A("softModDeformer"), A("createLattice"), A("latticePointTool"), A("blendShape"), Sep, A("deleteDeformers")]),
+            ("Constrain", vec![A("parentConstraint"), A("pointConstraint"), A("orientConstraint"), A("scaleConstraint"), A("aimConstraint"), A("poleVectorConstraint"), Sep, A("removeConstraints"), Sep, A("attachToMotionPath")]),
+            ("Control", vec![A("createLocator"), A("group"), Sep, A("setDrivenKeyWindow")]),
         ],
         MenuSet::Animation => vec![
             ("Key", vec![A("setKey"), A("keyTranslate"), A("keyRotate"), A("keyScale"), Sep, A("deleteKeysCurrent"), A("toggleAutoKey")]),

@@ -36,6 +36,11 @@ pub const SPECS: &[(&str, &[Opt])] = &[
     ("revolve", &[o("axis", "Axis", Kind::Radio(XYZ), 1.0), o("startSweep", "Start sweep angle", Kind::Float, 0.0), o("endSweep", "End sweep angle", Kind::Float, 360.0), o("sections", "Segments", Kind::Int, 8.0)]),
     ("group", &[o("pivot", "Group pivot", Kind::Radio(&["Center", "Origin"]), 0.0)]),
     ("chamferVertex", &[o("width", "Width", Kind::Float, 0.25)]),
+    ("smoothBind", &[o("maxInfluences", "Max influences", Kind::Int, 3.0)]),
+    ("mirrorJoint", &[o("axis", "Mirror across", Kind::Radio(&["YZ", "XZ", "XY"]), 0.0)]),
+    ("softModDeformer", &[o("falloffRadius", "Falloff radius", Kind::Float, 5.0)]),
+    ("createLattice", &[o("s", "S divisions", Kind::Int, 2.0), o("t", "T divisions", Kind::Int, 5.0), o("u", "U divisions", Kind::Int, 2.0)]),
+    ("attachToMotionPath", &[o("follow", "Follow", Kind::Bool, 1.0)]),
 ];
 
 pub fn spec(action: &str) -> Option<&'static [Opt]> {

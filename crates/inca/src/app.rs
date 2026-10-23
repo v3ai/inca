@@ -26,6 +26,9 @@ pub enum Tool {
     Sculpt,
     QuadDraw,
     Pencil,
+    IkHandle,
+    LatticePoint,
+    PaintWeights,
 }
 
 impl Tool {
@@ -52,6 +55,9 @@ impl Tool {
             Tool::Sculpt => "softSelect",
             Tool::QuadDraw => "planar",
             Tool::Pencil => "pencilCurve",
+            Tool::IkHandle => "joint",
+            Tool::LatticePoint => "nurbsCube",
+            Tool::PaintWeights => "softSelect",
         }
     }
     pub fn is_select(self) -> bool {
@@ -106,6 +112,7 @@ pub struct Windows {
     pub hotkeys: bool,
     pub about: bool,
     pub command_list: bool,
+    pub sdk: bool,
     pub rename: Option<String>,
 }
 
@@ -212,6 +219,7 @@ pub struct IncaApp {
     /// measured redraw rate for the fps HUD
     pub fps_measured: f32,
     pub mesh_tool: crate::mesh_tools::MeshToolState,
+    pub rig_tool: crate::rig_tools::RigToolState,
     pub mesh_opts: crate::mesh_tools::MeshToolOpts,
     pub uv_editor: crate::uv_editor::UvEditor,
     pub soft: SoftSel,
@@ -342,6 +350,7 @@ impl IncaApp {
             overlay_border: HashSet::new(),
             fps_measured: 0.0,
             mesh_tool: Default::default(),
+            rig_tool: crate::rig_tools::RigToolState::new(),
             uv_editor: Default::default(),
             manip_size_shown: 0.0,
             marking: None,
@@ -496,6 +505,7 @@ impl IncaApp {
             }
             self.mesh_tool.cut.clear();
             self.mesh_tool.cut_obj = None;
+            self.rig_tool.ik_start = None;
         }
         self.tool = t;
         self.help = match t {
@@ -515,6 +525,9 @@ impl IncaApp {
             Tool::TargetWeld => "Target Weld Tool: drag from a vertex onto another vertex to weld them together",
             Tool::Sculpt => "Sculpt: drag on a mesh to sculpt. Ctrl inverts, Shift smooths. Brush and size in Tool Settings",
             Tool::Pencil => "Pencil Curve Tool: drag to draw a curve freehand",
+            Tool::IkHandle => "Create IK Handle: click the start joint",
+            Tool::LatticePoint => "Lattice Point Tool: drag lattice points to deform the lattice",
+            Tool::PaintWeights => "Paint Skin Weights: pick an influence in Tool Settings and paint on the skinned mesh",
             Tool::QuadDraw => "Quad Draw: click to place dots on the live surface, Shift+click to fill a quad, drag to slide, Enter to finish",
         }
         .into();
@@ -754,6 +767,7 @@ impl eframe::App for IncaApp {
         }
         self.hotkeys(&ctx);
         // constraints follow their targets live (gizmo drags, channel edits)
+        crate::rig_tools::sync_lattice_divisions(self);
         let moved = self.s.eval_constraints();
         if !moved.is_empty() {
             self.s.refresh_many(&moved);

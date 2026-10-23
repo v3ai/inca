@@ -471,6 +471,11 @@ fn circle(out: &mut Vec<LineVertex>, c: DVec3, u: DVec3, v: DVec3, r: f64, col: 
     }
 }
 
+/// s/t/u divisions of a lattice node.
+pub fn lattice_div(s: &Scene, id: &str) -> [usize; 3] {
+    ["sDivisions", "tDivisions", "uDivisions"].map(|k| s.extra_f(id, k, 2.0).round().max(2.0) as usize)
+}
+
 /// Object-space icon lines for lights, cameras, locators and curves.
 pub fn icon_lines(s: &Scene, id: &str, col: [f32; 4]) -> Vec<LineVertex> {
     let mut o = vec![];
@@ -500,6 +505,47 @@ pub fn icon_lines(s: &Scene, id: &str, col: [f32; 4]) -> Vec<LineVertex> {
             push_line(&mut o, -DVec3::Y, DVec3::Y, col);
             for y in [-1.0, 0.0, 1.0] {
                 circle(&mut o, DVec3::Y * y, DVec3::X, DVec3::Z, 0.5, col);
+            }
+        }
+        Shape::Locator if n.kind == "ikHandle" => {
+            for ax in [DVec3::X, DVec3::Y, DVec3::Z] {
+                push_line(&mut o, -ax * 0.3, ax * 0.3, col);
+            }
+            // a line back to the start joint
+            if let Some(sj) = s.rig(id)["start"].as_str() {
+                let p = s.world_matrix(id).inverse().transform_point3(s.world_pos(sj));
+                push_line(&mut o, DVec3::ZERO, p, col);
+            }
+        }
+        Shape::Locator if n.kind == "clusterHandle" => {
+            // the "C" glyph
+            let n = 16;
+            for i in 0..n {
+                let a0 = 0.8 + (std::f64::consts::TAU - 1.6) * i as f64 / n as f64;
+                let a1 = 0.8 + (std::f64::consts::TAU - 1.6) * (i + 1) as f64 / n as f64;
+                push_line(&mut o, DVec3::new(a0.cos(), a0.sin(), 0.0) * 0.4, DVec3::new(a1.cos(), a1.sin(), 0.0) * 0.4, col);
+            }
+        }
+        Shape::Locator if n.kind == "lattice" => {
+            let div = lattice_div(s, id);
+            let pts: Vec<DVec3> = s.rig(id)["pts"].as_array().map(|a| a.iter().map(|p| DVec3::new(p[0].as_f64().unwrap_or(0.0), p[1].as_f64().unwrap_or(0.0), p[2].as_f64().unwrap_or(0.0))).collect()).unwrap_or_default();
+            if pts.len() == div[0] * div[1] * div[2] {
+                let ix = |i, j, k| pts[inca_core::deformers::lattice_index(div, i, j, k)];
+                for i in 0..div[0] {
+                    for j in 0..div[1] {
+                        for k in 0..div[2] {
+                            if i + 1 < div[0] {
+                                push_line(&mut o, ix(i, j, k), ix(i + 1, j, k), col);
+                            }
+                            if j + 1 < div[1] {
+                                push_line(&mut o, ix(i, j, k), ix(i, j + 1, k), col);
+                            }
+                            if k + 1 < div[2] {
+                                push_line(&mut o, ix(i, j, k), ix(i, j, k + 1), col);
+                            }
+                        }
+                    }
+                }
             }
         }
         Shape::Locator => {
@@ -810,6 +856,10 @@ pub fn build_draws(s: &Scene, vp: &Viewport, cv: &CamView, g: &mut Gpu, smooth_c
                     [0.75, 0.3, 0.85, 1.0]
                 } else if n.kind == "emitter" || n.kind == "field" {
                     [0.95, 0.6, 0.2, 1.0]
+                } else if n.kind == "ikHandle" {
+                    [0.85, 0.75, 0.2, 1.0]
+                } else if n.kind == "lattice" || n.kind == "clusterHandle" {
+                    [0.75, 0.3, 0.85, 1.0]
                 } else {
                     C_WIRE
                 };

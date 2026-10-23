@@ -1170,8 +1170,12 @@ fn tool_settings(app: &mut IncaApp, ui: &mut egui::Ui) {
         Tool::Sculpt => "Sculpt Tool",
         Tool::QuadDraw => "Quad Draw Tool",
         Tool::Pencil => "Pencil Curve Tool",
+        Tool::IkHandle => "IK Handle Tool",
+        Tool::LatticePoint => "Lattice Point Tool",
+        Tool::PaintWeights => "Paint Skin Weights Tool",
     });
     crate::mesh_tools::settings(app, ui);
+    crate::rig_tools::settings(app, ui);
     if app.tool.is_creation() {
         ui.label("Click in a viewport to place points (on the ground grid in perspective, on the view plane in orthographic views). Enter completes, Backspace removes the last point, Esc cancels.");
         ui.checkbox(&mut app.snap_grid, "Snap to grid");

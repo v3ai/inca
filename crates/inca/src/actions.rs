@@ -66,7 +66,23 @@ pub static ACTIONS: &[(&str, &str, &str)] = &[
     ("arcTool", "Three Point Circular Arc", ""),
     ("createPolygonTool", "Create Polygon Tool", ""),
     ("jointTool", "Create Joints", ""),
+    ("ikHandleTool", "Create IK Handle", ""),
+    ("insertJoint", "Insert Joint", ""),
+    ("mirrorJoint", "Mirror Joints", ""),
+    ("orientJoint", "Orient Joint", ""),
     ("smoothBind", "Bind Skin", ""),
+    ("unbindSkin", "Unbind Skin", ""),
+    ("paintWeights", "Paint Skin Weights", ""),
+    ("createCluster", "Cluster", ""),
+    ("softModDeformer", "Soft Modification", ""),
+    ("createLattice", "Lattice", ""),
+    ("latticePointTool", "Lattice Point Tool", ""),
+    ("blendShape", "Blend Shape", ""),
+    ("deleteDeformers", "Delete Deformers", ""),
+    ("poleVectorConstraint", "Pole Vector", ""),
+    ("removeConstraints", "Remove Constraints", ""),
+    ("attachToMotionPath", "Attach to Motion Path", ""),
+    ("setDrivenKeyWindow", "Set Driven Key...", ""),
     ("bendDeformer", "Bend", ""),
     ("twistDeformer", "Twist", ""),
     ("flareDeformer", "Flare", ""),
@@ -319,6 +335,17 @@ fn primitive_mel(ty: &str, history: bool) -> String {
 }
 
 /// MEL for an action, if it is a scripted one.
+/// Attach to Motion Path: the selected objects follow the curve selected last.
+fn motion_path_mel(app: &IncaApp) -> Option<String> {
+    let curve = app.s.sel.iter().rev().find(|i| app.s.node(i).is_some_and(|n| matches!(n.shape, inca_core::scene::Shape::Curve(_))))?;
+    let objs: Vec<String> = app.s.sel.iter().filter(|i| *i != curve).map(|i| app.s.name_of(i)).collect();
+    if objs.is_empty() {
+        return None;
+    }
+    let f = crate::options::get(app, "attachToMotionPath", "follow") as i64;
+    Some(format!("pathAnimation -c {} -f {f} -fa x -ua y {};", app.s.name_of(curve), objs.join(" ")))
+}
+
 pub fn mel_for(app: &IncaApp, id: &str) -> Option<String> {
     if GEN_INFO.iter().any(|g| g.ty == id) {
         return Some(primitive_mel(id, app.history_on));
@@ -370,7 +397,19 @@ pub fn mel_for(app: &IncaApp, id: &str) -> Option<String> {
             },
             "bridge" => format!("polyBridgeEdge -dv {};", opt("bridge", "divisions") as i64),
             "bevel" => format!("polyBevel -f {} -ch {ch};", f(opt("bevel", "fraction"))),
-            "smoothBind" => "skinCluster -tsb -mi 3;".into(),
+            "smoothBind" => format!("skinCluster -tsb -mi {};", opt("smoothBind", "maxInfluences") as i64),
+            "insertJoint" => "insertJoint;".into(),
+            "mirrorJoint" => format!("mirrorJoint -{} -mb -sr \"left\" \"right\";", ["myz", "mxz", "mxy"][(opt("mirrorJoint", "axis") as usize).min(2)]),
+            "orientJoint" => "joint -e -oj xyz -sao yup -ch;".into(),
+            "unbindSkin" => "skinCluster -e -ub;".into(),
+            "createCluster" => "cluster;".into(),
+            "softModDeformer" => format!("softMod -fr {};", f(opt("softModDeformer", "falloffRadius"))),
+            "createLattice" => format!("lattice -dv {} {} {} -oc true;", opt("createLattice", "s") as i64, opt("createLattice", "t") as i64, opt("createLattice", "u") as i64),
+            "blendShape" => "blendShape;".into(),
+            "deleteDeformers" => "deleteDeformers;".into(),
+            "poleVectorConstraint" => "poleVectorConstraint;".into(),
+            "removeConstraints" => "removeConstraints;".into(),
+            "attachToMotionPath" => return motion_path_mel(app),
             "createEmitter" => "emitter -type omni -r 100 -spd 1;".into(),
             "createDirectionalEmitter" => "emitter -type directional -r 100 -spd 3 -dx 0 -dy 1 -dz 0;".into(),
             "emitFromObject" => "emitter -type surface -r 200 -spd 0.5;".into(),
@@ -724,6 +763,10 @@ pub fn builtin(app: &mut IncaApp, id: &str) {
         "epCurveTool" => app.set_tool(Tool::EpCurve),
         "arcTool" => app.set_tool(Tool::Arc),
         "createPolygonTool" => app.set_tool(Tool::Polygon),
+        "ikHandleTool" => app.set_tool(Tool::IkHandle),
+        "latticePointTool" => app.set_tool(Tool::LatticePoint),
+        "paintWeights" => app.set_tool(Tool::PaintWeights),
+        "setDrivenKeyWindow" => app.win.sdk = true,
         "jointTool" => {
             app.select_names(&[], SelMode::Replace);
             app.set_tool(Tool::Joint);

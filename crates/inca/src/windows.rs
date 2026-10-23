@@ -81,6 +81,7 @@ impl WinState {
 
 pub fn show(app: &mut IncaApp, ctx: &egui::Context, _frame: &mut eframe::Frame) {
     app.windows_state.poll(ctx);
+    crate::rig_tools::sdk_window(app, ctx);
     let mut open = app.win.script_editor;
     egui::Window::new("Script Editor").open(&mut open).default_size([640.0, 460.0]).show(ctx, |ui| script_editor(app, ui));
     app.win.script_editor = open;
