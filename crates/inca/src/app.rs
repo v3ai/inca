@@ -5,7 +5,7 @@ use crate::{panels, theme, timeline, toolbar, vp_ui, windows};
 use inca_core::commands::Host;
 use inca_core::mel::{Interp, Val};
 use inca_core::scene::{CompMode, MsgKind, Scene, SelMode};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Tool {
@@ -13,6 +13,19 @@ pub enum Tool {
     Move,
     Rotate,
     Scale,
+    CvCurve,
+    EpCurve,
+    Arc,
+    Polygon,
+}
+
+impl Tool {
+    pub fn is_manip(self) -> bool {
+        matches!(self, Tool::Move | Tool::Rotate | Tool::Scale)
+    }
+    pub fn is_creation(self) -> bool {
+        matches!(self, Tool::CvCurve | Tool::EpCurve | Tool::Arc | Tool::Polygon)
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -55,7 +68,6 @@ pub struct Windows {
     pub hotkeys: bool,
     pub about: bool,
     pub command_list: bool,
-    pub outliner_window: bool,
     pub rename: Option<String>,
 }
 
@@ -122,7 +134,7 @@ pub struct IncaApp {
     pub last_action: Option<String>,
     pub clipboard: Option<serde_json::Value>,
     pub test: Option<TestRun>,
-    pub status_msg: String,
+    pub recent: Vec<String>,
 }
 
 /// INCA_TEST / INCA_SHOT: run a MEL script at startup, save a screenshot and quit.
@@ -180,7 +192,7 @@ impl IncaApp {
             last_action: None,
             clipboard: None,
             test,
-            status_msg: String::new(),
+            recent: cc.storage.and_then(|s| eframe::get_value(s, "recent")).unwrap_or_default(),
         };
         if let Some(p) = std::env::args().nth(1).filter(|a| !a.starts_with('-')) {
             app.open_path(std::path::Path::new(&p));
@@ -284,8 +296,11 @@ impl IncaApp {
     }
 
     pub fn set_tool(&mut self, t: Tool) {
-        if t != Tool::Select {
+        if t.is_manip() {
             self.last_tool = t;
+        }
+        if self.tool != t {
+            self.vp_state.tool_pts.clear();
         }
         self.tool = t;
         self.help = match t {
@@ -293,6 +308,10 @@ impl IncaApp {
             Tool::Move => "Move Tool: Use manipulator to move object(s). Ctrl+MMB-drag to move components along normals.",
             Tool::Rotate => "Rotate Tool: Use manipulator to rotate object(s).",
             Tool::Scale => "Scale Tool: Use manipulator to scale object(s).",
+            Tool::CvCurve => "CV Curve Tool: click to place CVs, Enter to finish, Backspace removes the last one",
+            Tool::EpCurve => "EP Curve Tool: click to place edit points, Enter to finish",
+            Tool::Arc => "Three Point Circular Arc: click the start, a point on the arc and the end",
+            Tool::Polygon => "Create Polygon Tool: click to place vertices, Enter to create the face",
         }
         .into();
     }
@@ -336,9 +355,17 @@ impl IncaApp {
             Ok(_) => {
                 self.echo(format!("file -o \"{}\";", p.display()));
                 self.smooth_cache.clear();
+                self.add_recent(p);
             }
             Err(e) => self.last_result = format!("// Error: {e} //"),
         }
+    }
+
+    pub fn add_recent(&mut self, p: &std::path::Path) {
+        let s = p.to_string_lossy().to_string();
+        self.recent.retain(|r| r != &s);
+        self.recent.insert(0, s);
+        self.recent.truncate(10);
     }
 
     pub fn title(&self) -> String {
@@ -398,14 +425,24 @@ impl IncaApp {
         ctx.request_repaint();
     }
 
-    pub fn live_meshes(&self) -> HashSet<String> {
-        self.vp_state.live_meshes()
-    }
 }
 
 impl eframe::App for IncaApp {
+    fn save(&mut self, storage: &mut dyn eframe::Storage) {
+        eframe::set_value(storage, "recent", &self.recent);
+    }
+
     fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        // files dropped on the window open (.inca) or import (everything else)
+        let dropped: Vec<std::path::PathBuf> = ctx.input(|i| i.raw.dropped_files.iter().map(|f| f.path().to_path_buf()).filter(|p| !p.as_os_str().is_empty()).collect());
+        for p in dropped {
+            if p.extension().is_some_and(|e| e == "inca") && self.s.nodes.values().all(|n| n.startup()) {
+                self.open_path(&p);
+            } else {
+                let _ = self.run_mel("import", &format!("file -i \"{}\";", p.display().to_string().replace('\\', "/")));
+            }
+        }
         ctx.send_viewport_cmd(egui::ViewportCommand::Title(self.title()));
         self.tick_playback(&ctx);
         self.hotkeys(&ctx);

@@ -111,7 +111,7 @@ pub struct ShelfItem {
 pub fn shelves() -> Vec<(&'static str, Vec<ShelfItem>)> {
     let s = |label, action| ShelfItem { label, action };
     vec![
-        ("Curves / Surfaces", vec![s("Circle", "nurbsCircle"), s("Square", "nurbsSquare"), s("NSphere", "nurbsSphere"), s("NCube", "nurbsCube"), s("NCyl", "nurbsCylinder"), s("NCone", "nurbsCone"), s("NPlane", "nurbsPlane"), s("NTorus", "nurbsTorus"), s("Revolve", "revolve"), s("Loft", "loft"), s("Extrude", "extrudeCurve"), s("Planar", "planar"), s("Rebuild", "rebuildCurve"), s("Reverse", "reverseCurve")]),
+        ("Curves / Surfaces", vec![s("CV", "cvCurveTool"), s("EP", "epCurveTool"), s("Arc", "arcTool"), s("Circle", "nurbsCircle"), s("Square", "nurbsSquare"), s("NSphere", "nurbsSphere"), s("NCube", "nurbsCube"), s("NCyl", "nurbsCylinder"), s("NCone", "nurbsCone"), s("NPlane", "nurbsPlane"), s("NTorus", "nurbsTorus"), s("Revolve", "revolve"), s("Loft", "loft"), s("Extrude", "extrudeCurve"), s("Planar", "planar"), s("Rebuild", "rebuildCurve"), s("Reverse", "reverseCurve")]),
         (
             "Poly Modeling",
             vec![
@@ -123,6 +123,7 @@ pub fn shelves() -> Vec<(&'static str, Vec<ShelfItem>)> {
                 s("Plane", "polyPlane"),
                 s("Disc", "polyDisc"),
                 s("Pipe", "polyPipe"),
+                s("PolyTool", "createPolygonTool"),
                 s("Combine", "combine"),
                 s("Separate", "separate"),
                 s("Extrude", "extrude"),

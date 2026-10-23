@@ -59,7 +59,8 @@ pub fn common(name: &str) -> Vec<M> {
             Sub("Lights", LIGHT_TYPES.iter().map(|l| A(l.0)).collect()),
             Sub("Cameras", vec![A("createCamera")]),
             Sep,
-            Sub("Curve Tools", vec![Todo("CV Curve Tool"), Todo("EP Curve Tool"), Todo("Three Point Circular Arc")]),
+            Sub("Curve Tools", vec![A("cvCurveTool"), A("epCurveTool"), A("arcTool")]),
+            A("createPolygonTool"),
             Sep,
             A("createEmptyGroup"),
             A("createLocator"),
@@ -201,7 +202,23 @@ pub fn menu_bar(app: &mut IncaApp, ui: &mut egui::Ui) {
     egui::MenuBar::new().ui(ui, |ui| {
         for name in ["File", "Edit", "Create", "Select", "Modify", "Display", "Windows"] {
             let list = common(name);
-            ui.menu_button(name, |ui| items(app, ui, &list));
+            ui.menu_button(name, |ui| {
+                items(app, ui, &list);
+                if name == "File" {
+                    ui.separator();
+                    ui.menu_button("Recent Files", |ui| {
+                        if app.recent.is_empty() {
+                            ui.add_enabled(false, egui::Button::new("(none)"));
+                        }
+                        for r in app.recent.clone() {
+                            if ui.button(&r).clicked() {
+                                app.open_path(std::path::Path::new(&r));
+                                ui.close();
+                            }
+                        }
+                    });
+                }
+            });
         }
         ui.separator();
         for (name, list) in set_menus(app.menu_set) {

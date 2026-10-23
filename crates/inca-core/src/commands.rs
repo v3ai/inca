@@ -107,7 +107,7 @@ pub const CORE_COMMANDS: &[&str] = &[
     "polyQuad", "polyNormal", "polyPoke", "polyCloseBorder", "polyMirrorFace", "polyMergeVertex", "polyDelFacet", "polyDelEdge", "polyDelVertex", "polyUnite", "polySeparate",
     "polyCBoolOp", "polyBoolOp", "polyBridgeEdge", "polySoftEdge", "polyProjection", "polySplitRing", "polyChipOff", "polyDuplicateAndConnect", "revolve", "loft", "extrude", "planarSrf",
     "rebuildCurve", "reverseCurve", "file", "undo", "redo", "connectAttr", "disconnectAttr", "listConnections", "isConnected", "warning", "error", "about", "selectMode", "selectType",
-    "polyCube", "assignMaterial", "nurbsToPoly", "displaySmoothness", "toggle", "layerEditor", "createDisplayLayer", "editDisplayLayerMembers", "help", "whatIs",
+    "polyCreateFacet", "assignMaterial", "nurbsToPoly", "displaySmoothness", "toggle", "layerEditor", "createDisplayLayer", "editDisplayLayerMembers", "help", "whatIs",
 ];
 
 pub fn exists(name: &str) -> bool {
@@ -280,11 +280,6 @@ fn result_names(s: &Scene, id: &Id) -> Val {
 fn place_new(s: &mut Scene, id: &Id, a: &Args) {
     if let Some(n) = a.s(&["n", "name"]) {
         rename(s, id, &n);
-    }
-    if let Some(p) = a.v3(&["p", "position"]) {
-        if let Some(n) = s.nodes.get_mut(id) {
-            n.xf.t = p;
-        }
     }
     if let Some(ax) = a.v3(&["ax", "axis"]) {
         let d = DVec3::from_array(ax).normalize_or(DVec3::Y);
@@ -503,7 +498,8 @@ pub fn run(s: &mut Scene, h: &mut dyn Host, name: &str, raw: &[Val]) -> Result<V
         "listConnections" => &[("s|source", 1), ("d|destination", 1), ("p|plugs", 1), ("c|connections", 1)],
         "spaceLocator" => &[("p|position", 3), ("n|name", 1), ("a|absolute", 0)],
         "camera" => &[("n|name", 1), ("fl|focalLength", 1), ("o|orthographic", 1), ("ow|orthographicWidth", 1)],
-        "curve" => &[("d|degree", 1), ("p|point", 3), ("ep|editPoint", 3), ("per|periodic", 1), ("k|knot", 1), ("n|name", 1), ("bez|bezier", 0)],
+        "curve" => &[("d|degree", 1), ("p|point", 3), ("ep|editPoint", 3), ("per|periodic", 1), ("k|knot", 1), ("n|name", 1), ("bez|bezier", 0), ("arc", 0)],
+        "polyCreateFacet" => &[("p|point", 3), ("n|name", 1), ("ch", 1)],
         "circle" => &[("r|radius", 1), ("s|sections", 1), ("nr|normal", 3), ("c|center", 3), ("n|name", 1), ("ch|constructionHistory", 1), ("d|degree", 1)],
         "selectMode" => &[("o|object", 0), ("co|component", 0), ("q|query", 0)],
         "selectType" => &[("v|vertex", 1), ("pv|polymeshVertex", 1), ("e|edge", 1), ("pe|polymeshEdge", 1), ("f|facet", 1), ("pf|polymeshFace", 1)],
@@ -554,15 +550,41 @@ pub fn run(s: &mut Scene, h: &mut dyn Host, name: &str, raw: &[Val]) -> Result<V
             if pts.len() < 2 {
                 return Err("curve: needs at least two -p points".into());
             }
-            let kind = if a.has(&["ep", "editPoint"]) { "ep" } else { "cv" };
+            let arc = a.has(&["arc"]);
+            if arc && pts.len() != 3 {
+                return Err("curve -arc: needs start, through and end points".into());
+            }
+            let kind = if arc {
+                "arc"
+            } else if a.has(&["ep", "editPoint"]) {
+                "ep"
+            } else {
+                "cv"
+            };
             let per = a.b(&["per", "periodic"], false);
-            let c = Curve::new(pts, a.f(&["d", "degree"]).unwrap_or(3.0) as usize, if per { "periodic" } else { "open" }, kind);
+            let c = Curve::new(pts, if arc { 2 } else { a.f(&["d", "degree"]).unwrap_or(3.0) as usize }, if per { "periodic" } else { "open" }, kind);
             let id = s.create_curve(c, "curve1");
             place_new(s, &id, &a);
             Ok(Val::Str(s.name_of(&id)))
         }
+        "polyCreateFacet" => {
+            let pts: Vec<DVec3> = a.flags.iter().filter(|(f, _)| f == "p" || f == "point").filter_map(|(_, v)| (v.len() >= 3).then(|| DVec3::new(v[0].num(), v[1].num(), v[2].num()))).collect();
+            if pts.len() < 3 {
+                return Err("polyCreateFacet: needs at least three -p points".into());
+            }
+            let c = pts.iter().copied().sum::<DVec3>() / pts.len() as f64;
+            let local: Vec<DVec3> = pts.iter().map(|p| *p - c).collect();
+            let pm = crate::mesh::op_project_uv(&crate::mesh::polygon_from_points(&local), "automatic", 1, None);
+            let id = s.create_mesh_from(pm, "polySurface1", None, None);
+            s.nodes.get_mut(&id).unwrap().xf.t = c.to_array();
+            place_new(s, &id, &a);
+            Ok(Val::Array(vec![Val::Str(s.name_of(&id))]))
+        }
         "spaceLocator" => {
             let id = s.create_locator("locator1");
+            if let Some(p) = a.v3(&["p", "position"]) {
+                s.nodes.get_mut(&id).unwrap().xf.t = p;
+            }
             place_new(s, &id, &a);
             Ok(Val::Array(vec![Val::Str(s.name_of(&id))]))
         }
@@ -1777,6 +1799,21 @@ mod tests {
 mod more_tests {
     use super::*;
     use crate::mel::Interp;
+
+    #[test]
+    fn curve_points_are_not_a_position() {
+        let mut s = Scene::new();
+        Interp::new().run(&mut s, &mut NoHost, "curve -d 1 -p 0 0 0 -p 5 0 0; curve -arc -p -2 0 3 -p 0 1.5 3 -p 2 0 3; polyCreateFacet -p 0 0 0 -p 1 0 0 -p 1 0 1;").unwrap();
+        let c = s.find("curve1").unwrap();
+        assert_eq!(s.node(&c).unwrap().xf.t, [0.0; 3]);
+        let a = s.find("curve2").unwrap();
+        let b = s.world_bbox(&a);
+        assert!(b.max.y > 1.4 && b.max.y <= 1.5 + 1e-9 && (b.min.x + 2.0).abs() < 1e-6, "{b:?}");
+        let f = s.find("polySurface1").unwrap();
+        let fb = s.world_bbox(&f);
+        assert!((fb.min.x).abs() < 1e-9 && (fb.max.x - 1.0).abs() < 1e-9);
+        assert!(s.node(&f).unwrap().mesh().unwrap().mesh.face_normal(0).y > 0.0);
+    }
 
     #[test]
     fn create_then_move_selection() {

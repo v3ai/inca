@@ -348,7 +348,9 @@ pub fn channel_box(app: &mut IncaApp, ui: &mut egui::Ui) {
         let _ = app.run_mel("rename", &format!("rename {name} \"{}\";", nm.trim()));
         return;
     }
-    let targets: Vec<NodeRef> = app.s.sel.iter().map(|i| NodeRef::Dag(i.clone())).collect();
+    // the lead object comes first: its values are the ones shown
+    let mut targets: Vec<NodeRef> = vec![NodeRef::Dag(lead.clone())];
+    targets.extend(app.s.sel.iter().filter(|i| **i != lead).map(|i| NodeRef::Dag(i.clone())));
     for c in CHANNELS {
         let kind = if c == "visibility" { ChanKind::Bool } else { ChanKind::Float };
         channel_row(app, ui, &targets, c, &ops::nice_name(c), kind, None, None);
@@ -644,8 +646,16 @@ fn tool_settings(app: &mut IncaApp, ui: &mut egui::Ui) {
         Tool::Move => "Move Tool",
         Tool::Rotate => "Rotate Tool",
         Tool::Scale => "Scale Tool",
+        Tool::CvCurve => "CV Curve Tool",
+        Tool::EpCurve => "EP Curve Tool",
+        Tool::Arc => "Three Point Circular Arc",
+        Tool::Polygon => "Create Polygon Tool",
     });
-    if app.tool != Tool::Select {
+    if app.tool.is_creation() {
+        ui.label("Click in a viewport to place points (on the ground grid in perspective, on the view plane in orthographic views). Enter completes, Backspace removes the last point, Esc cancels.");
+        ui.checkbox(&mut app.snap_grid, "Snap to grid");
+    }
+    if app.tool.is_manip() {
         ui.horizontal(|ui| {
             ui.label("Axis Orientation");
             ui.radio_value(&mut app.world_space, true, "World");

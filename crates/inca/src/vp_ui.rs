@@ -18,11 +18,13 @@ pub struct VpState {
     pub nav: Option<(usize, egui::PointerButton)>,
     pub snap_step: f64,
     pub snap_angle: f64,
+    /// points placed by the curve / polygon creation tools
+    pub tool_pts: Vec<DVec3>,
 }
 
 impl Default for VpState {
     fn default() -> Self {
-        VpState { gizmos: (0..4).map(|_| Gizmo::default()).collect(), drag: None, marquee: None, nav: None, snap_step: 1.0, snap_angle: 15.0 }
+        VpState { gizmos: (0..4).map(|_| Gizmo::default()).collect(), drag: None, marquee: None, nav: None, snap_step: 1.0, snap_angle: 15.0, tool_pts: vec![] }
     }
 }
 
@@ -62,6 +64,11 @@ pub fn viewports(app: &mut IncaApp, ui: &mut egui::Ui, frame: &mut eframe::Frame
     ui.allocate_rect(full, Sense::hover());
     for (idx, rect) in panes {
         pane(app, ui, frame, idx, rect);
+    }
+    // drop GPU buffers of deleted meshes
+    if let Some(g) = app.gpu.as_mut() {
+        let keep: HashSet<String> = app.s.nodes.values().filter(|n| n.mesh().is_some()).map(|n| n.id.clone()).collect();
+        g.retain_meshes(&keep);
     }
 }
 
@@ -247,6 +254,11 @@ fn interact(app: &mut IncaApp, ui: &mut egui::Ui, idx: usize, resp: &egui::Respo
     if mods.alt {
         return;
     }
+    // ---- creation tools take the clicks
+    if app.tool.is_creation() {
+        creation_tool(app, idx, resp, cv, painter);
+        return;
+    }
     // ---- manipulator
     let gizmo_used = gizmo(app, ui, idx, resp, cv, painter);
     if gizmo_used {
@@ -428,7 +440,7 @@ fn marking_menu(app: &mut IncaApp, ui: &mut egui::Ui) {
 
 /// Move / rotate / scale manipulator. Returns true while it owns the mouse.
 fn gizmo(app: &mut IncaApp, ui: &mut egui::Ui, idx: usize, resp: &egui::Response, cv: &CamView, painter: &egui::Painter) -> bool {
-    if app.tool == Tool::Select {
+    if !app.tool.is_manip() {
         return false;
     }
     if let Some(d) = &app.vp_state.drag {
@@ -554,6 +566,91 @@ fn gizmo(app: &mut IncaApp, ui: &mut egui::Ui, idx: usize, resp: &egui::Response
             focused_before && pointer.primary_down()
         }
     }
+}
+
+/// Where a click lands: the ground grid in perspective, the view plane in orthographic views.
+fn place_point(cv: &CamView, rect: Rect, p: Pos2, snap: Option<f64>) -> Option<DVec3> {
+    let r = cv.ray(p, rect);
+    let n = if cv.ortho { -cv.fwd } else { DVec3::Y };
+    let d = r.dir.dot(n);
+    if d.abs() < 1e-9 {
+        return None;
+    }
+    let t = -r.origin.dot(n) / d;
+    if t < 0.0 && !cv.ortho {
+        return None;
+    }
+    let mut w = r.at(t);
+    if let Some(st) = snap {
+        w = (w / st).round() * st;
+    }
+    // keep exactly on the plane
+    w -= n * w.dot(n);
+    Some(w)
+}
+
+fn creation_tool(app: &mut IncaApp, idx: usize, resp: &egui::Response, cv: &CamView, painter: &egui::Painter) {
+    let rect = app.vps[idx].rect;
+    let snap = app.snap_grid.then_some(app.vp_state.snap_step);
+    if resp.clicked_by(egui::PointerButton::Primary) {
+        if let Some(p) = resp.interact_pointer_pos().and_then(|p| place_point(cv, rect, p, snap)) {
+            app.vp_state.tool_pts.push(p);
+            if app.tool == Tool::Arc && app.vp_state.tool_pts.len() == 3 {
+                finish_creation(app);
+            }
+        }
+    }
+    if resp.clicked_by(egui::PointerButton::Secondary) {
+        finish_creation(app);
+    }
+    // preview
+    let pts = app.vp_state.tool_pts.clone();
+    let mut preview = pts.clone();
+    if let Some(h) = resp.hover_pos().and_then(|p| place_point(cv, rect, p, snap)) {
+        preview.push(h);
+    }
+    let line: Vec<DVec3> = match app.tool {
+        Tool::CvCurve if preview.len() >= 2 => inca_core::curves::Curve::new(preview.clone(), 3.min(preview.len() - 1), "open", "cv").sample(12),
+        Tool::EpCurve if preview.len() >= 2 => inca_core::curves::Curve::new(preview.clone(), 3, "open", "ep").sample(12),
+        Tool::Arc if preview.len() == 3 => inca_core::curves::arc_through_points(preview[0], preview[2], preview[1], 0.05).unwrap_or(preview.clone()),
+        Tool::Polygon if preview.len() >= 2 => {
+            let mut l = preview.clone();
+            l.push(preview[0]);
+            l
+        }
+        _ => preview.clone(),
+    };
+    let sp: Vec<Pos2> = line.iter().filter_map(|p| cv.project(*p, rect)).collect();
+    painter.add(egui::Shape::line(sp, Stroke::new(1.5, Color32::from_rgb(255, 225, 74))));
+    for p in &pts {
+        if let Some(q) = cv.project(*p, rect) {
+            painter.rect_filled(Rect::from_center_size(q, vec2(6.0, 6.0)), 0.0, Color32::from_rgb(92, 255, 92));
+        }
+    }
+}
+
+/// Complete the active creation tool (Enter).
+pub fn finish_creation(app: &mut IncaApp) {
+    let pts = std::mem::take(&mut app.vp_state.tool_pts);
+    let f = |p: &DVec3| format!("-p {} {} {}", inca_core::math::fmt_num(p.x), inca_core::math::fmt_num(p.y), inca_core::math::fmt_num(p.z));
+    let flags = |pts: &[DVec3]| pts.iter().map(f).collect::<Vec<_>>().join(" ");
+    let mel = match app.tool {
+        Tool::CvCurve if pts.len() >= 2 => format!("curve -d {} {};", 3.min(pts.len() - 1), flags(&pts)),
+        Tool::EpCurve if pts.len() >= 2 => format!("curve -d 3 {};", pts.iter().map(|p| f(p).replacen("-p", "-ep", 1)).collect::<Vec<_>>().join(" ")),
+        Tool::Arc if pts.len() == 3 => format!("curve -arc {};", flags(&pts)),
+        Tool::Polygon if pts.len() >= 3 => {
+            // face the camera that drew it
+            let cam = viewport::cam_view(&app.s, &app.vps[app.active_vp].camera.clone(), [1.0, 1.0]);
+            let n = inca_core::mesh::newell(&pts);
+            let mut p = pts.clone();
+            if n.dot(-cam.fwd) < 0.0 {
+                p.reverse();
+            }
+            format!("polyCreateFacet {};", flags(&p))
+        }
+        _ => return,
+    };
+    let _ = app.run_mel("create", &mel);
 }
 
 fn finish_drag(app: &mut IncaApp, d: GizmoDrag) {

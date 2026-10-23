@@ -458,12 +458,6 @@ pub fn mesh_key(s: &Scene, id: &str) -> u64 {
     h.finish()
 }
 
-/// What to draw for one viewport.
-pub struct FrameDraws {
-    pub frame: FrameUniform,
-    pub draws: Vec<DrawCmd>,
-}
-
 pub fn frame_uniform(s: &Scene, vp: &Viewport, cv: &CamView) -> FrameUniform {
     let m4 = |m: DMat4| m.as_mat4().to_cols_array_2d();
     let mut lights = [GpuLight { pos: [0.0; 4], dir: [0.0; 4], color: [0.0; 4], params: [0.0; 4] }; 8];
@@ -748,17 +742,64 @@ fn visible_point(pm: &PolyMesh, wm: &DMat4, cv: &CamView, p: DVec3) -> bool {
     }
 }
 
+/// Component visibility: exact raycasts on small meshes, front-facing tests on big ones.
+pub struct Vis<'a> {
+    pm: &'a PolyMesh,
+    wm: DMat4,
+    cv: &'a CamView,
+    exact: bool,
+    facing: Vec<bool>,
+    topo: inca_core::mesh::Topo,
+}
+
+impl<'a> Vis<'a> {
+    pub fn new(pm: &'a PolyMesh, wm: DMat4, cv: &'a CamView, xray: bool) -> Self {
+        let exact = !xray && pm.f.len() <= 2500;
+        let nm = wm.inverse().transpose();
+        let facing = if xray {
+            vec![true; pm.f.len()]
+        } else {
+            (0..pm.f.len())
+                .map(|f| {
+                    let c = wm.transform_point3(pm.face_center(f));
+                    let n = nm.transform_vector3(pm.face_normal(f));
+                    let to = if cv.ortho { -cv.fwd } else { cv.eye - c };
+                    n.dot(to) > 0.0
+                })
+                .collect()
+        };
+        Vis { pm, wm, cv, exact, facing, topo: pm.topo() }
+    }
+    pub fn vertex(&self, v: u32) -> bool {
+        if !self.topo.vert_faces[v as usize].iter().any(|&f| self.facing[f]) && !self.topo.vert_faces[v as usize].is_empty() {
+            return false;
+        }
+        !self.exact || visible_point(self.pm, &self.wm, self.cv, self.pm.v[v as usize])
+    }
+    pub fn edge(&self, a: u32, b: u32) -> bool {
+        let Some(e) = self.topo.edge(a, b) else { return false };
+        if !self.topo.edge_faces[e].iter().any(|&f| self.facing[f]) {
+            return false;
+        }
+        !self.exact || visible_point(self.pm, &self.wm, self.cv, (self.pm.v[a as usize] + self.pm.v[b as usize]) * 0.5)
+    }
+    pub fn face(&self, f: usize) -> bool {
+        self.facing[f] && (!self.exact || visible_point(self.pm, &self.wm, self.cv, self.pm.face_center(f)))
+    }
+}
+
 pub fn pick_component(s: &Scene, vp: &Viewport, cv: &CamView, id: &str, mode: CompMode, pos: Pos2) -> Option<Comp> {
     let n = s.node(id)?;
     let pm = &n.mesh()?.mesh;
     let wm = s.world_matrix(id);
     match mode {
         CompMode::Vertex => {
+            let vis = Vis::new(pm, wm, cv, vp.xray);
             let mut best: Option<(f32, u32)> = None;
             for (i, p) in pm.v.iter().enumerate() {
                 if let Some(q) = cv.project(wm.transform_point3(*p), vp.rect) {
                     let d = q.distance(pos);
-                    if d < 10.0 && best.is_none_or(|b| d < b.0) && (vp.xray || visible_point(pm, &wm, cv, *p)) {
+                    if d < 10.0 && best.is_none_or(|b| d < b.0) && vis.vertex(i as u32) {
                         best = Some((d, i as u32));
                     }
                 }
@@ -766,17 +807,15 @@ pub fn pick_component(s: &Scene, vp: &Viewport, cv: &CamView, id: &str, mode: Co
             best.map(|b| Comp::V(b.1))
         }
         CompMode::Edge => {
+            let vis = Vis::new(pm, wm, cv, vp.xray);
             let topo = pm.topo();
             let mut best: Option<(f32, (u32, u32))> = None;
             for &(a, b) in &topo.edges {
                 let (pa, pb) = (wm.transform_point3(pm.v[a as usize]), wm.transform_point3(pm.v[b as usize]));
                 if let (Some(qa), Some(qb)) = (cv.project(pa, vp.rect), cv.project(pb, vp.rect)) {
                     let d = seg_dist(pos, qa, qb);
-                    if d < 8.0 && best.is_none_or(|x| d < x.0) {
-                        let mid = (pm.v[a as usize] + pm.v[b as usize]) * 0.5;
-                        if vp.xray || visible_point(pm, &wm, cv, mid) {
-                            best = Some((d, (a, b)));
-                        }
+                    if d < 8.0 && best.is_none_or(|x| d < x.0) && vis.edge(a, b) {
+                        best = Some((d, (a, b)));
                     }
                 }
             }
@@ -793,11 +832,12 @@ pub fn pick_component(s: &Scene, vp: &Viewport, cv: &CamView, id: &str, mode: Co
 pub fn marquee_components(s: &Scene, vp: &Viewport, cv: &CamView, id: &str, mode: CompMode, r: Rect) -> Vec<Comp> {
     let Some(pm) = s.node(id).and_then(|n| n.mesh()).map(|m| &m.mesh) else { return vec![] };
     let wm = s.world_matrix(id);
-    let inside = |p: DVec3| cv.project(wm.transform_point3(p), vp.rect).is_some_and(|q| r.contains(q)) && (vp.xray || visible_point(pm, &wm, cv, p));
+    let vis = Vis::new(pm, wm, cv, vp.xray);
+    let inside = |p: DVec3| cv.project(wm.transform_point3(p), vp.rect).is_some_and(|q| r.contains(q));
     match mode {
-        CompMode::Vertex => (0..pm.v.len()).filter(|&i| inside(pm.v[i])).map(|i| Comp::V(i as u32)).collect(),
-        CompMode::Edge => pm.topo().edges.iter().filter(|&&(a, b)| inside((pm.v[a as usize] + pm.v[b as usize]) * 0.5)).map(|&(a, b)| Comp::E(a, b)).collect(),
-        CompMode::Face => (0..pm.f.len()).filter(|&f| inside(pm.face_center(f))).map(Comp::F).collect(),
+        CompMode::Vertex => (0..pm.v.len()).filter(|&i| inside(pm.v[i]) && vis.vertex(i as u32)).map(|i| Comp::V(i as u32)).collect(),
+        CompMode::Edge => pm.topo().edges.iter().filter(|&&(a, b)| inside((pm.v[a as usize] + pm.v[b as usize]) * 0.5) && vis.edge(a, b)).map(|&(a, b)| Comp::E(a, b)).collect(),
+        CompMode::Face => (0..pm.f.len()).filter(|&f| inside(pm.face_center(f)) && vis.face(f)).map(Comp::F).collect(),
     }
 }
 
@@ -810,10 +850,13 @@ pub fn draw_component_overlay(s: &Scene, vp: &Viewport, cv: &CamView, painter: &
         let cs = s.comp_sel(&id);
         match mode {
             CompMode::Vertex => {
-                let cull = pm.v.len() < 6000 && !vp.xray;
+                // exact occlusion only for small meshes (it runs every frame)
+                let mut vis = Vis::new(pm, wm, cv, vp.xray);
+                vis.exact &= pm.f.len() <= 600;
                 for (i, p) in pm.v.iter().enumerate() {
                     let sel = cs.v.contains(&(i as u32));
-                    if cull && !sel && !visible_point(pm, &wm, cv, *p) {
+                    let shown = vis.vertex(i as u32);
+                    if !sel && !shown {
                         continue;
                     }
                     if let Some(q) = cv.project(wm.transform_point3(*p), vp.rect) {

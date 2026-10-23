@@ -39,6 +39,13 @@ pub static ACTIONS: &[(&str, &str, &str)] = &[
     ("createCamera", "Camera", ""),
     ("createLocator", "Locator", ""),
     ("createEmptyGroup", "Empty Group", "Ctrl+Shift+G"),
+    ("cvCurveTool", "CV Curve Tool", ""),
+    ("epCurveTool", "EP Curve Tool", ""),
+    ("arcTool", "Three Point Circular Arc", ""),
+    ("createPolygonTool", "Create Polygon Tool", ""),
+    ("finishTool", "Complete Tool", "Enter"),
+    ("toolUndoPoint", "Remove Last Point", "Backspace"),
+    ("cancelTool", "Cancel Tool", "Esc"),
     ("selectAll", "All", "Ctrl+Shift+A"),
     ("deselectAll", "Deselect All", ""),
     ("selectHierarchy", "Hierarchy", ""),
@@ -338,6 +345,7 @@ pub fn builtin(app: &mut IncaApp, id: &str) {
             if let Some(p) = path {
                 match inca_core::io::save_scene(&mut app.s, &p) {
                     Ok(_) => {
+                        app.add_recent(&p);
                         app.echo(format!("file -rename \"{}\"; file -save;", p.display()));
                         app.last_result = format!("// Saved {}", p.display());
                     }
@@ -446,6 +454,18 @@ pub fn builtin(app: &mut IncaApp, id: &str) {
         "rotateTool" => app.set_tool(Tool::Rotate),
         "scaleTool" => app.set_tool(Tool::Scale),
         "lastTool" => app.set_tool(app.last_tool),
+        "cvCurveTool" => app.set_tool(Tool::CvCurve),
+        "epCurveTool" => app.set_tool(Tool::EpCurve),
+        "arcTool" => app.set_tool(Tool::Arc),
+        "createPolygonTool" => app.set_tool(Tool::Polygon),
+        "finishTool" => crate::vp_ui::finish_creation(app),
+        "toolUndoPoint" => {
+            app.vp_state.tool_pts.pop();
+        }
+        "cancelTool" => {
+            app.vp_state.tool_pts.clear();
+            app.set_tool(Tool::Select);
+        }
         "snapToGround" => {
             let mut m = String::new();
             for id in app.s.sel.clone() {
@@ -588,6 +608,14 @@ pub fn builtin(app: &mut IncaApp, id: &str) {
 /// Maya default hotkeys.
 pub fn hotkey(key: Key, m: Modifiers, app: &IncaApp) -> Option<&'static str> {
     let ctrl = m.command || m.ctrl;
+    if app.tool.is_creation() {
+        match key {
+            Key::Enter => return Some("finishTool"),
+            Key::Backspace if !app.vp_state.tool_pts.is_empty() => return Some("toolUndoPoint"),
+            Key::Escape => return Some("cancelTool"),
+            _ => {}
+        }
+    }
     Some(match (key, ctrl, m.shift, m.alt) {
         (Key::N, true, false, _) => "newScene",
         (Key::O, true, false, _) => "openScene",
