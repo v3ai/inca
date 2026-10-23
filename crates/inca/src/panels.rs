@@ -21,6 +21,11 @@ pub struct PanelState {
     pub editing: bool,
     pub ae_tab: usize,
     pub ol: OutlinerOpts,
+    /// Attribute Editor locked to a node (List > Auto Load off, or the lock button)
+    pub ae_locked: Option<String>,
+    /// (shown name, edited text) of the AE node field
+    pub ae_name: (String, String),
+    pub ae_copies: Vec<(String, usize)>,
     /// outliner rows in display order (last frame), for Shift range selection and arrow keys
     pub ol_rows: Vec<String>,
     pub ol_anchor: Option<String>,
@@ -416,9 +421,7 @@ pub fn right_panel(app: &mut IncaApp, ui: &mut egui::Ui) {
             ui.separator();
             layer_editor(app, ui);
         }
-        RightTab::AttributeEditor => {
-            egui::ScrollArea::vertical().id_salt("aescroll").auto_shrink([false, false]).show(ui, |ui| attribute_editor(app, ui));
-        }
+        RightTab::AttributeEditor => attribute_editor(app, ui),
         RightTab::ToolSettings => tool_settings(app, ui),
     }
 }
@@ -787,28 +790,96 @@ pub fn attr_map_editor(app: &mut IncaApp, ui: &mut egui::Ui, r: &NodeRef, keys: 
     });
 }
 
-pub fn attribute_editor(app: &mut IncaApp, ui: &mut egui::Ui) {
-    let Some(lead) = app.s.lead().cloned() else {
-        ui.label(RichText::new("Select an object to see its attributes").color(theme::TEXT_DIM));
-        return;
-    };
-    let Some(n) = app.s.node(&lead) else { return };
-    // tabs: transform, shape, history nodes, material
-    let mut tabs: Vec<(String, NodeRef)> = vec![(n.name.clone(), NodeRef::Dag(lead.clone()))];
+/// Attribute Editor tabs for a node: transform, shape, history nodes, material.
+fn ae_tabs(app: &IncaApp, id: &str) -> Vec<(String, NodeRef)> {
+    let Some(n) = app.s.node(id) else { return vec![] };
+    let mut tabs: Vec<(String, NodeRef)> = vec![(n.name.clone(), NodeRef::Dag(id.to_string()))];
     if let Some(sn) = &n.shape_name {
-        tabs.push((sn.clone(), NodeRef::Dag(lead.clone())));
+        tabs.push((sn.clone(), NodeRef::Dag(id.to_string())));
     } else if n.extra.as_object().is_some_and(|e| !e.is_empty()) {
-        tabs.push((format!("{} attributes", n.kind), NodeRef::Dag(lead.clone())));
+        tabs.push((format!("{} attributes", n.kind), NodeRef::Dag(id.to_string())));
     }
     if let Some(m) = n.mesh() {
         for (i, h) in m.history.iter().enumerate().rev() {
             if !h.name.contains('#') {
-                tabs.push((h.name.clone(), NodeRef::History(lead.clone(), i)));
+                tabs.push((h.name.clone(), NodeRef::History(id.to_string(), i)));
             }
         }
         if app.s.mats.contains_key(&m.material) {
             tabs.push((app.s.mats[&m.material].name.clone(), NodeRef::Material(m.material.clone())));
         }
+    }
+    tabs
+}
+
+/// The node the Attribute Editor shows: the locked one, or the lead (hilited object in component mode).
+fn ae_target(app: &mut IncaApp) -> Option<String> {
+    if let Some(l) = &app.panels.ae_locked {
+        if app.s.node(l).is_some() {
+            return Some(l.clone());
+        }
+        app.panels.ae_locked = None;
+    }
+    if app.s.comp_mode.is_some() {
+        if let Some(h) = app.s.hilite().last() {
+            return Some(h.clone());
+        }
+    }
+    app.s.lead().cloned()
+}
+
+pub fn attribute_editor(app: &mut IncaApp, ui: &mut egui::Ui) {
+    let target = ae_target(app);
+    egui::MenuBar::new().ui(ui, |ui| {
+        ui.menu_button("List", |ui| {
+            let mut auto = app.panels.ae_locked.is_none();
+            if ui.checkbox(&mut auto, "Auto Load Selected Attributes").clicked() {
+                app.panels.ae_locked = if auto { None } else { target.clone() };
+            }
+            if ui.button("Load Selected Attributes").clicked() {
+                app.panels.ae_locked = None;
+                ui.close();
+            }
+        });
+        ui.menu_button("Selected", |ui| {
+            if ui.button("Select Node").clicked() {
+                if let Some(t) = &target {
+                    app.select_names(std::slice::from_ref(t), SelMode::Replace);
+                }
+                ui.close();
+            }
+        });
+        ui.menu_button("Focus", |ui| {
+            for id in app.s.sel.clone() {
+                if ui.button(app.s.name_of(&id)).clicked() {
+                    app.panels.ae_locked = Some(id);
+                    ui.close();
+                }
+            }
+        });
+        ui.menu_button("Attributes", |ui| {
+            ui.add_enabled(false, egui::Button::new("Add Attribute..."));
+        });
+        ui.menu_button("Show", |ui| {
+            if ui.button("Show Notes").clicked() {
+                app.help = "Notes are under Extra Attributes on the transform tab".into();
+                ui.close();
+            }
+        });
+        ui.menu_button("Help", |ui| {
+            if ui.button("Help on Attribute Editor").clicked() {
+                app.help = "The Attribute Editor shows every attribute of the selected node; tabs list connected nodes (shape, history, material).".into();
+                ui.close();
+            }
+        });
+    });
+    let Some(id) = target else {
+        ui.label(RichText::new("Select an object to see its attributes.").color(theme::TEXT_DIM));
+        return;
+    };
+    let tabs = ae_tabs(app, &id);
+    if tabs.is_empty() {
+        return;
     }
     let mut tab = app.panels.ae_tab.min(tabs.len() - 1);
     ui.horizontal_wrapped(|ui| {
@@ -819,35 +890,125 @@ pub fn attribute_editor(app: &mut IncaApp, ui: &mut egui::Ui) {
         }
     });
     app.panels.ae_tab = tab;
+    // node: name field, Focus, lock
+    ui.horizontal(|ui| {
+        ui.label(RichText::new("node:").color(theme::TEXT_DIM));
+        let title = tabs[tab].0.clone();
+        if app.panels.ae_name.0 != title {
+            app.panels.ae_name = (title.clone(), title.clone());
+        }
+        let w = ui.available_width() - 80.0;
+        let te = ui.add(egui::TextEdit::singleline(&mut app.panels.ae_name.1).desired_width(w));
+        if te.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+            let new = app.panels.ae_name.1.trim().to_string();
+            if !new.is_empty() && new != title {
+                let _ = app.run_mel("rename", &format!("rename {title} \"{new}\";"));
+            }
+        }
+        if ui.button("Focus").on_hover_text("Show the selected node").clicked() {
+            app.panels.ae_locked = None;
+        }
+        let locked = app.panels.ae_locked.is_some();
+        if lock_button(ui, locked).on_hover_text("Lock the Attribute Editor to the current node").clicked() {
+            app.panels.ae_locked = if locked { None } else { Some(id.clone()) };
+        }
+    });
+    let h = ui.available_height() - 26.0;
+    egui::ScrollArea::vertical().id_salt("aescroll").max_height(h.max(40.0)).auto_shrink([false, false]).show(ui, |ui| ae_body(app, ui, &tabs, tab));
     ui.separator();
-    let (title, r) = tabs[tab].clone();
-    ui.label(RichText::new(&title).heading());
+    ui.horizontal(|ui| {
+        ui.spacing_mut().item_spacing.x = 3.0;
+        ui.spacing_mut().button_padding.x = 2.0;
+        // Load Attributes gets the extra room
+        let w = (ui.available_width() - 9.0) / 4.4;
+        let b = |ui: &mut egui::Ui, t: &str, w: f32| ui.add_sized([w, 20.0], egui::Button::new(t)).clicked();
+        if b(ui, "Select", w) {
+            app.select_names(std::slice::from_ref(&id), SelMode::Replace);
+        }
+        if b(ui, "Load Attributes", w * 1.4) {
+            app.panels.ae_locked = None;
+        }
+        if b(ui, "Copy Tab", w) {
+            app.panels.ae_copies.push((id.clone(), tab));
+        }
+        if b(ui, "Close", w) {
+            app.show_right = false;
+        }
+    });
+}
+
+/// A painted padlock toggle (the icon set has none).
+fn lock_button(ui: &mut egui::Ui, on: bool) -> egui::Response {
+    let (r, resp) = ui.allocate_exact_size(egui::vec2(20.0, 20.0), egui::Sense::click());
+    let bg = if on { Color32::from_rgb(0x5d, 0x7a, 0x8f) } else if resp.hovered() { Color32::from_gray(0x6f) } else { theme::BTN };
+    ui.painter().rect_filled(r, 3.0, bg);
+    let c = r.center();
+    let body = egui::Rect::from_center_size(c + egui::vec2(0.0, 2.5), egui::vec2(10.0, 7.0));
+    let col = Color32::from_gray(0xe8);
+    ui.painter().rect_filled(body, 1.0, col);
+    // the shackle: open when unlocked
+    let lift = if on { 0.0 } else { 2.0 };
+    let pts: Vec<egui::Pos2> = (0..=12).map(|i| {
+        let a = std::f32::consts::PI * i as f32 / 12.0;
+        egui::pos2(c.x - 3.0 * a.cos(), body.min.y - lift - 4.0 * a.sin())
+    }).collect();
+    ui.painter().add(egui::Shape::line(pts, egui::Stroke::new(1.5, col)));
+    resp
+}
+
+/// Copy Tab: floating Attribute Editor windows pinned to a node and tab.
+pub fn ae_copies(app: &mut IncaApp, ctx: &egui::Context) {
+    let copies = std::mem::take(&mut app.panels.ae_copies);
+    let mut keep = vec![];
+    for (i, (id, tab)) in copies.into_iter().enumerate() {
+        let tabs = ae_tabs(app, &id);
+        let Some((title, _)) = tabs.get(tab).cloned() else { continue };
+        let mut open = true;
+        egui::Window::new(format!("Attribute Editor: {title}")).id(egui::Id::new(("aecopy", i, &id, tab))).open(&mut open).default_size([380.0, 520.0]).show(ctx, |ui| {
+            ui.push_id(("aecopy", i), |ui| {
+                egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| ae_body(app, ui, &tabs, tab));
+            });
+        });
+        if open {
+            keep.push((id, tab));
+        }
+    }
+    keep.extend(std::mem::take(&mut app.panels.ae_copies));
+    app.panels.ae_copies = keep;
+}
+
+fn ae_body(app: &mut IncaApp, ui: &mut egui::Ui, tabs: &[(String, NodeRef)], tab: usize) {
+    let (_, r) = tabs[tab].clone();
     match &r {
         NodeRef::Dag(id) if tab == 0 => {
-            theme::section_header(ui, "Transform Attributes");
             let targets = vec![r.clone()];
-            for c in ["translateX", "translateY", "translateZ", "rotateX", "rotateY", "rotateZ", "scaleX", "scaleY", "scaleZ"] {
-                channel_row(app, ui, &targets, c, &ops::nice_name(c), ChanKind::Float, None, None);
+            if theme::fold(ui, "Transform Attributes") {
+                for c in ["translateX", "translateY", "translateZ", "rotateX", "rotateY", "rotateZ", "scaleX", "scaleY", "scaleZ"] {
+                    channel_row(app, ui, &targets, c, &ops::nice_name(c), ChanKind::Float, None, None);
+                }
+                channel_row(app, ui, &targets, "rotateOrder", "Rotate Order", ChanKind::Enum(&inca_core::math::ROTATE_ORDERS), None, None);
             }
-            channel_row(app, ui, &targets, "rotateOrder", "Rotate Order", ChanKind::Enum(&inca_core::math::ROTATE_ORDERS), None, None);
-            theme::section_header(ui, "Pivots");
-            let p = app.s.world_pivot(id);
-            ui.label(format!("World pivot  {:.3} {:.3} {:.3}", p.x, p.y, p.z));
-            if ui.button("Center Pivot").clicked() {
-                let _ = app.run_mel("center pivot", &format!("xform -cp {};", app.s.name_of(id)));
+            if theme::fold(ui, "Pivots") {
+                let p = app.s.world_pivot(id);
+                ui.label(format!("World pivot  {:.3} {:.3} {:.3}", p.x, p.y, p.z));
+                if ui.button("Center Pivot").clicked() {
+                    let _ = app.run_mel("center pivot", &format!("xform -cp {};", app.s.name_of(id)));
+                }
             }
-            theme::section_header(ui, "Display");
-            channel_row(app, ui, &targets, "visibility", "Visibility", ChanKind::Bool, None, None);
-            channel_row(app, ui, &targets, "template", "Template", ChanKind::Bool, None, None);
+            if theme::fold(ui, "Display") {
+                channel_row(app, ui, &targets, "visibility", "Visibility", ChanKind::Bool, None, None);
+                channel_row(app, ui, &targets, "template", "Template", ChanKind::Bool, None, None);
+            }
         }
         NodeRef::Dag(id) => shape_tab(app, ui, id),
         NodeRef::History(id, i) => {
-            let ty = app.s.node(id).and_then(|n| n.mesh()).map(|m| m.history[*i].ty.clone()).unwrap_or_default();
-            ui.label(RichText::new(format!("type: {ty}")).color(theme::TEXT_DIM));
-            if let Some((_, _, chans)) = ops::info(&ty) {
-                for c in chans {
-                    let label = c.label.map(String::from).unwrap_or_else(|| ops::nice_name(c.key));
-                    channel_row(app, ui, std::slice::from_ref(&r), c.key, &label, c.kind, c.min, c.max);
+            let ty = app.s.node(id).and_then(|n| n.mesh()).and_then(|m| m.history.get(*i)).map(|h| h.ty.clone()).unwrap_or_default();
+            if theme::fold(ui, &format!("{ty} History")) {
+                if let Some((_, _, chans)) = ops::info(&ty) {
+                    for c in chans {
+                        let label = c.label.map(String::from).unwrap_or_else(|| ops::nice_name(c.key));
+                        channel_row(app, ui, std::slice::from_ref(&r), c.key, &label, c.kind, c.min, c.max);
+                    }
                 }
             }
         }
@@ -868,19 +1029,23 @@ fn shape_tab(app: &mut IncaApp, ui: &mut egui::Ui, id: &str) {
             _ if e.contains_key("rigidBody") => "Rigid Body Attributes",
             _ => "Extra Attributes",
         };
-        theme::section_header(ui, title);
-        let keys: Vec<String> = e.keys().filter(|k| *k != "source").cloned().collect();
-        attr_map_editor(app, ui, &r, &keys);
+        if theme::fold(ui, title) {
+            let keys: Vec<String> = e.keys().filter(|k| *k != "source").cloned().collect();
+            attr_map_editor(app, ui, &r, &keys);
+        }
     }
     let Some(n) = app.s.node(id) else { return };
     match &n.shape {
         Shape::Mesh(m) => {
             let (v, f, t) = (m.mesh.v.len(), m.mesh.f.len(), m.mesh.tri_count());
             let mat = m.material.clone();
-            theme::section_header(ui, "Mesh");
-            ui.label(format!("{v} vertices, {f} faces, {t} triangles"));
-            channel_row(app, ui, std::slice::from_ref(&r), "smoothLevel", "Smooth Mesh Preview", ChanKind::Int, Some(0.0), Some(3.0));
-            theme::section_header(ui, "Shading");
+            if theme::fold(ui, "Mesh") {
+                ui.label(format!("{v} vertices, {f} faces, {t} triangles"));
+                channel_row(app, ui, std::slice::from_ref(&r), "smoothLevel", "Smooth Mesh Preview", ChanKind::Int, Some(0.0), Some(3.0));
+            }
+            if !theme::fold(ui, "Shading") {
+                return;
+            }
             let mut sel = mat.clone();
             egui::ComboBox::from_id_salt("aemat").selected_text(app.s.mats.get(&mat).map(|m| m.name.clone()).unwrap_or_default()).show_ui(ui, |ui| {
                 for m in app.s.mats.values() {
@@ -893,18 +1058,21 @@ fn shape_tab(app: &mut IncaApp, ui: &mut egui::Ui, id: &str) {
             }
         }
         Shape::Light(l) => {
-            theme::section_header(ui, &format!("{} Attributes", crate::actions::label(&l.ty)));
-            let keys: Vec<String> = l.attrs.keys().cloned().collect();
-            attr_map_editor(app, ui, &r, &keys);
+            if theme::fold(ui, &format!("{} Attributes", crate::actions::label(&l.ty))) {
+                let keys: Vec<String> = l.attrs.keys().cloned().collect();
+                attr_map_editor(app, ui, &r, &keys);
+            }
         }
         Shape::Camera(_) => {
-            theme::section_header(ui, "Camera Attributes");
-            let keys: Vec<String> = ["focalLength", "near", "far", "ortho", "orthoWidth", "coi", "horizontalFilmAperture", "verticalFilmAperture"].iter().map(|s| s.to_string()).collect();
-            attr_map_editor(app, ui, &r, &keys);
+            if theme::fold(ui, "Camera Attributes") {
+                let keys: Vec<String> = ["focalLength", "near", "far", "ortho", "orthoWidth", "coi", "horizontalFilmAperture", "verticalFilmAperture"].iter().map(|s| s.to_string()).collect();
+                attr_map_editor(app, ui, &r, &keys);
+            }
         }
         Shape::Curve(c) => {
-            theme::section_header(ui, "NURBS Curve");
-            ui.label(format!("degree {}, {} CVs, {} spans, {}", c.degree, c.cvs.len(), c.spans(), c.form));
+            if theme::fold(ui, "NURBS Curve") {
+                ui.label(format!("degree {}, {} CVs, {} spans, {}", c.degree, c.cvs.len(), c.spans(), c.form));
+            }
         }
         _ => {}
     }

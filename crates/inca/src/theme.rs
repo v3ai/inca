@@ -69,6 +69,27 @@ pub fn panel_frame() -> Frame {
     Frame::NONE.fill(BG).inner_margin(Margin::same(4)).stroke(Stroke::new(1.0, LINE))
 }
 
+/// A collapsible section header (Attribute Editor frames); returns whether it is open.
+pub fn fold(ui: &mut egui::Ui, text: &str) -> bool {
+    let id = ui.make_persistent_id(("fold", text));
+    let mut open = ui.data_mut(|d| *d.get_persisted_mut_or(id, true));
+    let (r, resp) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 18.0), egui::Sense::click());
+    ui.painter().rect_filled(r, 0.0, if resp.hovered() { Color32::from_gray(0x5a) } else { Color32::from_gray(0x52) });
+    let c = egui::pos2(r.min.x + 9.0, r.center().y);
+    let pts = if open {
+        vec![c + egui::vec2(-3.5, -2.0), c + egui::vec2(3.5, -2.0), c + egui::vec2(0.0, 2.5)]
+    } else {
+        vec![c + egui::vec2(-2.0, -3.5), c + egui::vec2(2.5, 0.0), c + egui::vec2(-2.0, 3.5)]
+    };
+    ui.painter().add(egui::Shape::convex_polygon(pts, Color32::from_gray(0xdd), Stroke::NONE));
+    ui.painter().text(egui::pos2(r.min.x + 18.0, r.center().y), egui::Align2::LEFT_CENTER, text, egui::FontId::proportional(12.0), Color32::from_gray(0xee));
+    if resp.clicked() {
+        open = !open;
+        ui.data_mut(|d| d.insert_persisted(id, open));
+    }
+    open
+}
+
 pub fn section_header(ui: &mut egui::Ui, text: &str) {
     egui::Frame::NONE.fill(BG3).inner_margin(Margin::symmetric(4, 2)).show(ui, |ui| {
         ui.set_width(ui.available_width());

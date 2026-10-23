@@ -595,6 +595,7 @@ impl eframe::App for IncaApp {
         }
         egui::CentralPanel::default().frame(egui::Frame::NONE.fill(theme::BG_DARK)).show(ui, |ui| vp_ui::viewports(self, ui, frame));
         windows::show(self, &ctx, frame);
+        panels::ae_copies(self, &ctx);
         crate::menus::hotbox(self, &ctx);
         crate::test_hook::step(self, &ctx);
         if self.panels.quit {
