@@ -16,7 +16,7 @@ registry, menus, UI modules and a 0.1.12 screenshot.
 - [x] A8. Outliner: its own menu bar (Edit / Display / Show / Help), type icons, defaultLightSet / defaultObjectSet, shapes / materials / sets display options
 - [x] A9. Attribute Editor: List / Selected / Focus / Attributes / Show / Help menus, node field + Focus + lock, bottom buttons Select / Load Attributes / Copy Tab / Close, collapsible sections
 - [x] A10. Time / Range Slider: play backwards, step key buttons, frame field, "film (24 fps)" style fps names, character set / anim layer menus (placeholders), auto key + playback prefs buttons, shift-drag range edits
-- [ ] A11. Side tabs and dock resizing like the JS docks (Hide/Show UI elements, Ctrl+Space: done)
+- [x] A11. Side tabs (vertical, toggle the right dock), dock widths remembered, Hide/Show UI elements (Ctrl+Space)
 
 ## B. Commands & menus missing in Rust
 

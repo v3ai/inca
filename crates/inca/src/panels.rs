@@ -405,14 +405,60 @@ fn n_template(app: &IncaApp, id: &str) -> bool {
 
 // ------------------------------------------------------------------ right panel
 
-pub fn right_panel(app: &mut IncaApp, ui: &mut egui::Ui) {
-    ui.horizontal(|ui| {
-        for (t, l) in [(RightTab::ChannelBox, "Channel Box"), (RightTab::AttributeEditor, "Attribute Editor"), (RightTab::ToolSettings, "Tool Settings")] {
-            if ui.selectable_label(app.right_tab == t, l).clicked() {
-                app.right_tab = t;
+/// Right dock panels as the JS side tabs list them (Modeling Toolkit is still planned).
+const SIDE_TABS: &[(Option<RightTab>, &str)] = &[
+    (Some(RightTab::ChannelBox), "Channel Box / Layer Editor"),
+    (Some(RightTab::AttributeEditor), "Attribute Editor"),
+    (Some(RightTab::ToolSettings), "Tool Settings"),
+    (None, "Modeling Toolkit"),
+];
+
+/// The vertical tab strip at the right edge: click shows a panel, clicking the shown one hides the dock.
+pub fn side_tabs(app: &mut IncaApp, ui: &mut egui::Ui) {
+    let mut y = ui.max_rect().min.y + 6.0;
+    let x = ui.max_rect().center().x;
+    let font = egui::FontId::proportional(10.5);
+    for (tab, label) in SIDE_TABS {
+        let galley = ui.fonts_mut(|f| f.layout_no_wrap(label.to_string(), font.clone(), Color32::WHITE));
+        let len = galley.size().x + 16.0;
+        let r = egui::Rect::from_min_size(egui::pos2(x - 9.0, y), egui::vec2(18.0, len));
+        let resp = ui.interact(r, egui::Id::new(("sidetab", *label)), egui::Sense::click()).on_hover_text(*label);
+        let active = app.show_right && tab.is_some_and(|t| t == app.right_tab);
+        if active {
+            ui.painter().rect_filled(r, 3.0, Color32::from_gray(0x55));
+        }
+        let col = if active || resp.hovered() { Color32::WHITE } else { Color32::from_gray(0x9d) };
+        // vertical-rl: text reads top to bottom
+        let pos = egui::pos2(r.max.x - (18.0 - galley.size().y) / 2.0, r.min.y + 8.0);
+        ui.painter().add(egui::epaint::TextShape::new(pos, galley, col).with_override_text_color(col).with_angle(std::f32::consts::FRAC_PI_2));
+        if resp.clicked() {
+            match tab {
+                Some(_) if active => app.show_right = false,
+                Some(t) => {
+                    app.right_tab = *t;
+                    app.show_right = true;
+                }
+                None => app.help = "The Modeling Toolkit panel is planned".into(),
             }
         }
-    });
+        y += len + 2.0;
+    }
+}
+
+pub fn right_panel(app: &mut IncaApp, ui: &mut egui::Ui) {
+    if app.shown("sidetabs") {
+        // the side tabs switch panels; show the panel's title like the JS dock
+        let title = SIDE_TABS.iter().find(|t| t.0 == Some(app.right_tab)).map(|t| t.1).unwrap_or("");
+        ui.label(RichText::new(title).strong());
+    } else {
+        ui.horizontal(|ui| {
+            for (t, l) in [(RightTab::ChannelBox, "Channel Box"), (RightTab::AttributeEditor, "Attribute Editor"), (RightTab::ToolSettings, "Tool Settings")] {
+                if ui.selectable_label(app.right_tab == t, l).clicked() {
+                    app.right_tab = t;
+                }
+            }
+        });
+    }
     ui.separator();
     match app.right_tab {
         RightTab::ChannelBox => {
