@@ -113,6 +113,7 @@ pub struct Windows {
     pub about: bool,
     pub command_list: bool,
     pub sdk: bool,
+    pub assign_material: bool,
     pub rename: Option<String>,
 }
 
@@ -772,6 +773,7 @@ impl eframe::App for IncaApp {
         self.hotkeys(&ctx);
         // constraints follow their targets live (gizmo drags, channel edits)
         crate::anim_extras::tick(self, &ctx);
+        crate::render_view::tick(self, &ctx);
         crate::rig_tools::sync_lattice_divisions(self);
         let moved = self.s.eval_constraints();
         if !moved.is_empty() {

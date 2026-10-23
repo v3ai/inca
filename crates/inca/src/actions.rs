@@ -292,6 +292,10 @@ pub static ACTIONS: &[(&str, &str, &str)] = &[
     ("assignNew_standardSurface", "Standard Surface", ""),
     ("assignNew_surfaceShader", "Surface Shader", ""),
     ("renderCurrent", "Render Current Frame", ""),
+    ("ipr", "IPR Render Current Frame", ""),
+    ("renderSequence", "Render Sequence...", ""),
+    ("assignNewMaterial", "Assign New Material...", ""),
+    ("materialAttributes", "Material Attributes...", ""),
     ("snapGrid", "Snap to Grids (hold X)", ""),
     ("manipBigger", "Increase Manipulator Size", "="),
     ("manipSmaller", "Decrease Manipulator Size", "-"),
@@ -952,9 +956,13 @@ pub fn builtin(app: &mut IncaApp, id: &str) {
         "toggleAutoKey" => app.s.time.auto_key = !app.s.time.auto_key,
         "renderCurrent" => {
             app.win.render_view = true;
-            let cam = app.vps[vp].camera.clone();
-            app.windows_state.start_render(&app.s, &cam, 0);
+            app.windows_state.rv.ipr = false;
+            crate::render_view::render(app);
         }
+        "ipr" => crate::render_view::toggle_ipr(app),
+        "renderSequence" => crate::render_view::render_sequence(app),
+        "assignNewMaterial" => app.win.assign_material = true,
+        "materialAttributes" => crate::panels::show_material_attributes(app),
         "snapGrid" => app.snap_grid = !app.snap_grid,
         "manipBigger" | "manipSmaller" => {
             let f = if id == "manipBigger" { 1.15 } else { 1.0 / 1.15 };

@@ -12,6 +12,7 @@ mod mesh_tools;
 mod options;
 mod panels;
 mod project;
+mod render_view;
 mod rig_tools;
 mod scripting;
 mod test_hook;

@@ -469,6 +469,19 @@ impl RenderScene {
         });
     }
 
+    /// Alpha: 255 where a camera ray (4 per pixel) hits geometry, 0 where it sees the background.
+    pub fn coverage(&self) -> Vec<u8> {
+        let (w, h) = (self.settings.width as usize, self.settings.height as usize);
+        let mut out = vec![0u8; w * h];
+        out.par_chunks_mut(w).enumerate().for_each(|(y, row)| {
+            for (x, a) in row.iter_mut().enumerate() {
+                let hits = [(0.25, 0.25), (0.75, 0.25), (0.25, 0.75), (0.75, 0.75)].iter().filter(|(dx, dy)| self.intersect(&self.camera_ray(x as f64 + dx, y as f64 + dy), f64::INFINITY).is_some()).count();
+                *a = (hits * 255 / 4) as u8;
+            }
+        });
+        out
+    }
+
     /// Tone-mapped sRGB pixels from an accumulation buffer.
     pub fn resolve(&self, accum: &[f32], passes: u32) -> Vec<u8> {
         let k = 2f32.powf(self.settings.exposure) / passes.max(1) as f32;

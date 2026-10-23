@@ -254,6 +254,20 @@ impl Gpu {
                 return t.egui_id;
             }
         }
+        let mut t = self.make_target(size);
+        t.egui_id = match self.targets.get(&idx) {
+            Some(old) => {
+                renderer.update_egui_texture_from_wgpu_texture(&self.device, &t.color_view, wgpu::FilterMode::Linear, old.egui_id);
+                old.egui_id
+            }
+            None => renderer.register_native_texture(&self.device, &t.color_view, wgpu::FilterMode::Linear),
+        };
+        let id = t.egui_id;
+        self.targets.insert(idx, t);
+        id
+    }
+
+    fn make_target(&self, size: [u32; 2]) -> Target {
         let ext = wgpu::Extent3d { width: size[0], height: size[1], depth_or_array_layers: 1 };
         let tex = |label: &str, format: wgpu::TextureFormat, samples: u32, usage: wgpu::TextureUsages| {
             self.device.create_texture(&wgpu::TextureDescriptor { label: Some(label), size: ext, mip_level_count: 1, sample_count: samples, dimension: wgpu::TextureDimension::D2, format, usage, view_formats: &[] })
@@ -262,30 +276,59 @@ impl Gpu {
         let msaa = tex("vp msaa", COLOR_FORMAT, MSAA, wgpu::TextureUsages::RENDER_ATTACHMENT);
         let depth = tex("vp depth", DEPTH_FORMAT, MSAA, wgpu::TextureUsages::RENDER_ATTACHMENT);
         let color_view = color.create_view(&Default::default());
-        let egui_id = match self.targets.get(&idx) {
-            Some(t) => {
-                renderer.update_egui_texture_from_wgpu_texture(&self.device, &color_view, wgpu::FilterMode::Linear, t.egui_id);
-                t.egui_id
-            }
-            None => renderer.register_native_texture(&self.device, &color_view, wgpu::FilterMode::Linear),
-        };
         let frame_buf = self.device.create_buffer(&wgpu::BufferDescriptor { label: Some("frame"), size: std::mem::size_of::<FrameUniform>() as u64, usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false });
         let frame_bg = self.device.create_bind_group(&wgpu::BindGroupDescriptor { label: Some("frame"), layout: &self.frame_bgl, entries: &[wgpu::BindGroupEntry { binding: 0, resource: frame_buf.as_entire_binding() }] });
-        let t = Target { size, msaa_view: msaa.create_view(&Default::default()), depth_view: depth.create_view(&Default::default()), color_view, _color: color, egui_id, frame_buf, frame_bg };
-        self.targets.insert(idx, t);
-        egui_id
+        Target { size, msaa_view: msaa.create_view(&Default::default()), depth_view: depth.create_view(&Default::default()), color_view, _color: color, egui_id: egui::TextureId::default(), frame_buf, frame_bg }
     }
 
-    /// Render one viewport.
-    pub fn render(&mut self, idx: usize, frame: &FrameUniform, draws: &[DrawCmd]) {
-        let n = draws.len() as u64;
+    /// Render into a throwaway target and read the pixels back (sRGB RGBA, row-major): the
+    /// "Inca Hardware" renderer.
+    pub fn render_offscreen(&mut self, size: [u32; 2], frame: &FrameUniform, draws: &[DrawCmd]) -> Vec<u8> {
+        let size = [size[0].clamp(1, 8192), size[1].clamp(1, 8192)];
+        self.reserve_draws(draws.len() as u64);
+        let t = self.make_target(size);
+        self.draw_pass(&t, frame, draws);
+        let row = (size[0] * 4).div_ceil(256) * 256;
+        let buf = self.device.create_buffer(&wgpu::BufferDescriptor { label: Some("readback"), size: (row * size[1]) as u64, usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ, mapped_at_creation: false });
+        let mut enc = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("readback") });
+        enc.copy_texture_to_buffer(
+            wgpu::TexelCopyTextureInfo { texture: &t._color, mip_level: 0, origin: wgpu::Origin3d::ZERO, aspect: wgpu::TextureAspect::All },
+            wgpu::TexelCopyBufferInfo { buffer: &buf, layout: wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(row), rows_per_image: Some(size[1]) } },
+            wgpu::Extent3d { width: size[0], height: size[1], depth_or_array_layers: 1 },
+        );
+        self.queue.submit([enc.finish()]);
+        let slice = buf.slice(..);
+        slice.map_async(wgpu::MapMode::Read, |_| {});
+        let _ = self.device.poll(wgpu::PollType::wait_indefinitely());
+        let Ok(data) = slice.get_mapped_range() else { return vec![] };
+        let mut out = Vec::with_capacity((size[0] * size[1] * 4) as usize);
+        for y in 0..size[1] {
+            let r = (y * row) as usize;
+            out.extend_from_slice(&data[r..r + (size[0] * 4) as usize]);
+        }
+        drop(data);
+        buf.unmap();
+        out
+    }
+
+    fn reserve_draws(&mut self, n: u64) {
         if n > self.draw_cap {
             self.draw_cap = n.next_power_of_two();
             let (b, g) = Self::make_draw_buf(&self.device, &self.draw_bgl, self.draw_cap);
             self.draw_buf = b;
             self.draw_bg = g;
         }
+    }
+
+    /// Render one viewport.
+    pub fn render(&mut self, idx: usize, frame: &FrameUniform, draws: &[DrawCmd]) {
+        self.reserve_draws(draws.len() as u64);
         let Some(t) = self.targets.get(&idx) else { return };
+        self.draw_pass(t, frame, draws);
+    }
+
+    fn draw_pass(&self, t: &Target, frame: &FrameUniform, draws: &[DrawCmd]) {
+        let n = draws.len() as u64;
         self.queue.write_buffer(&t.frame_buf, 0, bytemuck::bytes_of(frame));
         let mut slots = vec![0u8; (n.max(1) * DRAW_SLOT) as usize];
         for (i, d) in draws.iter().enumerate() {

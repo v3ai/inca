@@ -184,8 +184,13 @@ pub fn set_menus(ms: MenuSet) -> Vec<(&'static str, Vec<M>)> {
             ("Effects", vec![A("createFire"), A("createSmoke")]),
         ],
         MenuSet::Rendering => vec![
-            ("Lighting/Shading", vec![Sub("Assign New Material", vec![A("assignNew_lambert"), A("assignNew_blinn"), A("assignNew_phong"), A("assignNew_standardSurface"), A("assignNew_surfaceShader")]), A("hypershade")]),
-            ("Render", vec![A("renderCurrent"), A("renderView"), A("renderSettings")]),
+            ("Lighting/Shading", {
+                let mut v: Vec<M> = LIGHT_TYPES.iter().map(|l| A(l.0)).collect();
+                v.extend([Sep, A("hypershade"), A("assignNewMaterial"), Sub("Assign New Material", vec![A("assignNew_lambert"), A("assignNew_blinn"), A("assignNew_phong"), A("assignNew_standardSurface"), A("assignNew_surfaceShader")]), Dyn("Assign Existing Material"), A("materialAttributes")]);
+                v
+            }),
+            ("Texturing", vec![A("planarMap"), A("automaticMap"), A("uvEditor")]),
+            ("Render", vec![A("renderCurrent"), A("ipr"), A("renderSequence"), Sep, A("renderView"), A("renderSettings"), A("playblast")]),
         ],
     }
 }
@@ -247,6 +252,15 @@ pub fn items(app: &mut IncaApp, ui: &mut egui::Ui, list: &[M]) {
                                 } else {
                                     crate::project::set_project(app, &r, false);
                                 }
+                                ui.close();
+                            }
+                        }
+                    }
+                    "Assign Existing Material" => {
+                        let mats: Vec<(String, String)> = app.s.mats.values().map(|m| (m.id.clone(), m.name.clone())).collect();
+                        for (_, name) in mats {
+                            if ui.button(&name).clicked() {
+                                let _ = app.run_mel("assign material", &format!("hyperShade -assign {name};"));
                                 ui.close();
                             }
                         }

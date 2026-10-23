@@ -713,8 +713,18 @@ pub fn run(s: &mut Scene, h: &mut dyn Host, name: &str, raw: &[Val]) -> Result<V
         "setAttr" => {
             let target = a.strings().first().cloned().ok_or("setAttr: no attribute")?;
             let (obj, attr) = target.split_once('.').ok_or("setAttr: expected node.attribute")?;
-            let r = s.resolve(obj).ok_or(format!("No object matches name: {obj}"))?;
             let vals: Vec<&Val> = a.pos.iter().skip(1).collect();
+            if matches!(obj, "defaultResolution" | "defaultRenderGlobals") {
+                // render settings (Render Settings window)
+                let v = match vals.first() {
+                    Some(Val::Str(st)) if st.parse::<f64>().is_err() => json!(st),
+                    Some(v) => v.to_json(),
+                    None => return Err("setAttr: no value".into()),
+                };
+                s.render.insert(attr.to_string(), v);
+                return Ok(Val::None);
+            }
+            let r = s.resolve(obj).ok_or(format!("No object matches name: {obj}"))?;
             let v = if a.has(&["type"]) && a.s(&["type"]).as_deref() == Some("string") {
                 json!(vals.first().map(|v| v.str()).unwrap_or_default())
             } else if vals.len() >= 3 {
@@ -734,6 +744,9 @@ pub fn run(s: &mut Scene, h: &mut dyn Host, name: &str, raw: &[Val]) -> Result<V
         "getAttr" => {
             let target = a.strings().first().cloned().ok_or("getAttr: no attribute")?;
             let (obj, attr) = target.split_once('.').ok_or("getAttr: expected node.attribute")?;
+            if matches!(obj, "defaultResolution" | "defaultRenderGlobals") {
+                return s.render.get(attr).map(Val::from_json).ok_or(format!("No attribute '{attr}' on {obj}"));
+            }
             let r = s.resolve(obj).ok_or(format!("No object matches name: {obj}"))?;
             let v = s.get_attr(&r, attr).ok_or(format!("No attribute '{attr}' on {obj}"))?;
             Ok(Val::from_json(&v))

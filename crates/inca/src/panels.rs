@@ -852,6 +852,22 @@ pub fn attr_map_editor(app: &mut IncaApp, ui: &mut egui::Ui, r: &NodeRef, keys: 
 }
 
 /// Attribute Editor tabs for a node: transform, shape, history nodes, material.
+/// Rendering > Material Attributes: the Attribute Editor on the selection's material tab.
+pub fn show_material_attributes(app: &mut IncaApp) {
+    let Some(id) = app.s.lead().cloned() else {
+        app.last_result = "// Warning: Select an object to see its material.".into();
+        return;
+    };
+    match ae_tabs(app, &id).iter().position(|t| matches!(t.1, NodeRef::Material(_))) {
+        Some(i) => {
+            app.show_right = true;
+            app.right_tab = RightTab::AttributeEditor;
+            app.panels.ae_tab = i;
+        }
+        None => app.last_result = "// Warning: The selection has no material.".into(),
+    }
+}
+
 fn ae_tabs(app: &IncaApp, id: &str) -> Vec<(String, NodeRef)> {
     let Some(n) = app.s.node(id) else { return vec![] };
     let mut tabs: Vec<(String, NodeRef)> = vec![(n.name.clone(), NodeRef::Dag(id.to_string()))];

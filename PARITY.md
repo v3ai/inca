@@ -36,7 +36,7 @@ registry, menus, UI modules and a 0.1.12 screenshot.
 - [x] B12. Rigging: IK handles (RP / SC, pole vector, twist), Insert / Mirror / Orient Joint, Unbind Skin, Paint Skin Weights, Cluster, Lattice (+ point tool), Soft Modification, Blend Shape, Delete Deformers, Pole Vector constraint, Remove Constraints, Set Driven Key window; load the JS rig nodes (joints, IK, lattices, constraints) instead of keeping them as locators
 - [x] B13. Animation: (Play Backwards, Stop, Copy/Paste Keys done) Bake, Ghosting, Motion Trails, Playblast (video / PNG sequence)
 - [x] B14. FX: Create Particles (particle tool), Rewind Simulation, Remove Rigid Body, per-field connections
-- [ ] B15. Rendering: IPR, Render Sequence (batch to the project images folder), keep/compare images, exposure / gamma / alpha display in Render View, Hardware renderer option, Assign New Material dialog, Material Attributes
+- [x] B15. Rendering: IPR, Render Sequence (batch to the project images folder), keep/compare images, exposure / gamma / alpha display in Render View, Hardware renderer option, Assign New Material dialog, Material Attributes
 - [ ] B16. Editors: Hypergraph (hierarchy + input/output connections), Connection Editor, Shelf Editor, Hotkey Editor (editable keymap), Modeling Toolkit panel, Component Editor, Preferences window with all JS sections (interface, display, manipulators, animation, time slider, units, undo, files, autosave)
 - [ ] B17. Hypershade node graph work area (drag to connect), swatch renders
 - [ ] B18. Help: Getting Started, Mouse & Navigation

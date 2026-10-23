@@ -11,12 +11,15 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 pub struct RenderJob {
-    cancel: Arc<AtomicBool>,
+    pub cancel: Arc<AtomicBool>,
     latest: Arc<Mutex<Option<(Vec<u8>, u32)>>>,
+    alpha: Arc<Mutex<Option<Vec<u8>>>>,
     pub size: [u32; 2],
     pub passes: u32,
     pub total: u32,
     pub started: std::time::Instant,
+    /// render time once finished
+    pub elapsed: Option<f32>,
     pub tris: usize,
     pub camera: String,
 }
@@ -32,6 +35,7 @@ pub struct WinState {
     pub ge_curves: std::collections::HashSet<String>,
     pub ge_key: Option<(String, usize)>,
     pub ge_drag: bool,
+    pub rv: crate::render_view::RvState,
 }
 
 impl WinState {
@@ -46,8 +50,10 @@ impl WinState {
         let tris = rs.triangle_count();
         let cancel = Arc::new(AtomicBool::new(false));
         let latest = Arc::new(Mutex::new(None));
-        let (c2, l2) = (cancel.clone(), latest.clone());
+        let alpha = Arc::new(Mutex::new(None));
+        let (c2, l2, a2) = (cancel.clone(), latest.clone(), alpha.clone());
         std::thread::spawn(move || {
+            *a2.lock().unwrap() = Some(rs.coverage());
             let mut acc = vec![0f32; (size[0] * size[1] * 3) as usize];
             for pass in 0..total {
                 if c2.load(Ordering::Relaxed) {
@@ -58,20 +64,35 @@ impl WinState {
                 *l2.lock().unwrap() = Some((px, pass + 1));
             }
         });
-        self.job = Some(RenderJob { cancel, latest, size, passes: 0, total, started: std::time::Instant::now(), tris, camera: camera.into() });
+        self.rv.alpha = None;
+        self.job = Some(RenderJob { cancel, latest, alpha, size, passes: 0, total, started: std::time::Instant::now(), elapsed: None, tris, camera: camera.into() });
     }
 
-    fn poll(&mut self, ctx: &egui::Context) {
+    /// Show a finished image that did not come from the path tracer (the hardware renderer).
+    pub fn set_image(&mut self, px: Vec<u8>, alpha: Vec<u8>, size: [u32; 2], camera: &str, tris: usize) {
+        if let Some(j) = &self.job {
+            j.cancel.store(true, Ordering::Relaxed);
+        }
+        self.pixels = Some((px, size));
+        self.rv.alpha = Some(alpha);
+        self.rv.dirty = true;
+        self.job = Some(RenderJob { cancel: Arc::new(AtomicBool::new(true)), latest: Arc::new(Mutex::new(None)), alpha: Arc::new(Mutex::new(None)), size, passes: 1, total: 1, started: std::time::Instant::now(), elapsed: Some(0.0), tris, camera: camera.into() });
+    }
+
+    pub fn poll(&mut self, ctx: &egui::Context) {
         let Some(j) = &mut self.job else { return };
+        if let Some(a) = j.alpha.lock().unwrap().take() {
+            self.rv.alpha = Some(a);
+            self.rv.dirty = true;
+        }
         let got = j.latest.lock().unwrap().take();
         if let Some((px, n)) = got {
             j.passes = n;
-            let img = egui::ColorImage::from_rgba_unmultiplied([j.size[0] as usize, j.size[1] as usize], &px);
-            match &mut self.image {
-                Some(t) => t.set(img, egui::TextureOptions::LINEAR),
-                None => self.image = Some(ctx.load_texture("render", img, egui::TextureOptions::LINEAR)),
+            if n >= j.total {
+                j.elapsed = Some(j.started.elapsed().as_secs_f32());
             }
             self.pixels = Some((px, j.size));
+            self.rv.dirty = true;
         }
         if j.passes < j.total {
             ctx.request_repaint_after(std::time::Duration::from_millis(50));
@@ -80,13 +101,27 @@ impl WinState {
 }
 
 pub fn show(app: &mut IncaApp, ctx: &egui::Context, _frame: &mut eframe::Frame) {
-    app.windows_state.poll(ctx);
     if app.playblast.running.is_some() {
         // floating windows would end up in the captured frames
         return;
     }
     crate::rig_tools::sdk_window(app, ctx);
     crate::anim_extras::window(app, ctx);
+    let mut open = app.win.assign_material;
+    let mut pick: Option<&str> = None;
+    egui::Window::new("Assign New Material").open(&mut open).default_size([260.0, 300.0]).show(ctx, |ui| {
+        ui.label(RichText::new("Assign a new material to the selection:").color(theme::TEXT_DIM));
+        for t in MAT_TYPES {
+            if ui.add(egui::Button::new(t.label).frame(false)).on_hover_text(format!("Assign a new {} to the selection", t.label)).clicked() {
+                pick = Some(t.ty);
+            }
+        }
+    });
+    if let Some(ty) = pick {
+        let _ = app.run_mel("assign new material", &format!("string $m = `shadingNode -asShader {ty}`; hyperShade -assign $m;"));
+        open = false;
+    }
+    app.win.assign_material = open;
     let mut open = app.win.script_editor;
     egui::Window::new("Script Editor").open(&mut open).default_size([640.0, 460.0]).show(ctx, |ui| script_editor(app, ui));
     app.win.script_editor = open;
@@ -100,7 +135,7 @@ pub fn show(app: &mut IncaApp, ctx: &egui::Context, _frame: &mut eframe::Frame) 
     egui::Window::new("Dope Sheet").open(&mut open).default_size([760.0, 260.0]).show(ctx, |ui| dope_sheet(app, ui));
     app.win.dope_sheet = open;
     let mut open = app.win.render_view;
-    egui::Window::new("Render View").open(&mut open).default_size([700.0, 560.0]).show(ctx, |ui| render_view(app, ui));
+    egui::Window::new("Render View").open(&mut open).default_size([700.0, 560.0]).show(ctx, |ui| crate::render_view::render_view(app, ui));
     app.win.render_view = open;
     let mut open = app.win.render_settings;
     egui::Window::new("Render Settings").open(&mut open).default_size([340.0, 260.0]).show(ctx, |ui| render_settings(app, ui));
@@ -625,47 +660,51 @@ fn dope_sheet(app: &mut IncaApp, ui: &mut egui::Ui) {
 
 // ------------------------------------------------------------------ rendering
 
-fn render_view(app: &mut IncaApp, ui: &mut egui::Ui) {
-    ui.horizontal(|ui| {
-        let cam = app.vps[app.active_vp].camera.clone();
-        if ui.button("🎬 Render").on_hover_text(format!("Render the current frame from {cam}")).clicked() {
-            app.windows_state.start_render(&app.s, &cam, 0);
-        }
-        if let Some(j) = &app.windows_state.job {
-            if j.passes < j.total && ui.button("Stop").clicked() {
-                j.cancel.store(true, Ordering::Relaxed);
-            }
-        }
-        if ui.button("Save Image...").clicked() {
-            if let Some((px, size)) = &app.windows_state.pixels {
-                if let Some(p) = rfd::FileDialog::new().add_filter("PNG", &["png"]).set_file_name("render.png").save_file() {
-                    let _ = image::save_buffer(p, px, size[0], size[1], image::ColorType::Rgba8);
-                }
-            }
-        }
-        if let Some(j) = &app.windows_state.job {
-            ui.label(RichText::new(format!("{} — {}/{} samples, {} triangles, {:.1}s", j.camera, j.passes, j.total, j.tris, j.started.elapsed().as_secs_f32())).color(theme::TEXT_DIM));
-        }
-    });
-    ui.separator();
-    if let Some(t) = &app.windows_state.image {
-        let size = t.size_vec2();
-        let avail = ui.available_size();
-        let k = (avail.x / size.x).min(avail.y / size.y).min(1.0);
-        ui.centered_and_justified(|ui| ui.image((t.id(), size * k)));
-    } else {
-        ui.label(RichText::new("Inca Path Tracer — press Render").color(theme::TEXT_DIM));
-    }
-}
-
 fn render_settings(app: &mut IncaApp, ui: &mut egui::Ui) {
     let r = &mut app.s.render;
     let get = |k: &str, d: f64| r.get(k).and_then(|v| v.as_f64()).unwrap_or(d);
     let (mut w, mut h, mut spp, mut b, mut ex) = (get("width", 640.0), get("height", 480.0), get("samples", 64.0), get("bounces", 4.0), get("exposure", 0.0));
-    egui::Grid::new("rs").num_columns(2).show(ui, |ui| {
-        ui.label("Renderer");
-        ui.label("Inca Path Tracer (CPU)");
+    let cams: Vec<String> = app.s.nodes.values().filter(|n| matches!(n.shape, inca_core::scene::Shape::Camera(_))).map(|n| n.name.clone()).collect();
+    let r = &mut app.s.render;
+    let mut renderer = r.get("renderer").and_then(|v| v.as_str()).unwrap_or("path").to_string();
+    let mut camera = r.get("camera").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let mut fname = r.get("filename").and_then(|v| v.as_str()).unwrap_or("image").to_string();
+    let (mut fs, mut fe, mut fb) = (r.get("start").and_then(|v| v.as_f64()).unwrap_or(1.0), r.get("end").and_then(|v| v.as_f64()).unwrap_or(10.0), r.get("by").and_then(|v| v.as_f64()).unwrap_or(1.0));
+    egui::Grid::new("rs0").num_columns(2).show(ui, |ui| {
+        ui.label("Render using");
+        egui::ComboBox::from_id_salt("rsRenderer").selected_text(crate::render_view::RENDERERS.iter().find(|x| x.0 == renderer).map(|x| x.1).unwrap_or("")).show_ui(ui, |ui| {
+            for (k, l) in crate::render_view::RENDERERS {
+                ui.selectable_value(&mut renderer, k.to_string(), l);
+            }
+        });
         ui.end_row();
+        ui.label("Renderable camera");
+        egui::ComboBox::from_id_salt("rsCam").selected_text(if camera.is_empty() { "(active viewport)" } else { &camera }).show_ui(ui, |ui| {
+            ui.selectable_value(&mut camera, String::new(), "(active viewport)");
+            for c in &cams {
+                ui.selectable_value(&mut camera, c.clone(), c);
+            }
+        });
+        ui.end_row();
+        ui.label("File name prefix");
+        ui.text_edit_singleline(&mut fname);
+        ui.end_row();
+        ui.label("Start / End / By frame");
+        ui.horizontal(|ui| {
+            ui.add(egui::DragValue::new(&mut fs));
+            ui.add(egui::DragValue::new(&mut fe));
+            ui.add(egui::DragValue::new(&mut fb).range(1.0..=1000.0));
+        });
+        ui.end_row();
+    });
+    r.insert("renderer".into(), json!(renderer));
+    r.insert("camera".into(), json!(camera));
+    r.insert("filename".into(), json!(fname.trim()));
+    for (k, v) in [("start", fs), ("end", fe), ("by", fb)] {
+        r.insert(k.into(), json!(v));
+    }
+    ui.separator();
+    egui::Grid::new("rs").num_columns(2).show(ui, |ui| {
         ui.label("Presets");
         ui.horizontal(|ui| {
             for (l, pw, ph) in [("320x240", 320.0, 240.0), ("640x480", 640.0, 480.0), ("HD 720", 1280.0, 720.0), ("HD 1080", 1920.0, 1080.0)] {

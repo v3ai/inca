@@ -59,6 +59,8 @@ pub struct Viewport {
     pub gamma: f32,
     pub isolate: Option<Vec<Id>>,
     pub rect: Rect,
+    /// final-render look (hardware renderer): meshes only, no wires or highlights
+    pub beauty: bool,
 }
 
 impl Viewport {
@@ -100,6 +102,7 @@ impl Viewport {
             show_locators: true,
             show_manips: true,
             show_sel_highlight: true,
+            beauty: false,
             film_gate: false,
             res_gate: false,
             exposure: 0.0,
@@ -769,7 +772,7 @@ pub fn build_draws(s: &Scene, vp: &Viewport, cv: &CamView, g: &mut Gpu, smooth_c
             }
         }
         let n = s.node(&id).unwrap();
-        if !vp.shows(n) {
+        if !vp.shows(n) || (vp.beauty && !matches!(n.shape, Shape::Mesh(_))) {
             continue;
         }
         let wm = s.world_matrix(&id).as_mat4();
@@ -787,7 +790,7 @@ pub fn build_draws(s: &Scene, vp: &Viewport, cv: &CamView, g: &mut Gpu, smooth_c
                     }
                 }
                 let pbr = s.mats.get(&m.material).map(|x| x.pbr()).unwrap_or_default();
-                let in_comp = hilite.contains(&id);
+                let in_comp = hilite.contains(&id) && !vp.beauty;
                 if vp.shade != ShadeMode::Wire {
                     let mut u = DrawUniform::new(wm).spec(pbr.specular, pbr.roughness);
                     if pbr.unlit {
@@ -803,7 +806,7 @@ pub fn build_draws(s: &Scene, vp: &Viewport, cv: &CamView, g: &mut Gpu, smooth_c
                         draws.push(DrawCmd { pass: Pass::Mesh, geo: Geo::MeshTris(id.clone()), u });
                     }
                 }
-                let show_wire = vp.shade == ShadeMode::Wire || vp.wire_on_shaded || selected || in_comp;
+                let show_wire = !vp.beauty && (vp.shade == ShadeMode::Wire || vp.wire_on_shaded || selected || in_comp);
                 if show_wire {
                     let c = if in_comp {
                         C_HILITE
