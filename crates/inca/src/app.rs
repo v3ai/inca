@@ -109,7 +109,7 @@ pub struct UiHost {
 
 impl Host for UiHost {
     fn ui(&mut self, _s: &mut Scene, cmd: &str, args: &[Val]) -> Option<Result<Val, String>> {
-        const UI: &[&str] = &["setToolTo", "viewFit", "FrameSelected", "FrameAll", "refresh", "play", "ScriptEditor", "HypershadeWindow", "GraphEditor", "RenderViewWindow", "OutlinerWindow", "render", "modelEditor", "workspace", "inViewMessage", "headsUpMessage", "confirmDialog", "promptDialog"];
+        const UI: &[&str] = &["setToolTo", "viewFit", "FrameSelected", "FrameAll", "refresh", "play", "ScriptEditor", "HypershadeWindow", "GraphEditor", "RenderViewWindow", "OutlinerWindow", "render", "modelEditor", "workspace", "inViewMessage", "headsUpMessage", "confirmDialog", "promptDialog", "setProject"];
         if UI.contains(&cmd) {
             self.reqs.push((cmd.into(), args.to_vec()));
             return Some(Ok(Val::None));
@@ -181,6 +181,11 @@ pub struct IncaApp {
     /// copied keys: (node, attr, keys with times relative to the copy start)
     pub key_clip: Vec<(String, String, Vec<inca_core::anim::Key>)>,
     pub prev_range: Option<(f64, f64)>,
+    pub recent_projects: Vec<String>,
+    pub project_win: Option<crate::project::ProjectWin>,
+    /// autosave on, interval in minutes
+    pub autosave: (bool, f64),
+    pub last_autosave: f64,
     /// viewport background (Alt+B cycles viewport::BG_MODES)
     pub bg_mode: usize,
     /// Space: tap toggles the layout, hold shows the hotbox
@@ -269,10 +274,20 @@ impl IncaApp {
             range_sel: None,
             key_clip: vec![],
             prev_range: None,
+            recent_projects: cc.storage.and_then(|s| eframe::get_value(s, "recentProjects")).unwrap_or_default(),
+            project_win: None,
+            autosave: cc.storage.and_then(|s| eframe::get_value(s, "autosave")).unwrap_or((false, 10.0)),
+            last_autosave: 0.0,
             bg_mode: cc.storage.and_then(|s| eframe::get_value(s, "bgMode")).unwrap_or(0),
             hotbox: None,
         };
         app.panels.ol = cc.storage.and_then(|s| eframe::get_value(s, "outliner")).unwrap_or_default();
+        if app.test.is_none() {
+            if let Some(p) = cc.storage.and_then(|s| eframe::get_value::<String>(s, "lastProject")) {
+                crate::project::set_project(&mut app, &p, true);
+                app.script_log.clear();
+            }
+        }
         if let Some(p) = std::env::args().nth(1).filter(|a| !a.starts_with('-')) {
             app.open_path(std::path::Path::new(&p));
         }
@@ -358,6 +373,11 @@ impl IncaApp {
                 });
             }
             "viewFit" | "FrameSelected" => self.action("frameSelected"),
+            "setProject" => {
+                if let Some(p) = args.first().map(|a| a.str()) {
+                    crate::project::set_project(self, &p, false);
+                }
+            }
             "FrameAll" => self.action("frameAll"),
             "ScriptEditor" => self.win.script_editor = true,
             "HypershadeWindow" => self.win.hypershade = true,
@@ -588,6 +608,11 @@ impl eframe::App for IncaApp {
         eframe::set_value(storage, "workspace", &self.workspace);
         eframe::set_value(storage, "bgMode", &self.bg_mode);
         eframe::set_value(storage, "outliner", &self.panels.ol);
+        eframe::set_value(storage, "recentProjects", &self.recent_projects);
+        eframe::set_value(storage, "autosave", &self.autosave);
+        if let Some(p) = &self.s.project {
+            eframe::set_value(storage, "lastProject", p);
+        }
         eframe::set_value(storage, "rightTab", &self.right_tab);
         eframe::set_value(storage, "showRight", &self.show_right);
         eframe::set_value(storage, "showOutliner", &self.show_outliner);
@@ -650,6 +675,8 @@ impl eframe::App for IncaApp {
         egui::CentralPanel::default().frame(egui::Frame::NONE.fill(theme::BG_DARK)).show(ui, |ui| vp_ui::viewports(self, ui, frame));
         windows::show(self, &ctx, frame);
         panels::ae_copies(self, &ctx);
+        crate::project::project_window(self, &ctx);
+        crate::project::autosave_tick(self, ctx.input(|i| i.time));
         crate::menus::hotbox(self, &ctx);
         crate::test_hook::step(self, &ctx);
         if self.panels.quit {

@@ -28,7 +28,7 @@ fn nurbs_prims() -> Vec<M> {
 
 pub fn common(name: &str) -> Vec<M> {
     match name {
-        "File" => vec![A("newScene"), A("openScene"), A("saveScene"), A("saveSceneAs"), Sep, A("importFile"), A("exportAll"), A("exportSelection"), Sep, Todo("Project Window..."), Sep, A("quit")],
+        "File" => vec![A("newScene"), A("openScene"), A("saveScene"), A("saveSceneAs"), A("incrementAndSave"), A("revertScene"), Sep, A("importFile"), A("exportAll"), A("exportSelection"), Sep, A("projectWindow"), A("setProject"), Sep, Dyn("Recent Files"), Dyn("Recent Projects"), Sep, A("quit")],
         "Edit" => vec![
             A("undo"),
             A("redo"),
@@ -188,6 +188,23 @@ pub fn items(app: &mut IncaApp, ui: &mut egui::Ui, list: &[M]) {
             Dyn(l) => {
                 ui.menu_button(*l, |ui| match *l {
                     "Workspaces" => crate::workspace::menu(app, ui),
+                    "Recent Files" | "Recent Projects" => {
+                        let files = *l == "Recent Files";
+                        let list = if files { app.recent.clone() } else { app.recent_projects.clone() };
+                        if list.is_empty() {
+                            ui.add_enabled(false, egui::Button::new("(none)"));
+                        }
+                        for r in list {
+                            if ui.button(&r).clicked() {
+                                if files {
+                                    app.open_path(std::path::Path::new(&r));
+                                } else {
+                                    crate::project::set_project(app, &r, false);
+                                }
+                                ui.close();
+                            }
+                        }
+                    }
                     _ => crate::workspace::elements_menu(app, ui),
                 });
             }
@@ -220,20 +237,6 @@ pub fn menu_bar(app: &mut IncaApp, ui: &mut egui::Ui) {
             let list = common(name);
             ui.menu_button(name, |ui| {
                 items(app, ui, &list);
-                if name == "File" {
-                    ui.separator();
-                    ui.menu_button("Recent Files", |ui| {
-                        if app.recent.is_empty() {
-                            ui.add_enabled(false, egui::Button::new("(none)"));
-                        }
-                        for r in app.recent.clone() {
-                            if ui.button(&r).clicked() {
-                                app.open_path(std::path::Path::new(&r));
-                                ui.close();
-                            }
-                        }
-                    });
-                }
             });
         }
         ui.separator();

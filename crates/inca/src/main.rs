@@ -6,6 +6,7 @@ mod icons;
 mod icons_svg;
 mod menus;
 mod panels;
+mod project;
 mod scripting;
 mod test_hook;
 mod theme;

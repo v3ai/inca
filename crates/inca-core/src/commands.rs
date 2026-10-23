@@ -1932,6 +1932,12 @@ fn file_cmd(s: &mut Scene, a: &Args) -> Result<Val, String> {
         crate::io::save_scene(s, &p)?;
         return Ok(Val::Str(p.to_string_lossy().into()));
     }
+    // file -rename on its own just names the scene
+    if let Some(p) = &s.file {
+        if a.has(&["rn", "rename"]) {
+            return Ok(Val::Str(p.to_string_lossy().into()));
+        }
+    }
     Err("file: nothing to do".into())
 }
 

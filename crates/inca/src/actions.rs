@@ -14,6 +14,10 @@ pub static ACTIONS: &[(&str, &str, &str)] = &[
     ("openScene", "Open Scene...", "Ctrl+O"),
     ("saveScene", "Save Scene", "Ctrl+S"),
     ("saveSceneAs", "Save Scene As...", "Ctrl+Shift+S"),
+    ("incrementAndSave", "Increment & Save", "Ctrl+Alt+S"),
+    ("revertScene", "Revert to Saved", ""),
+    ("projectWindow", "Project Window", ""),
+    ("setProject", "Set Project...", ""),
     ("importFile", "Import...", ""),
     ("exportAll", "Export All...", ""),
     ("exportSelection", "Export Selection...", ""),
@@ -403,22 +407,24 @@ pub fn builtin(app: &mut IncaApp, id: &str) {
             app.smooth_cache.clear();
         }
         "openScene" => {
-            if let Some(p) = rfd::FileDialog::new().add_filter("Inca scene", &["inca"]).pick_file() {
+            if let Some(p) = rfd::FileDialog::new().add_filter("Inca scene", &["inca"]).set_directory(crate::project::default_dir(app, "scenes")).pick_file() {
                 app.open_path(&p);
             }
         }
         "saveScene" | "saveSceneAs" => {
             let path = if id == "saveScene" { app.s.file.clone() } else { None };
-            let path = path.or_else(|| rfd::FileDialog::new().add_filter("Inca scene", &["inca"]).set_file_name("untitled.inca").save_file());
+            let path = path.or_else(|| rfd::FileDialog::new().add_filter("Inca scene", &["inca"]).set_directory(crate::project::default_dir(app, "scenes")).set_file_name("untitled.inca").save_file());
             if let Some(p) = path {
-                match inca_core::io::save_scene(&mut app.s, &p) {
-                    Ok(_) => {
-                        app.add_recent(&p);
-                        app.echo(format!("file -rename \"{}\"; file -save;", p.display()));
-                        app.last_result = format!("// Saved {}", p.display());
-                    }
-                    Err(e) => app.last_result = format!("// Error: {e}"),
-                }
+                crate::project::save_to(app, &p);
+            }
+        }
+        "incrementAndSave" => crate::project::increment_and_save(app),
+        "revertScene" => crate::project::revert(app),
+        "projectWindow" => crate::project::open_project_window(app),
+        "setProject" => {
+            let start = app.s.project.clone().map(std::path::PathBuf::from).unwrap_or_else(|| crate::project::default_dir(app, ""));
+            if let Some(d) = rfd::FileDialog::new().set_title("Set Project").set_directory(start).pick_folder() {
+                crate::project::set_project(app, &d.display().to_string(), false);
             }
         }
         "importFile" => {
@@ -706,6 +712,7 @@ pub fn hotkey(key: Key, m: Modifiers, app: &IncaApp) -> Option<&'static str> {
         (Key::Space, true, false, false) => "toggleUIElements",
         (Key::N, true, false, _) => "newScene",
         (Key::O, true, false, _) => "openScene",
+        (Key::S, true, false, true) => "incrementAndSave",
         (Key::S, true, false, _) => "saveScene",
         (Key::S, true, true, _) => "saveSceneAs",
         (Key::Q, true, _, _) => "quit",

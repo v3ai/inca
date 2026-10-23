@@ -704,6 +704,11 @@ fn prefs(app: &mut IncaApp, ui: &mut egui::Ui) {
             ui.selectable_value(&mut app.bg_mode, i, *m);
         }
     });
+    theme::section_header(ui, "Files");
+    ui.horizontal(|ui| {
+        ui.checkbox(&mut app.autosave.0, "Autosave every");
+        ui.add(egui::DragValue::new(&mut app.autosave.1).speed(0.2).range(1.0..=240.0).suffix(" min"));
+    });
     theme::section_header(ui, "Interface");
     for (k, l) in crate::workspace::ELEMENTS {
         let mut on = app.shown(k);
