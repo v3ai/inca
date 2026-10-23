@@ -29,7 +29,7 @@ registry, menus, UI modules and a 0.1.12 screenshot.
 - [x] B7. Curves / Surfaces: Pencil Curve tool, Open/Close (Attach / Detach / Birail / Boundary are menu-only placeholders in the JS too)
 - [x] B8. UV: UV Editor (select / move / rotate / scale UVs, flip, rotate 90, normalize, layout, unfold/relax, shells, checker / shading)
 - [ ] B8b. UV component mode in the viewport (F12) and the texture image behind the UV Editor
-- [ ] B9. Selection: (Lasso and Paint done) Soft Select (B) with falloff display, Symmetry (object X, world X/Y/Z), cycle component type, pre-selection highlight
+- [x] B9. Selection: Lasso and Paint tools, Soft Select (B, B+drag radius, falloff colours, smooth / linear), Symmetry (object X, world X/Y/Z), cycle component type (Shift+Q), pre-selection highlight
 - [ ] B10. Manipulators: Ctrl+click axis lock, MMB drag along active handle, point snap (V), discrete rotate (J), hold W/E/R marking menus, manipulator size readout + reset
 - [ ] B11. Marking menus: RMB object/component menus, Shift+RMB tool menus, Ctrl+RMB conversion; In-View Editor for history nodes; option boxes for menu items
 - [ ] B12. Rigging: IK handles (RP / SC, pole vector, twist), Insert / Mirror / Orient Joint, Unbind Skin, Paint Skin Weights, Cluster, Lattice (+ point tool), Soft Modification, Blend Shape, Delete Deformers, Pole Vector constraint, Remove Constraints, Set Driven Key window; load the JS rig nodes (joints, IK, lattices, constraints) instead of keeping them as locators

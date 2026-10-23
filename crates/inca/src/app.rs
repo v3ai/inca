@@ -54,6 +54,9 @@ impl Tool {
             Tool::Pencil => "pencilCurve",
         }
     }
+    pub fn is_select(self) -> bool {
+        matches!(self, Tool::Select | Tool::Lasso | Tool::Paint | Tool::Move | Tool::Rotate | Tool::Scale)
+    }
     pub fn is_creation(self) -> bool {
         matches!(self, Tool::CvCurve | Tool::EpCurve | Tool::Arc | Tool::Polygon | Tool::Joint | Tool::Pencil)
     }
@@ -211,6 +214,7 @@ pub struct IncaApp {
     pub mesh_tool: crate::mesh_tools::MeshToolState,
     pub mesh_opts: crate::mesh_tools::MeshToolOpts,
     pub uv_editor: crate::uv_editor::UvEditor,
+    pub soft: SoftSel,
     /// (sources, duplicates) of the last Shift+D, to repeat its offset
     pub last_dup: Option<(Vec<String>, Vec<String>)>,
     /// viewport background (Alt+B cycles viewport::BG_MODES)
@@ -218,6 +222,20 @@ pub struct IncaApp {
     /// Space: tap toggles the layout, hold shows the hotbox
     pub space_down: Option<f64>,
     pub hotbox: Option<egui::Pos2>,
+}
+
+/// Soft Selection settings (JS Manip.soft).
+#[derive(Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct SoftSel {
+    pub on: bool,
+    pub radius: f64,
+    pub linear: bool,
+}
+
+impl Default for SoftSel {
+    fn default() -> Self {
+        SoftSel { on: false, radius: 2.0, linear: false }
+    }
 }
 
 /// INCA_TEST / INCA_SHOT: run a MEL script at startup, save a screenshot and quit.
@@ -316,6 +334,7 @@ impl IncaApp {
             fps_measured: 0.0,
             mesh_tool: Default::default(),
             uv_editor: Default::default(),
+            soft: cc.storage.and_then(|s| eframe::get_value(s, "softSelect")).unwrap_or_default(),
             mesh_opts: cc.storage.and_then(|s| eframe::get_value(s, "meshTools")).unwrap_or_default(),
             last_dup: None,
             bg_mode: cc.storage.and_then(|s| eframe::get_value(s, "bgMode")).unwrap_or(0),
@@ -670,6 +689,7 @@ impl eframe::App for IncaApp {
         eframe::set_value(storage, "dupOpts", &self.dup_opts);
         eframe::set_value(storage, "hud", &self.hud);
         eframe::set_value(storage, "meshTools", &self.mesh_opts);
+        eframe::set_value(storage, "softSelect", &self.soft);
         if let Some(p) = &self.s.project {
             eframe::set_value(storage, "lastProject", p);
         }

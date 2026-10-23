@@ -39,6 +39,9 @@ pub struct GizmoDrag {
     pub tool: Tool,
     /// Edit Pivot drag: start world pivots of the objects
     pub pivots: Option<Vec<DVec3>>,
+    /// per comps entry: soft selection weights (empty = all 1) and symmetry partner map
+    pub weights: Vec<Vec<f64>>,
+    pub mirror: Vec<Option<Vec<i64>>>,
 }
 
 impl VpState {
@@ -118,7 +121,8 @@ fn pane(app: &mut IncaApp, ui: &mut egui::Ui, frame: &mut eframe::Frame, idx: us
     let resp = ui.interact(img_rect, egui::Id::new(("vp", idx)), Sense::click_and_drag());
     let painter = ui.painter_at(img_rect);
     viewport::draw_particles(&app.s, &app.vps[idx], &cv, &painter);
-    viewport::draw_component_overlay(&app.s, &app.vps[idx], &cv, &painter);
+    let hover = if app.vp_state.drag.is_none() && app.tool.is_select() { resp.hover_pos() } else { None };
+    viewport::draw_component_overlay(&app.s, &app.vps[idx], &cv, &painter, app.soft.on.then_some((app.soft.radius, app.soft.linear)), hover);
     viewport::draw_gate(&app.s, &app.vps[idx], &painter);
     mesh_overlays(app, &cv, img_rect, &painter);
     if (resp.hovered() || resp.dragged()) && app.active_vp != idx && (resp.clicked() || resp.drag_started() || ui.input(|i| i.pointer.any_pressed())) {
@@ -467,6 +471,18 @@ fn interact(app: &mut IncaApp, ui: &mut egui::Ui, idx: usize, resp: &egui::Respo
     if mods.alt {
         return;
     }
+    // ---- B + LMB drag sets the Soft Selection radius (Maya)
+    if ui.input(|i| i.key_down(egui::Key::B)) && resp.dragged_by(egui::PointerButton::Primary) {
+        app.soft.on = true;
+        let k = cv.units_per_px();
+        app.soft.radius = (app.soft.radius + resp.drag_delta().x as f64 * k).max(0.01);
+        app.help = format!("Soft Select radius: {:.3}", app.soft.radius);
+        if let Some(h) = resp.hover_pos() {
+            let r = (app.soft.radius / k) as f32;
+            painter.circle_stroke(h, r, Stroke::new(1.0, Color32::from_rgb(255, 200, 60)));
+        }
+        return;
+    }
     // ---- mesh tools and creation tools take the clicks
     if crate::mesh_tools::is_mesh_tool(app.tool) {
         crate::mesh_tools::interact(app, idx, resp, cv, painter);
@@ -812,9 +828,22 @@ fn gizmo(app: &mut IncaApp, ui: &mut egui::Ui, idx: usize, resp: &egui::Response
                 };
                 app.s.checkpoint(label);
                 let objs: Vec<(String, DMat4)> = objects.iter().filter(|o| !objects.iter().any(|p| p != *o && app.s.is_ancestor(p, o))).map(|o| (o.clone(), app.s.world_matrix(o))).collect();
-                let comps = comp_targets.iter().map(|(id, v)| (id.clone(), v.clone(), app.s.node(id).unwrap().mesh().unwrap().mesh.clone())).collect();
+                // soft selection widens the moved set with falloff weights; symmetry adds mirror partners
+                let mut comps = vec![];
+                let (mut weights, mut mirror) = (vec![], vec![]);
+                for (id, v) in &comp_targets {
+                    let (mut verts, mut w): (Vec<u32>, Vec<f64>) = if app.soft.on {
+                        viewport::soft_weights(&app.s, id, v, app.soft.radius, app.soft.linear).into_iter().unzip()
+                    } else {
+                        (v.clone(), vec![])
+                    };
+                    let m = viewport::symmetry_partners(&app.s, id, &mut verts, &mut w, app.symmetry);
+                    comps.push((id.clone(), verts, app.s.node(id).unwrap().mesh().unwrap().mesh.clone()));
+                    weights.push(w);
+                    mirror.push(m);
+                }
                 let pivots = pivot_mode.then(|| objs.iter().map(|(o, _)| app.s.world_pivot(o)).collect());
-                app.vp_state.drag = Some(GizmoDrag { vp: idx, start: tf, cur: tf, objects: objs, comps, tool: if pivot_mode { Tool::Move } else { app.tool }, pivots });
+                app.vp_state.drag = Some(GizmoDrag { vp: idx, start: tf, cur: tf, objects: objs, comps, tool: if pivot_mode { Tool::Move } else { app.tool }, pivots, weights, mirror });
             }
             let d = app.vp_state.drag.as_mut().unwrap();
             if let Some(n) = new_tfs.first() {
@@ -824,6 +853,8 @@ fn gizmo(app: &mut IncaApp, ui: &mut egui::Ui, idx: usize, resp: &egui::Response
             let objs = d.objects.clone();
             let pivots = d.pivots.clone();
             let comps: Vec<(String, Vec<u32>, inca_core::mesh::PolyMesh)> = d.comps.iter().map(|(a, b, c)| (a.clone(), b.clone(), c.clone())).collect();
+            let (weights, mirror) = (d.weights.clone(), d.mirror.clone());
+            let sym = app.symmetry;
             match pivots {
                 Some(pv) => {
                     for ((id, _), p0) in objs.iter().zip(pv) {
@@ -836,12 +867,26 @@ fn gizmo(app: &mut IncaApp, ui: &mut egui::Ui, idx: usize, resp: &egui::Response
                     }
                 }
             }
-            for (id, verts, orig) in comps {
+            for (ci, (id, verts, orig)) in comps.into_iter().enumerate() {
                 let wm = app.s.world_matrix(&id);
-                let local = wm.inverse() * delta * wm;
+                let inv = wm.inverse();
+                let local = inv * delta * wm;
+                let w = &weights[ci];
+                let mut out: Vec<DVec3> = verts.iter().enumerate().map(|(i, v)| {
+                    let o = orig.v[*v as usize];
+                    o.lerp(local.transform_point3(o), w.get(i).copied().unwrap_or(1.0))
+                }).collect();
+                if let Some(map) = &mirror[ci] {
+                    for (i, &src) in map.iter().enumerate() {
+                        if src >= 0 {
+                            let p = out[src as usize];
+                            out[i] = if sym == 1 { viewport::mirror_point(p, sym) } else { inv.transform_point3(viewport::mirror_point(wm.transform_point3(p), sym)) };
+                        }
+                    }
+                }
                 if let Some(m) = app.s.nodes.get_mut(&id).and_then(|n| n.mesh_mut()) {
-                    for v in &verts {
-                        m.mesh.v[*v as usize] = local.transform_point3(orig.v[*v as usize]);
+                    for (v, p) in verts.iter().zip(out) {
+                        m.mesh.v[*v as usize] = p;
                     }
                 }
                 if let Some(n) = app.s.nodes.get_mut(&id) {

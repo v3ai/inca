@@ -1188,6 +1188,19 @@ fn tool_settings(app: &mut IncaApp, ui: &mut egui::Ui) {
             ui.add(egui::Slider::new(&mut app.manip_size, 0.2..=5.0));
         });
     }
+    if app.tool.is_manip() && theme::fold(ui, "Soft Selection") {
+        ui.checkbox(&mut app.soft.on, "Soft Select (B)");
+        ui.horizontal(|ui| {
+            ui.label("Falloff radius");
+            ui.add(egui::DragValue::new(&mut app.soft.radius).speed(0.02).range(0.001..=1000.0));
+        });
+        ui.horizontal(|ui| {
+            ui.label("Falloff curve");
+            ui.radio_value(&mut app.soft.linear, false, "Smooth");
+            ui.radio_value(&mut app.soft.linear, true, "Linear");
+        });
+        ui.label(RichText::new("B + drag in a viewport changes the radius").color(theme::TEXT_DIM));
+    }
     ui.separator();
     ui.checkbox(&mut app.history_on, "Construction history");
 }

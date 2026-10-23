@@ -214,6 +214,13 @@ pub static ACTIONS: &[(&str, &str, &str)] = &[
     ("inflateSculptTool", "Inflate Sculpt Tool", ""),
     ("makeLive", "Make Live", ""),
     ("uvEditor", "UV Editor", ""),
+    ("softSelect", "Soft Select", "B"),
+    ("componentTypeCycle", "Cycle Component Type", "Shift+Q"),
+    ("symmetryOff", "Symmetry: Off", ""),
+    ("symmetryObjectX", "Symmetry: Object X", ""),
+    ("symmetryWorldX", "Symmetry: World X", ""),
+    ("symmetryWorldY", "Symmetry: World Y", ""),
+    ("symmetryWorldZ", "Symmetry: World Z", ""),
     ("pencilCurveTool", "Pencil Curve Tool", ""),
     ("openCloseCurve", "Open/Close", ""),
     ("collapse", "Collapse", ""),
@@ -559,6 +566,24 @@ pub fn builtin(app: &mut IncaApp, id: &str) {
         }
         "makeLive" => crate::mesh_tools::make_live(app),
         "uvEditor" => crate::uv_editor::open(app),
+        "softSelect" => {
+            app.soft.on = !app.soft.on;
+            app.help = format!("Soft Select: {}", if app.soft.on { "ON" } else { "OFF" });
+        }
+        "symmetryOff" => app.symmetry = 0,
+        "symmetryObjectX" => app.symmetry = 1,
+        "symmetryWorldX" => app.symmetry = 2,
+        "symmetryWorldY" => app.symmetry = 3,
+        "symmetryWorldZ" => app.symmetry = 4,
+        "componentTypeCycle" => {
+            use inca_core::scene::CompMode;
+            let next = match app.s.comp_mode {
+                Some(CompMode::Vertex) => CompMode::Edge,
+                Some(CompMode::Edge) => CompMode::Face,
+                _ => CompMode::Vertex,
+            };
+            app.set_comp_mode(Some(next));
+        }
         "pencilCurveTool" => app.set_tool(Tool::Pencil),
         "openCloseCurve" => {
             let mel: String = app
@@ -923,6 +948,8 @@ pub fn hotkey(key: Key, m: Modifiers, app: &IncaApp) -> Option<&'static str> {
         (Key::I, true, true, _) => "invertSelection",
         (Key::E, true, _, _) => "extrude",
         (Key::B, true, _, _) => "bevel",
+        (Key::B, false, false, false) => "softSelect",
+        (Key::Q, false, true, false) => "componentTypeCycle",
         (Key::B, false, false, true) => "cycleBackground",
         (Key::Insert, ..) => "pivotEdit",
         (Key::Num1, true, _, _) => "isolateSelect",

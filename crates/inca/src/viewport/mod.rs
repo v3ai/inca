@@ -9,6 +9,7 @@ use inca_core::math::{euler_deg_from_quat, quat_from_euler_deg, Aabb, Ray};
 use inca_core::mesh::PolyMesh;
 use inca_core::scene::{CompMode, Id, Scene, Shape};
 use std::collections::hash_map::DefaultHasher;
+use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 
 pub const C_WIRE: [f32; 4] = [0.063, 0.063, 0.43, 1.0];
@@ -1109,7 +1110,105 @@ pub fn draw_particles(s: &Scene, vp: &Viewport, cv: &CamView, painter: &egui::Pa
 }
 
 /// Vertex dots for component mode (drawn with egui on top of the image).
-pub fn draw_component_overlay(s: &Scene, vp: &Viewport, cv: &CamView, painter: &egui::Painter) {
+/// Soft Selection weights (JS softWeights): selected verts 1, others by world distance to the nearest selected one.
+pub fn soft_weights(s: &Scene, id: &str, verts: &[u32], radius: f64, linear: bool) -> Vec<(u32, f64)> {
+    let Some(pm) = s.node(id).and_then(|n| n.mesh()).map(|m| &m.mesh) else { return vec![] };
+    let wm = s.world_matrix(id);
+    let p: Vec<DVec3> = pm.v.iter().map(|q| wm.transform_point3(*q)).collect();
+    let sel: std::collections::HashSet<u32> = verts.iter().copied().collect();
+    let sp: Vec<DVec3> = verts.iter().map(|&v| p[v as usize]).collect();
+    let mut out = vec![];
+    for (i, q) in p.iter().enumerate() {
+        if sel.contains(&(i as u32)) {
+            out.push((i as u32, 1.0));
+            continue;
+        }
+        let d = sp.iter().map(|s| (*s - *q).length()).fold(f64::INFINITY, f64::min);
+        if d < radius {
+            let t = 1.0 - d / radius;
+            out.push((i as u32, if linear { t } else { t * t * (3.0 - 2.0 * t) }));
+        }
+    }
+    out
+}
+
+/// Symmetry partners (JS symmetryPartners): appends the mirror image of each vertex to `verts`
+/// and returns, per entry, the index of the entry it mirrors (-1 for originals).
+/// `mode`: 1 object X, 2 world X, 3 world Y, 4 world Z.
+pub fn symmetry_partners(s: &Scene, id: &str, verts: &mut Vec<u32>, weights: &mut Vec<f64>, mode: usize) -> Option<Vec<i64>> {
+    if mode == 0 || verts.is_empty() {
+        return None;
+    }
+    let pm = &s.node(id)?.mesh()?.mesh;
+    let ax = if mode == 1 { 0 } else { mode - 2 };
+    let wm = s.world_matrix(id);
+    let p: Vec<DVec3> = pm.v.iter().map(|q| if mode == 1 { *q } else { wm.transform_point3(*q) }).collect();
+    let b = p.iter().fold(Aabb::EMPTY, |mut b, q| {
+        b.add(*q);
+        b
+    });
+    let tol = (b.size().length() * 1e-4).max(1e-6);
+    let cell = |q: DVec3| ((q.x / tol).floor() as i64, (q.y / tol).floor() as i64, (q.z / tol).floor() as i64);
+    let mut grid: HashMap<(i64, i64, i64), Vec<usize>> = HashMap::new();
+    for (i, q) in p.iter().enumerate() {
+        grid.entry(cell(*q)).or_default().push(i);
+    }
+    let find = |q: DVec3| -> Option<usize> {
+        let (cx, cy, cz) = cell(q);
+        let mut best: Option<(f64, usize)> = None;
+        for dx in -1..=1 {
+            for dy in -1..=1 {
+                for dz in -1..=1 {
+                    for &j in grid.get(&(cx + dx, cy + dy, cz + dz)).into_iter().flatten() {
+                        let d = (p[j] - q).length();
+                        if d <= tol && best.is_none_or(|b| d < b.0) {
+                            best = Some((d, j));
+                        }
+                    }
+                }
+            }
+        }
+        best.map(|b| b.1)
+    };
+    let mut idx: HashMap<u32, usize> = verts.iter().enumerate().map(|(i, &v)| (v, i)).collect();
+    let mut map = vec![-1i64; verts.len()];
+    let n = verts.len();
+    for i in 0..n {
+        let mut q = p[verts[i] as usize];
+        q[ax] = -q[ax];
+        let Some(j) = find(q) else { continue };
+        if j as u32 == verts[i] || idx.contains_key(&(j as u32)) {
+            continue;
+        }
+        idx.insert(j as u32, verts.len());
+        verts.push(j as u32);
+        map.push(i as i64);
+        if !weights.is_empty() {
+            weights.push(weights[i]);
+        }
+    }
+    map.iter().any(|&m| m >= 0).then_some(map)
+}
+
+/// Mirror a world/local point across the symmetry plane (see `symmetry_partners`).
+pub fn mirror_point(p: DVec3, mode: usize) -> DVec3 {
+    let ax = if mode == 1 { 0 } else { mode - 2 };
+    let mut q = p;
+    q[ax] = -q[ax];
+    q
+}
+
+/// Soft Selection falloff colour (black - red - yellow), as Maya shows it.
+pub fn falloff_color(w: f64) -> Color32 {
+    let w = w.clamp(0.0, 1.0) as f32;
+    if w < 0.5 {
+        Color32::from_rgb((w * 2.0 * 255.0) as u8, 0, 0)
+    } else {
+        Color32::from_rgb(255, ((w - 0.5) * 2.0 * 255.0) as u8, 0)
+    }
+}
+
+pub fn draw_component_overlay(s: &Scene, vp: &Viewport, cv: &CamView, painter: &egui::Painter, soft: Option<(f64, bool)>, hover: Option<Pos2>) {
     let Some(mode) = s.comp_mode else { return };
     for id in s.hilite() {
         let Some(pm) = s.node(&id).and_then(|n| n.mesh()).map(|m| &m.mesh) else { continue };
@@ -1120,6 +1219,10 @@ pub fn draw_component_overlay(s: &Scene, vp: &Viewport, cv: &CamView, painter: &
                 // exact occlusion only for small meshes (it runs every frame)
                 let mut vis = Vis::new(pm, wm, cv, vp.xray);
                 vis.exact &= pm.f.len() <= 600;
+                let weights: HashMap<u32, f64> = match soft {
+                    Some((r, lin)) if !cs.v.is_empty() => soft_weights(s, &id, &cs.v.iter().copied().collect::<Vec<_>>(), r, lin).into_iter().collect(),
+                    _ => HashMap::new(),
+                };
                 for (i, p) in pm.v.iter().enumerate() {
                     let sel = cs.v.contains(&(i as u32));
                     let shown = vis.vertex(i as u32);
@@ -1127,7 +1230,11 @@ pub fn draw_component_overlay(s: &Scene, vp: &Viewport, cv: &CamView, painter: &
                         continue;
                     }
                     if let Some(q) = cv.project(wm.transform_point3(*p), vp.rect) {
-                        let c = if sel { Color32::from_rgb(255, 230, 0) } else { Color32::from_rgb(194, 58, 214) };
+                        let c = match weights.get(&(i as u32)) {
+                            Some(&w) if !sel => falloff_color(w),
+                            _ if sel => Color32::from_rgb(255, 230, 0),
+                            _ => Color32::from_rgb(194, 58, 214),
+                        };
                         painter.rect_filled(Rect::from_center_size(q, egui::vec2(4.0, 4.0)), 0.0, c);
                     }
                 }
@@ -1143,6 +1250,36 @@ pub fn draw_component_overlay(s: &Scene, vp: &Viewport, cv: &CamView, painter: &
             }
             CompMode::Edge => {}
         }
+    }
+    // pre-selection highlight: the component under the cursor in red
+    let Some(h) = hover.filter(|h| vp.rect.contains(*h)) else { return };
+    let red = Color32::from_rgb(255, 42, 42);
+    for id in s.hilite() {
+        let Some(c) = pick_component(s, vp, cv, &id, mode, h) else { continue };
+        let pm = &s.node(&id).unwrap().mesh().unwrap().mesh;
+        let wm = s.world_matrix(&id);
+        let pr = |v: u32| cv.project(wm.transform_point3(pm.v[v as usize]), vp.rect);
+        match c {
+            Comp::V(v) => {
+                if let Some(q) = pr(v) {
+                    painter.rect_filled(Rect::from_center_size(q, egui::vec2(7.0, 7.0)), 0.0, red);
+                }
+            }
+            Comp::E(a, b) => {
+                if let (Some(qa), Some(qb)) = (pr(a), pr(b)) {
+                    painter.line_segment([qa, qb], egui::Stroke::new(2.5, red));
+                }
+            }
+            Comp::F(f) => {
+                let pts: Vec<Pos2> = pm.f[f].iter().filter_map(|&v| pr(v)).collect();
+                if pts.len() >= 3 {
+                    let mut l = pts.clone();
+                    l.push(pts[0]);
+                    painter.add(egui::Shape::line(l, egui::Stroke::new(2.0, red)));
+                }
+            }
+        }
+        break;
     }
 }
 
