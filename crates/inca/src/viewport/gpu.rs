@@ -44,6 +44,7 @@ pub struct FrameUniform {
     pub bg_top: [f32; 4],
     pub bg_bottom: [f32; 4],
     pub mode: [f32; 4],
+    pub post: [f32; 4],
     pub lights: [GpuLight; 8],
 }
 

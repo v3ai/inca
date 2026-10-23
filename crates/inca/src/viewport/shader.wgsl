@@ -14,7 +14,8 @@ struct Frame {
     cam_dir: vec4<f32>,
     bg_top: vec4<f32>,
     bg_bottom: vec4<f32>,
-    mode: vec4<f32>,     // x lighting (0 default, 1 all lights, 2 flat/none), y light count, z xray, w backface culling
+    mode: vec4<f32>,     // x lighting (0 default, 1 all lights, 2 flat, 3 none), y light count, z xray, w backface culling
+    post: vec4<f32>,     // x exposure (stops), y gamma
     lights: array<Light, 8>,
 };
 
@@ -94,6 +95,9 @@ fn shade(n_in: vec3<f32>, world: vec3<f32>, base: vec3<f32>, front: bool) -> vec
         let s = spec_k * pow(max(dot(n, h), 0.0), max(shin, 1.0)) * 0.5;
         return base * (0.12 + 0.88 * d) + vec3(s);
     }
+    if (frame.mode.x > 2.5) {
+        return base * 0.06;
+    }
     if (frame.mode.x > 1.5) {
         return base;
     }
@@ -143,6 +147,7 @@ fn fs_mesh(i: MeshOut, @builtin(front_facing) front: bool) -> @location(0) vec4<
     if (draw.params.x < 0.5) {
         c = shade(i.normal, i.world, base, front);
     }
+    c = pow(max(c * exp2(frame.post.x), vec3(0.0)), vec3(1.0 / frame.post.y));
     return vec4(c, draw.params.y);
 }
 

@@ -31,6 +31,7 @@ pub enum LightMode {
     Default,
     All,
     Flat,
+    None,
 }
 
 #[derive(Clone, Debug)]
@@ -46,11 +47,41 @@ pub struct Viewport {
     pub show_lights: bool,
     pub show_cameras: bool,
     pub show_curves: bool,
+    pub show_meshes: bool,
+    pub show_locators: bool,
+    pub show_manips: bool,
+    pub show_sel_highlight: bool,
+    pub film_gate: bool,
+    pub res_gate: bool,
+    /// display exposure (stops) and gamma, applied to shaded surfaces
+    pub exposure: f32,
+    pub gamma: f32,
     pub isolate: Option<Vec<Id>>,
     pub rect: Rect,
 }
 
 impl Viewport {
+    /// Show menu filters by object type.
+    pub fn shows(&self, n: &inca_core::scene::Node) -> bool {
+        match &n.shape {
+            Shape::Mesh(_) => self.show_meshes,
+            Shape::Light(_) => self.show_lights,
+            Shape::Camera(_) => self.show_cameras,
+            Shape::Curve(_) => self.show_curves,
+            Shape::Locator if n.kind == "locator" => self.show_locators,
+            _ => true,
+        }
+    }
+    /// Show > All / None.
+    pub fn show_all(&mut self, on: bool) {
+        self.show_meshes = on;
+        self.show_lights = on;
+        self.show_cameras = on;
+        self.show_curves = on;
+        self.show_locators = on;
+        self.grid = on;
+        self.show_sel_highlight = on;
+    }
     pub fn new(camera: &str) -> Self {
         Viewport {
             camera: camera.into(),
@@ -64,6 +95,14 @@ impl Viewport {
             show_lights: true,
             show_cameras: true,
             show_curves: true,
+            show_meshes: true,
+            show_locators: true,
+            show_manips: true,
+            show_sel_highlight: true,
+            film_gate: false,
+            res_gate: false,
+            exposure: 0.0,
+            gamma: 1.0,
             isolate: None,
             rect: Rect::NOTHING,
         }
@@ -208,6 +247,97 @@ pub fn dolly(s: &mut Scene, cam: &str, amount: f64) {
         }
     }
     s.rev += 1;
+}
+
+/// Place a camera (translate, rotate in degrees, centre of interest).
+pub fn set_view(s: &mut Scene, cam: &str, t: [f64; 3], r: [f64; 3], coi: Option<f64>) {
+    let Some(id) = camera_id(s, cam) else { return };
+    let Some(n) = s.nodes.get_mut(&id) else { return };
+    n.xf.t = t;
+    n.xf.r = r;
+    n.xf.ro = "xyz".into();
+    if let (Shape::Camera(c), Some(d)) = (&mut n.shape, coi) {
+        c.coi = d;
+    }
+    s.rev += 1;
+}
+
+/// View > Default View (the JS defaultView).
+pub fn default_view(s: &mut Scene, cam: &str) {
+    let Some(id) = camera_id(s, cam) else { return };
+    let (ortho, name) = match s.node(&id) {
+        Some(n) => (matches!(&n.shape, Shape::Camera(c) if c.ortho), n.name.clone()),
+        None => return,
+    };
+    if !ortho || name == "persp" {
+        set_view(s, cam, [28.0, 21.0, 28.0], [-27.938, 45.0, 0.0], Some(44.82));
+        return;
+    }
+    let d = match name.as_str() {
+        "top" => Some(([0.0, 1000.1, 0.0], [-90.0, 0.0, 0.0])),
+        "front" => Some(([0.0, 0.0, 1000.1], [0.0, 0.0, 0.0])),
+        "side" => Some(([1000.1, 0.0, 0.0], [0.0, 90.0, 0.0])),
+        _ => None,
+    };
+    if let Some((t, r)) = d {
+        set_view(s, cam, t, r, None);
+    }
+    if let Some(Shape::Camera(c)) = s.nodes.get_mut(&id).map(|n| &mut n.shape) {
+        c.ortho_width = 30.0;
+    }
+}
+
+/// View > Look at Selection: aim the camera at a point, keeping its position.
+pub fn look_at(s: &mut Scene, cam: &str, target: DVec3) {
+    let Some(id) = camera_id(s, cam) else { return };
+    let Some(n) = s.nodes.get(&id) else { return };
+    if matches!(&n.shape, Shape::Camera(c) if c.ortho) {
+        return;
+    }
+    let eye = DVec3::from_array(n.xf.t);
+    let d = target - eye;
+    if d.length() < 1e-9 {
+        return;
+    }
+    let f = d.normalize();
+    let yaw = f.x.atan2(f.z).to_degrees() + 180.0;
+    let pitch = f.y.clamp(-1.0, 1.0).asin().to_degrees();
+    let q = DQuat::from_euler(glam::EulerRot::YXZ, yaw.to_radians(), pitch.to_radians(), 0.0);
+    let t = n.xf.t;
+    set_view(s, cam, t, euler_deg_from_quat(q, "xyz"), Some(d.length()));
+}
+
+/// Film / resolution gate: darken outside the gate and outline it (as the JS drawGate).
+pub fn draw_gate(s: &Scene, vp: &Viewport, painter: &egui::Painter) {
+    if !(vp.res_gate || vp.film_gate) {
+        return;
+    }
+    let rs = inca_core::render::RenderSettings::from_scene(s);
+    let asp = if vp.res_gate {
+        rs.width as f32 / rs.height.max(1) as f32
+    } else {
+        match camera_id(s, &vp.camera).and_then(|id| s.node(&id)).map(|n| &n.shape) {
+            Some(Shape::Camera(c)) => (c.horizontal_film_aperture / c.vertical_film_aperture.max(1e-6)) as f32,
+            _ => 1.5,
+        }
+    };
+    let r = vp.rect;
+    let mut gw = r.width() * 0.9;
+    let mut gh = gw / asp;
+    if gh > r.height() * 0.9 {
+        gh = r.height() * 0.9;
+        gw = gh * asp;
+    }
+    let g = Rect::from_center_size(r.center(), egui::vec2(gw, gh));
+    let mask = Color32::from_black_alpha(90);
+    painter.rect_filled(Rect::from_min_max(r.min, egui::pos2(r.max.x, g.min.y)), 0.0, mask);
+    painter.rect_filled(Rect::from_min_max(egui::pos2(r.min.x, g.max.y), r.max), 0.0, mask);
+    painter.rect_filled(Rect::from_min_max(egui::pos2(r.min.x, g.min.y), egui::pos2(g.min.x, g.max.y)), 0.0, mask);
+    painter.rect_filled(Rect::from_min_max(egui::pos2(g.max.x, g.min.y), egui::pos2(r.max.x, g.max.y)), 0.0, mask);
+    let col = if vp.res_gate { Color32::from_gray(0xdd) } else { Color32::from_rgb(0xe0, 0xb0, 0x30) };
+    painter.rect_stroke(g, 0.0, egui::Stroke::new(1.0, col), egui::StrokeKind::Inside);
+    let label = if vp.res_gate { format!("{} x {}", rs.width, rs.height) } else { "Film Gate".to_string() };
+    painter.text(egui::pos2(g.min.x + 4.0, g.min.y - 3.0), egui::Align2::LEFT_BOTTOM, label, egui::FontId::proportional(11.0), Color32::from_gray(0xee));
 }
 
 /// Frame a world box (F / A).
@@ -510,6 +640,7 @@ pub fn frame_uniform(s: &Scene, vp: &Viewport, cv: &CamView, bg_mode: usize) -> 
         LightMode::Default => 0.0,
         LightMode::All => 1.0,
         LightMode::Flat => 2.0,
+        LightMode::None => 3.0,
     };
     if vp.lights == LightMode::All {
         for n in s.nodes.values() {
@@ -558,6 +689,7 @@ pub fn frame_uniform(s: &Scene, vp: &Viewport, cv: &CamView, bg_mode: usize) -> 
         bg_top,
         bg_bottom,
         mode: [light_mode, count as f32, if vp.xray { 1.0 } else { 0.0 }, if vp.backface { 1.0 } else { 0.0 }],
+        post: [vp.exposure, vp.gamma.max(0.05), 0.0, 0.0],
         lights,
     }
 }
@@ -581,9 +713,12 @@ pub fn build_draws(s: &Scene, vp: &Viewport, cv: &CamView, g: &mut Gpu, smooth_c
             }
         }
         let n = s.node(&id).unwrap();
+        if !vp.shows(n) {
+            continue;
+        }
         let wm = s.world_matrix(&id).as_mat4();
-        let selected = s.sel.iter().any(|x| x == &id || s.is_ancestor(x, &id));
-        let is_lead = lead.as_ref().is_some_and(|l| l == &id || s.is_ancestor(l, &id));
+        let selected = vp.show_sel_highlight && s.sel.iter().any(|x| x == &id || s.is_ancestor(x, &id));
+        let is_lead = vp.show_sel_highlight && lead.as_ref().is_some_and(|l| l == &id || s.is_ancestor(l, &id));
         let template = s.is_template(&id);
         let sel_col = if template { C_TEMPLATE } else if is_lead { C_LEAD } else if selected { C_SEL } else { C_WIRE };
         match &n.shape {
@@ -653,15 +788,15 @@ pub fn build_draws(s: &Scene, vp: &Viewport, cv: &CamView, g: &mut Gpu, smooth_c
                     }
                 }
             }
-            Shape::Light(_) if vp.show_lights => {
+            Shape::Light(_) => {
                 let c = if selected { sel_col } else { [0.9, 0.85, 0.3, 1.0] };
                 draws.push(DrawCmd { pass: Pass::Lines, geo: Geo::TransientLines(icon_lines(s, &id, c)), u: DrawUniform::new(wm) });
             }
-            Shape::Camera(_) if vp.show_cameras => {
+            Shape::Camera(_) => {
                 let c = if selected { sel_col } else { C_ICON };
                 draws.push(DrawCmd { pass: Pass::Lines, geo: Geo::TransientLines(icon_lines(s, &id, c)), u: DrawUniform::new(wm) });
             }
-            Shape::Curve(_) if vp.show_curves => {
+            Shape::Curve(_) => {
                 let c = if selected { sel_col } else if template { C_TEMPLATE } else { C_CURVE };
                 draws.push(DrawCmd { pass: Pass::Lines, geo: Geo::TransientLines(icon_lines(s, &id, c)), u: DrawUniform::new(wm) });
             }
@@ -722,6 +857,9 @@ pub fn pick_object(s: &Scene, vp: &Viewport, cv: &CamView, pos: Pos2) -> Option<
             }
         }
         let n = s.node(&id).unwrap();
+        if !vp.shows(n) {
+            continue;
+        }
         let wm = s.world_matrix(&id);
         match &n.shape {
             Shape::Mesh(m) => {
@@ -805,6 +943,9 @@ pub fn region_objects(s: &Scene, vp: &Viewport, cv: &CamView, inside: &dyn Fn(Po
             continue;
         }
         let n = s.node(&id).unwrap();
+        if !vp.shows(n) {
+            continue;
+        }
         let wm = s.world_matrix(&id);
         let hit = match &n.shape {
             Shape::Mesh(m) => {

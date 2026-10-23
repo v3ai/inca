@@ -52,6 +52,9 @@ pub enum Layout {
     Single,
     Four,
     TwoSide,
+    TwoStack,
+    /// persp on the left, top and front stacked on the right
+    Three,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]

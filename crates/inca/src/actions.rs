@@ -120,6 +120,8 @@ pub static ACTIONS: &[(&str, &str, &str)] = &[
     ("layoutSingle", "Single Pane", ""),
     ("layoutFour", "Four Panes", ""),
     ("layoutTwoSide", "Two Panes Side by Side", ""),
+    ("layoutTwoStack", "Two Panes Stacked", ""),
+    ("layoutThree", "Three Panes Split Left", ""),
     ("toggleLayout", "Toggle Single / Four View", "Space"),
     ("outlinerWindow", "Outliner", ""),
     ("attributeEditor", "Attribute Editor", "Ctrl+A"),
@@ -581,6 +583,8 @@ pub fn builtin(app: &mut IncaApp, id: &str) {
         "layoutSingle" => app.layout = Layout::Single,
         "layoutFour" => app.layout = Layout::Four,
         "layoutTwoSide" => app.layout = Layout::TwoSide,
+        "layoutTwoStack" => app.layout = Layout::TwoStack,
+        "layoutThree" => app.layout = Layout::Three,
         "toggleLayout" => {
             app.layout = if app.layout == Layout::Single { Layout::Four } else { Layout::Single };
         }
