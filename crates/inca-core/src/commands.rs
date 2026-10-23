@@ -108,7 +108,7 @@ pub const CORE_COMMANDS: &[&str] = &[
     "polyCBoolOp", "polyBoolOp", "polyBridgeEdge", "polySoftEdge", "polyProjection", "polySplitRing", "polyChipOff", "polyDuplicateAndConnect", "revolve", "loft", "extrude", "planarSrf",
     "rebuildCurve", "reverseCurve", "file", "undo", "redo", "connectAttr", "disconnectAttr", "listConnections", "isConnected", "warning", "error", "about", "selectMode", "selectType",
     "polyCreateFacet", "polyBevel", "nonLinear", "emitter", "fireEffect", "smokeEffect", "gravity", "drag", "turbulence", "radial", "vortex", "air", "rigidBody", "joint", "skinCluster", "parentConstraint", "pointConstraint", "orientConstraint", "scaleConstraint", "aimConstraint", "assignMaterial", "nurbsToPoly", "displaySmoothness", "toggle", "layerEditor", "createDisplayLayer", "editDisplayLayerMembers", "help", "whatIs",
-    "matchTransform", "addAttr", "deleteAttr",
+    "matchTransform", "addAttr", "deleteAttr", "polyChamferVtx", "polyConnectComponents", "polyCollapseEdge", "polyCollapseFacet", "polyToCurve", "polyCleanup",
 ];
 
 pub fn exists(name: &str) -> bool {
@@ -491,6 +491,9 @@ pub fn run(s: &mut Scene, h: &mut dyn Host, name: &str, raw: &[Val]) -> Result<V
         "file" => &[("new|newFile", 0), ("f|force", 0), ("o|open", 0), ("s|save", 0), ("i|import", 0), ("ea|exportAll", 0), ("es|exportSelected", 0), ("rn|rename", 1), ("q|query", 0), ("sn|sceneName", 0), ("type", 1), ("typ", 1), ("pr|preserveReferences", 0), ("op|options", 1)],
         "hide" | "showHidden" => &[("all", 0), ("a|above", 0), ("b|below", 0)],
         "matchTransform" => &[("pos|position", 0), ("rot|rotation", 0), ("scl|scale", 0)],
+        "polyChamferVtx" => &[("w|width", 1), ("ch|constructionHistory", 1)],
+        "polyConnectComponents" | "polyCollapseEdge" | "polyCollapseFacet" | "polyCleanup" => &[("ch|constructionHistory", 1)],
+        "polyToCurve" => &[("form", 1), ("degree", 1), ("n|name", 1)],
         "addAttr" => &[("ln|longName", 1), ("sn|shortName", 1), ("at|attributeType", 1), ("dt|dataType", 1), ("dv|defaultValue", 1), ("min|minValue", 1), ("max|maxValue", 1), ("k|keyable", 1)],
         "deleteAttr" => &[("at|attribute", 1)],
         "group" => &[("em|empty", 0), ("w|world", 0), ("n|name", 1), ("p|parent", 1), ("a|absolute", 0), ("r|relative", 0)],
@@ -1397,6 +1400,137 @@ pub fn run(s: &mut Scene, h: &mut dyn Host, name: &str, raw: &[Val]) -> Result<V
             Ok(Val::None)
         }
         "file" => file_cmd(s, &a),
+        "polyChamferVtx" => {
+            let mut out = vec![];
+            for id in mesh_targets(s, &a) {
+                let v: Vec<u32> = if s.comp_mode == Some(CompMode::Vertex) || a.strings().iter().any(|t| t.contains(".vtx[")) { op_verts(s, &a, &id) } else { vec![] };
+                if v.is_empty() {
+                    continue;
+                }
+                // Maya's positional form: polyChamferVtx 1 <width> 0
+                let w = a.f(&["w", "width"]).or_else(|| a.pos.get(1).map(|x| x.num()).filter(|x| *x > 0.0)).unwrap_or(0.25);
+                let mut p = Params::new();
+                p.insert("verts".into(), json!(v));
+                p.insert("width".into(), json!(w));
+                let r = s.apply_op(&id, "polyChamferVtx", p, history_on(&a));
+                apply_op_selection(s, &id, &r);
+                out.push(last_history_name(s, &id));
+            }
+            if out.is_empty() {
+                return Err("Select vertices to chamfer".into());
+            }
+            Ok(strs(out))
+        }
+        "polyConnectComponents" => {
+            let mut out = vec![];
+            for id in mesh_targets(s, &a) {
+                let pm = s.node(&id).and_then(|n| n.mesh()).map(|m| m.mesh.clone()).unwrap_or_default();
+                let cs = s.comp_sel(&id);
+                let pts: Vec<serde_json::Value> = if s.comp_mode == Some(CompMode::Vertex) && cs.v.len() >= 2 {
+                    cs.v.iter().map(|v| json!({ "vertex": v })).collect()
+                } else {
+                    let es = op_edges(s, &a, &id);
+                    if es.len() < 2 {
+                        continue;
+                    }
+                    // order the edges so each shares a face with the next
+                    let topo = pm.topo();
+                    let faces_of = |e: (u32, u32)| topo.edge(e.0, e.1).map(|i| topo.edge_faces[i].clone()).unwrap_or_default();
+                    let mut order = vec![es[0]];
+                    let mut used = vec![false; es.len()];
+                    used[0] = true;
+                    while order.len() < es.len() {
+                        let last = faces_of(*order.last().unwrap());
+                        let Some(i) = (0..es.len()).find(|&i| !used[i] && faces_of(es[i]).iter().any(|f| last.contains(f))) else { break };
+                        used[i] = true;
+                        order.push(es[i]);
+                    }
+                    order.iter().map(|e| json!({ "edge": [e.0, e.1], "t": 0.5 })).collect()
+                };
+                if pts.len() < 2 {
+                    continue;
+                }
+                let mut p = Params::new();
+                p.insert("points".into(), serde_json::Value::Array(pts));
+                let r = s.apply_op(&id, "polySplit", p, history_on(&a));
+                apply_op_selection(s, &id, &r);
+                out.push(last_history_name(s, &id));
+            }
+            if out.is_empty() {
+                return Err("Select two or more vertices or edges to connect".into());
+            }
+            Ok(strs(out))
+        }
+        "polyCollapseEdge" | "polyCollapseFacet" => {
+            // every selected edge / face collapses to its centre
+            let mut out = vec![];
+            for id in mesh_targets(s, &a) {
+                let groups: Vec<Vec<u32>> = if name == "polyCollapseEdge" {
+                    op_edges(s, &a, &id).into_iter().map(|(x, y)| vec![x, y]).collect()
+                } else {
+                    let pm = s.node(&id).and_then(|n| n.mesh()).map(|m| m.mesh.clone()).unwrap_or_default();
+                    op_faces(s, &a, &id, false).into_iter().filter_map(|f| pm.f.get(f).cloned()).collect()
+                };
+                if groups.is_empty() {
+                    continue;
+                }
+                let mut p = Params::new();
+                p.insert("groups".into(), json!(groups));
+                s.apply_op(&id, "polyMergeCenter", p, history_on(&a));
+                s.comp.remove(&id);
+                out.push(last_history_name(s, &id));
+            }
+            if out.is_empty() {
+                return Err(format!("{name}: select {} to collapse", if name == "polyCollapseEdge" { "edges" } else { "faces" }));
+            }
+            Ok(strs(out))
+        }
+        "polyCleanup" => {
+            // merge coincident vertices (JS Cleanup)
+            let mut out = vec![];
+            for id in mesh_targets(s, &a) {
+                let mut p = Params::new();
+                p.insert("threshold".into(), json!(1e-4));
+                s.apply_op(&id, "polyMergeVert", p, history_on(&a));
+                out.push(last_history_name(s, &id));
+            }
+            Ok(strs(out))
+        }
+        "polyToCurve" => {
+            // a degree-1 curve along a chain of selected edges (world space)
+            let id = mesh_targets(s, &a).into_iter().find(|i| !op_edges(s, &a, i).is_empty()).ok_or("polyToCurve: select a chain of edges")?;
+            let es = op_edges(s, &a, &id);
+            let mut adj: std::collections::BTreeMap<u32, Vec<u32>> = std::collections::BTreeMap::new();
+            for &(x, y) in &es {
+                adj.entry(x).or_default().push(y);
+                adj.entry(y).or_default().push(x);
+            }
+            let start = adj.iter().find(|(_, n)| n.len() == 1).map(|(k, _)| *k).unwrap_or(es[0].0);
+            let mut chain = vec![start];
+            let mut used: std::collections::HashSet<(u32, u32)> = std::collections::HashSet::new();
+            let mut cur = start;
+            while let Some(&nx) = adj.get(&cur).and_then(|n| n.iter().find(|&&v| !used.contains(&crate::mesh::epair(cur, v)))) {
+                used.insert(crate::mesh::epair(cur, nx));
+                chain.push(nx);
+                cur = nx;
+                if nx == start {
+                    break;
+                }
+            }
+            let closed = chain.len() > 2 && chain.last() == chain.first();
+            if closed {
+                chain.pop();
+            }
+            let wm = s.world_matrix(&id);
+            let pm = &s.node(&id).unwrap().mesh().unwrap().mesh;
+            let pts: Vec<glam::DVec3> = chain.iter().map(|&i| wm.transform_point3(pm.v[i as usize])).collect();
+            let c = crate::curves::Curve::new(pts, 1, if closed { "periodic" } else { "open" }, "cv");
+            let nm = a.s(&["n", "name"]).unwrap_or_else(|| "polyToCurve1".into());
+            let cid = s.create_curve(c, &nm);
+            s.comp_mode = None;
+            s.select(std::slice::from_ref(&cid), SelMode::Replace);
+            Ok(Val::Array(vec![Val::Str(s.name_of(&cid))]))
+        }
         "matchTransform" => {
             // the last object is the target (Modify > Match Transformations)
             let ts = targets(s, &a);
@@ -2050,6 +2184,24 @@ mod tests {
         mel(&mut s, "setAttr polyExtrudeFace1.localTranslateZ 4;").unwrap();
         let b = s.world_bbox(&id);
         assert!((b.max.y - 4.5).abs() < 1e-9, "{:?}", b);
+    }
+
+    #[test]
+    fn chamfer_connect_collapse_to_curve() {
+        let mut s = Scene::new();
+        mel(&mut s, "polyCube -n c; selectMode -component; selectType -v 1; select -r c.vtx[0]; polyChamferVtx -w 0.2;").unwrap();
+        let id = s.find("c").unwrap();
+        assert_eq!(s.node(&id).unwrap().mesh().unwrap().mesh.f.len(), 7);
+        mel(&mut s, "polyCube -n d; select -r d.e[0] d.e[2]; polyConnectComponents;").unwrap();
+        let d = s.find("d").unwrap();
+        let fd = s.node(&d).unwrap().mesh().unwrap().mesh.f.len();
+        assert!(fd > 6, "connect split a face ({fd})");
+        mel(&mut s, "polyCube -n e; select -r e.e[0]; polyCollapseEdge;").unwrap();
+        let e = s.find("e").unwrap();
+        assert_eq!(s.node(&e).unwrap().mesh().unwrap().mesh.v.len(), 7);
+        let r = mel(&mut s, "polyCube -n g; select -r g.e[0] g.e[1]; polyToCurve -form 2 -degree 1;").unwrap();
+        let cv = s.find(&r.str()).unwrap();
+        assert!(matches!(&s.node(&cv).unwrap().shape, Shape::Curve(_)));
     }
 
     #[test]

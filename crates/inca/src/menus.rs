@@ -156,12 +156,13 @@ pub fn common(name: &str) -> Vec<M> {
 pub fn set_menus(ms: MenuSet) -> Vec<(&'static str, Vec<M>)> {
     match ms {
         MenuSet::Modeling => vec![
-            ("Mesh", vec![A("combine"), A("separate"), Sep, Sub("Booleans", vec![A("booleanUnion"), A("booleanDifference"), A("booleanIntersection")]), Sep, A("smooth"), A("triangulate"), A("quadrangulate"), A("mirror"), A("fillHole"), A("addDivisions")]),
-            ("Edit Mesh", vec![A("extrude"), A("bevel"), A("bridge"), A("insertEdgeLoop"), Sep, A("merge"), A("mergeToCenter"), A("poke"), A("deleteEdgeVertex"), Sep, A("extract"), A("duplicateFaces")]),
-            ("Mesh Display", vec![A("reverseNormals"), A("softenEdge"), A("hardenEdge")]),
+            ("Mesh", vec![Sub("Booleans", vec![A("booleanUnion"), A("booleanDifference"), A("booleanIntersection")]), A("combine"), A("separate"), Sep, A("fillHole"), A("smooth"), A("triangulate"), A("quadrangulate"), Sep, A("mirror"), Sep, A("cleanup")]),
+            ("Edit Mesh", vec![A("addDivisions"), A("bevel"), A("bridge"), A("collapse"), A("connect"), A("chamferVertex"), A("extrude"), A("merge"), A("mergeToCenter"), A("poke"), Sep, A("deleteEdgeVertex"), Sep, A("extract"), A("duplicateFaces"), Sep, A("curveFromEdges")]),
+            ("Mesh Tools", vec![A("createPolygonTool"), A("insertEdgeLoop")]),
+            ("Mesh Display", vec![A("softenEdge"), A("hardenEdge"), A("softHardAngle"), Sep, A("reverseNormals"), Sep, A("toggleNormals"), A("toggleBorderEdges"), Sep, A("smoothOff"), A("smoothOn")]),
             ("UV", vec![A("planarMap"), A("cylindricalMap"), A("sphericalMap"), A("automaticMap")]),
             ("Surfaces", vec![A("revolve"), A("loft"), A("extrudeCurve"), A("planarSurface")]),
-            ("Curves", vec![A("rebuildCurve"), A("reverseCurve")]),
+            ("Curves", vec![A("rebuildCurve"), A("reverseCurve"), Sep, A("curveFromEdges")]),
         ],
         MenuSet::Rigging => vec![
             ("Skeleton", vec![A("jointTool"), Todo("Create IK Handle")]),

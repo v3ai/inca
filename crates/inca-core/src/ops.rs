@@ -56,6 +56,8 @@ pub static OPS: &[OpInfo] = &[
     OpInfo { ty: "deleteComponent", base: "deleteComponent", hidden: false, channels: &[] },
     OpInfo { ty: "polyMergeVert", base: "polyMergeVert", hidden: false, channels: &[ch("threshold", F, Some(0.0), None)] },
     OpInfo { ty: "polyMergeCenter", base: "polyMergeVert", hidden: false, channels: &[] },
+    OpInfo { ty: "polyChamferVtx", base: "polyChamfer", hidden: false, channels: &[ch("width", F, Some(0.001), None)] },
+    OpInfo { ty: "polySplit", base: "polySplit", hidden: false, channels: &[] },
     OpInfo { ty: "polySmoothFace", base: "polySmoothFace", hidden: false, channels: &[ch("divisions", I, Some(0.0), Some(4.0))] },
     OpInfo { ty: "polySubdFace", base: "polySubdFace", hidden: false, channels: &[ch("divisions", I, Some(1.0), Some(4.0))] },
     OpInfo { ty: "polyTriangulate", base: "polyTriangulate", hidden: false, channels: &[] },
@@ -177,6 +179,25 @@ pub fn apply(ty: &str, pm: &PolyMesh, p: &Params, ctx: &dyn OpCtx) -> Result<OpO
                 .map(|g| g.iter().filter_map(|x| x.as_array().map(|a| a.iter().filter_map(|v| v.as_u64().map(|v| v as u32)).collect())).collect())
                 .unwrap_or_default();
             mesh::op_merge_to_center(pm, &groups).into()
+        }
+        "polyChamferVtx" => mesh::op_chamfer_vertex(pm, &verts().unwrap_or_default(), num_or(p, "width", 0.25)),
+        "polySplit" => {
+            let pts: Vec<mesh::SplitPoint> = p
+                .get("points")
+                .and_then(|x| x.as_array())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|q| {
+                            if let Some(v) = q.get("vertex").and_then(|v| v.as_u64()) {
+                                return Some(mesh::SplitPoint::Vertex(v as u32));
+                            }
+                            let e = q.get("edge")?.as_array()?;
+                            Some(mesh::SplitPoint::Edge(e.first()?.as_u64()? as u32, e.get(1)?.as_u64()? as u32, q.get("t").and_then(|t| t.as_f64()).unwrap_or(0.5)))
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            mesh::op_split(pm, &pts)
         }
         "polySmoothFace" => mesh::subdivide(pm, num_or(p, "divisions", 1.0).round().clamp(0.0, 4.0) as u32, true).into(),
         "polySubdFace" => mesh::subdivide(pm, num_or(p, "divisions", 1.0).round().clamp(1.0, 4.0) as u32, false).into(),

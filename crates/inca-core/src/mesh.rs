@@ -931,6 +931,177 @@ pub fn op_insert_edge_loop(pm: &PolyMesh, a: u32, b: u32, t: f64, multiple: u32)
     OpOut { mesh: m, select_edges: Some(new_edges), ..Default::default() }
 }
 
+/// Chamfer Vertices: replace each selected vertex by a face cut `width` along its edges (JS opChamferVertex).
+pub fn op_chamfer_vertex(pm: &PolyMesh, verts: &[u32], width: f64) -> OpOut {
+    let sel: HashSet<u32> = verts.iter().copied().collect();
+    let mut m = pm.clone();
+    let mut cache: HashMap<(u32, u32), u32> = HashMap::new();
+    let mut cut = |m: &mut PolyMesh, v: u32, o: u32| -> u32 {
+        *cache.entry((v, o)).or_insert_with(|| {
+            let (pv, po) = (pm.v[v as usize], pm.v[o as usize]);
+            let l = (po - pv).length().max(1e-12);
+            m.v.push(pv + (po - pv) * (width.min(0.49 * l) / l));
+            (m.v.len() - 1) as u32
+        })
+    };
+    // per selected vertex: cap edge from the cut toward `next` back to the cut toward `prev`
+    let mut cap_next: HashMap<u32, HashMap<u32, u32>> = HashMap::new();
+    for fi in 0..pm.f.len() {
+        let face = pm.f[fi].clone();
+        let n = face.len();
+        if !face.iter().any(|v| sel.contains(v)) {
+            continue;
+        }
+        let uv = pm.face_uv(fi).cloned();
+        let mut out = vec![];
+        let mut out_uv = vec![];
+        for i in 0..n {
+            let v = face[i];
+            if !sel.contains(&v) {
+                out.push(v);
+                if let Some(u) = &uv {
+                    out_uv.push(u[i]);
+                }
+                continue;
+            }
+            let (prev, next) = (face[(i + n - 1) % n], face[(i + 1) % n]);
+            let a = cut(&mut m, v, prev);
+            let b = cut(&mut m, v, next);
+            out.push(a);
+            out.push(b);
+            if let Some(u) = &uv {
+                let frac = |o: u32| {
+                    let l = (pm.v[o as usize] - pm.v[v as usize]).length().max(1e-12);
+                    width.min(0.49 * l) / l
+                };
+                out_uv.push(u[i].lerp(u[(i + n - 1) % n], frac(prev)));
+                out_uv.push(u[i].lerp(u[(i + 1) % n], frac(next)));
+            }
+            cap_next.entry(v).or_default().insert(b, a);
+        }
+        m.f[fi] = out;
+        if let (Some(all), Some(_)) = (&mut m.uv, &uv) {
+            all[fi] = Some(out_uv);
+        }
+    }
+    let mut new_faces = vec![];
+    let mut sel_sorted: Vec<u32> = sel.iter().copied().collect();
+    sel_sorted.sort();
+    for v in sel_sorted {
+        let Some(next) = cap_next.get(&v) else { continue };
+        let Some(&start) = next.keys().min() else { continue };
+        let mut lp = vec![start];
+        let mut c = start;
+        let closed = loop {
+            match next.get(&c) {
+                Some(&n) if n == start => break true,
+                Some(&n) if !lp.contains(&n) => {
+                    lp.push(n);
+                    c = n;
+                }
+                _ => break false,
+            }
+        };
+        // vertices on an open border keep the gap, like the JS boundary loops
+        if closed && lp.len() >= 3 {
+            new_faces.push(m.add_face(lp, None, None));
+        }
+    }
+    m.compact();
+    OpOut { mesh: m, select_faces: Some(new_faces), ..Default::default() }
+}
+
+/// A point the Connect tool cuts through: an existing vertex or a parameter along an edge.
+#[derive(Clone, Copy, Debug)]
+pub enum SplitPoint {
+    Vertex(u32),
+    Edge(u32, u32, f64),
+}
+
+/// Split a face between two of its vertices; false when they are neighbours.
+fn split_face(m: &mut PolyMesh, fi: usize, u: u32, w: u32) -> bool {
+    let f = m.f[fi].clone();
+    let n = f.len();
+    let (Some(iu), Some(iw)) = (f.iter().position(|&x| x == u), f.iter().position(|&x| x == w)) else { return false };
+    if (iu + 1) % n == iw || (iw + 1) % n == iu {
+        return false;
+    }
+    let walk = |a: usize, b: usize| -> Vec<usize> {
+        let mut out = vec![a];
+        let mut i = a;
+        while i != b {
+            i = (i + 1) % n;
+            out.push(i);
+        }
+        out
+    };
+    let (c1, c2) = (walk(iu, iw), walk(iw, iu));
+    let uv = m.face_uv(fi).cloned();
+    let mat = m.face_mat(fi).cloned();
+    m.f[fi] = c1.iter().map(|&i| f[i]).collect();
+    if let (Some(all), Some(u)) = (&mut m.uv, &uv) {
+        all[fi] = Some(c1.iter().map(|&i| u[i]).collect());
+    }
+    m.add_face(c2.iter().map(|&i| f[i]).collect(), uv.as_ref().map(|u| c2.iter().map(|&i| u[i]).collect()), mat);
+    true
+}
+
+/// Connect: cut edges at the given points and join consecutive points across their shared faces (JS opSplit).
+pub fn op_split(pm: &PolyMesh, points: &[SplitPoint]) -> OpOut {
+    let mut m = pm.clone();
+    let mut made: HashMap<(u32, u32), u32> = HashMap::new();
+    let mut ids = vec![];
+    for p in points {
+        match *p {
+            SplitPoint::Vertex(v) => ids.push(v),
+            SplitPoint::Edge(a, b, t) => {
+                let key = epair(a, b);
+                let t = if a < b { t } else { 1.0 - t };
+                let id = *made.entry(key).or_insert_with(|| {
+                    m.v.push(pm.v[key.0 as usize].lerp(pm.v[key.1 as usize], t));
+                    let nv = (m.v.len() - 1) as u32;
+                    // insert into every face using the edge
+                    for fi in 0..m.f.len() {
+                        let f = m.f[fi].clone();
+                        let n = f.len();
+                        for i in 0..n {
+                            let (x, y) = (f[i], f[(i + 1) % n]);
+                            if epair(x, y) == key {
+                                let mut nf = f.clone();
+                                nf.insert(i + 1, nv);
+                                m.f[fi] = nf;
+                                if let Some(all) = &mut m.uv {
+                                    if let Some(Some(u)) = all.get_mut(fi) {
+                                        let w = if x == key.0 { t } else { 1.0 - t };
+                                        let nu = u[i].lerp(u[(i + 1) % n], w);
+                                        u.insert(i + 1, nu);
+                                    }
+                                }
+                                break;
+                            }
+                        }
+                    }
+                    nv
+                });
+                ids.push(id);
+            }
+        }
+    }
+    let mut pairs = vec![];
+    for w in ids.windows(2) {
+        let (u, v) = (w[0], w[1]);
+        if u == v {
+            continue;
+        }
+        if let Some(fi) = (0..m.f.len()).find(|&fi| m.f[fi].contains(&u) && m.f[fi].contains(&v)) {
+            if split_face(&mut m, fi, u, v) {
+                pairs.push(epair(u, v));
+            }
+        }
+    }
+    OpOut { mesh: m, select_edges: Some(pairs), ..Default::default() }
+}
+
 pub fn op_delete_faces(pm: &PolyMesh, faces: &[usize]) -> PolyMesh {
     let mut m = pm.clone();
     let del: HashSet<usize> = faces.iter().copied().collect();
@@ -1487,6 +1658,39 @@ pub fn polygon_from_points(pts: &[DVec3]) -> PolyMesh {
         m.f[0].reverse();
     }
     m
+}
+
+#[cfg(test)]
+mod chamfer_split_tests {
+    use super::*;
+    use crate::primitives;
+
+    fn cube() -> PolyMesh {
+        primitives::generate("polyCube", &crate::params::Params::new()).unwrap()
+    }
+
+    #[test]
+    fn chamfer_corner_makes_a_triangle() {
+        let pm = cube();
+        let r = op_chamfer_vertex(&pm, &[0], 0.25);
+        // a corner of three quads: 3 new verts replace 1, one triangle added
+        assert_eq!(r.mesh.v.len(), pm.v.len() + 2);
+        assert_eq!(r.mesh.f.len(), pm.f.len() + 1);
+        let tri = r.select_faces.unwrap()[0];
+        assert_eq!(r.mesh.f[tri].len(), 3);
+        assert!(r.mesh.boundary_loops().is_empty(), "still closed");
+    }
+
+    #[test]
+    fn connect_two_edge_midpoints_splits_a_quad() {
+        let pm = cube();
+        let f = pm.f[0].clone();
+        let r = op_split(&pm, &[SplitPoint::Edge(f[0], f[1], 0.5), SplitPoint::Edge(f[2], f[3], 0.5)]);
+        assert_eq!(r.mesh.f.len(), pm.f.len() + 1);
+        assert_eq!(r.mesh.v.len(), pm.v.len() + 2);
+        assert_eq!(r.select_edges.unwrap().len(), 1);
+        assert!(r.mesh.boundary_loops().is_empty());
+    }
 }
 
 #[cfg(test)]

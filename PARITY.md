@@ -24,7 +24,7 @@ registry, menus, UI modules and a 0.1.12 screenshot.
 - [x] B2. Edit: Cut, Copy/Paste Keys, Delete Keys (current frame), Bake Simulation, Delete All by Type (lights/cameras/curves), Duplicate Special (with options), Duplicate with Transform (Shift+D), Search and Replace Names, Prefix Hierarchy Names, Select Similar, Select by Name, All by Type (geometry/lights/cameras/curves)
 - [x] B3. Modify: Match Translation / Rotation / All, Add Attribute, Prefix Hierarchy
 - [x] B4. Display: HUD toggles (poly count, fps, frame, camera names, view axis), Hide Unselected / Show Selection / Show Last Hidden, Hide/Show lights/cameras/geometry, Template / Untemplate / Untemplate All, Face Normals, Border Edges, Toggle Background, Frame Selection/All in all views
-- [ ] B5. Mesh: Cleanup, Collapse, Connect, Chamfer Vertices, Polygon Edges to Curve, Reduce, Conform, Soften/Harden (30°), Conform normals
+- [x] B5. Mesh: Cleanup, Collapse, Connect, Chamfer Vertices, Polygon Edges to Curve, Soften/Harden (30°) (Reduce / Conform / Conform Normals are menu-only placeholders in the JS too)
 - [ ] B6. Mesh Tools: Insert Edge Loop tool (interactive), Multi-Cut, Target Weld, Quad Draw, Sculpt tool (brushes), Make Live
 - [ ] B7. Curves / Surfaces: Pencil Curve tool, Open/Close, Attach, Detach, Birail, Boundary
 - [ ] B8. UV: UV Editor (select / move / rotate / scale UVs, flip, rotate 90, normalize, layout, unfold/relax), UV component mode (F12)
