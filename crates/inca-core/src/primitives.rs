@@ -156,6 +156,12 @@ pub static GEN_INFO: &[GenInfo] = &[
         short: &[("r", "radius"), ("s", "sections"), ("nsp", "spans")],
         channels: &[f("radius"), f("sectionRadius"), i("sections", 4.0, 50.0), i("spans", 3.0, 50.0)],
     },
+    GenInfo {
+        ty: "polyType", label: "Type", base: "typeMesh", nurbs: false,
+        params: &[("fontSize", 1.0), ("extrudeDepth", 0.2), ("curveResolution", 4.0)],
+        short: &[("fs", "fontSize"), ("d", "extrudeDepth"), ("cr", "curveResolution")],
+        channels: &[f("fontSize"), f("extrudeDepth"), i("curveResolution", 1.0, 32.0)],
+    },
 ];
 
 pub fn gen_info(ty: &str) -> Option<&'static GenInfo> {
@@ -178,6 +184,7 @@ pub fn generate(ty: &str, p: &Params) -> Option<PolyMesh> {
     let n = |k: &str| num(p, k).unwrap_or_else(|| g.params.iter().find(|(pk, _)| *pk == k).map(|x| x.1).unwrap_or(0.0));
     let ni = |k: &str, lo: usize| (n(k).round().max(lo as f64)) as usize;
     let mut m = match ty {
+        "polyType" => crate::text::text_mesh(p.get("text").and_then(|v| v.as_str()).unwrap_or("Inca"), n("fontSize"), n("extrudeDepth").max(0.0), ni("curveResolution", 1)),
         "polyCube" => cube(n("width"), n("height"), n("depth"), ni("subdivisionsWidth", 1), ni("subdivisionsHeight", 1), ni("subdivisionsDepth", 1)),
         "polySphere" => sphere(n("radius"), ni("subdivisionsAxis", 3), ni("subdivisionsHeight", 2)),
         "polyCylinder" => cylinder(n("radius"), n("radius"), n("height"), ni("subdivisionsAxis", 3), ni("subdivisionsHeight", 1), ni("subdivisionsCaps", 0)),

@@ -40,6 +40,7 @@ pub const SPECS: &[(&str, &[Opt])] = &[
     ("mirrorJoint", &[o("axis", "Mirror across", Kind::Radio(&["YZ", "XZ", "XY"]), 0.0)]),
     ("softModDeformer", &[o("falloffRadius", "Falloff radius", Kind::Float, 5.0)]),
     ("createLattice", &[o("s", "S divisions", Kind::Int, 2.0), o("t", "T divisions", Kind::Int, 5.0), o("u", "U divisions", Kind::Int, 2.0)]),
+    ("createType", &[o("fontSize", "Font size", Kind::Float, 1.0), o("depth", "Extrude depth", Kind::Float, 0.2)]),
     ("createParticles", &[o("count", "Particles per row", Kind::Int, 10.0), o("spacing", "Spacing", Kind::Float, 0.5), o("height", "Height", Kind::Float, 5.0)]),
     ("createGhost", &[o("steps", "Steps before/after", Kind::Int, 3.0), o("every", "Frame step (0 = keys)", Kind::Int, 0.0)]),
     ("attachToMotionPath", &[o("follow", "Follow", Kind::Bool, 1.0)]),
@@ -78,8 +79,14 @@ pub fn dialog(app: &mut IncaApp, ctx: &egui::Context) {
     let mut open = true;
     let (mut apply, mut close, mut reset) = (false, false, false);
     let mut vals: BTreeMap<String, f64> = sp.iter().map(|o| (o.key.to_string(), get(app, &action, o.key))).collect();
+    let mut text = app.type_text.clone();
     egui::Window::new(format!("{} Options", crate::actions::label(&action))).id(egui::Id::new(("optbox", &action))).open(&mut open).resizable(false).show(ctx, |ui| {
         egui::Grid::new("opts").num_columns(2).show(ui, |ui| {
+            if action == "createType" {
+                ui.label("Text");
+                ui.text_edit_singleline(&mut text);
+                ui.end_row();
+            }
             for o in sp {
                 ui.label(o.label);
                 let v = vals.get_mut(o.key).unwrap();
@@ -127,6 +134,7 @@ pub fn dialog(app: &mut IncaApp, ctx: &egui::Context) {
         vals = sp.iter().map(|o| (o.key.to_string(), o.default)).collect();
     }
     app.options.insert(action.clone(), vals);
+    app.type_text = text;
     if apply {
         app.action(&action);
     }

@@ -122,6 +122,7 @@ fn pane(app: &mut IncaApp, ui: &mut egui::Ui, frame: &mut eframe::Frame, idx: us
     let resp = ui.interact(img_rect, egui::Id::new(("vp", idx)), Sense::click_and_drag());
     let painter = ui.painter_at(img_rect);
     viewport::draw_particles(&app.s, &app.vps[idx], &cv, &painter);
+    viewport::draw_annotations(&app.s, &app.vps[idx], &cv, &painter);
     crate::anim_extras::overlay(app, &cv, img_rect, &painter);
     let hover = if app.vp_state.drag.is_none() && app.tool.is_select() { resp.hover_pos() } else { None };
     viewport::draw_component_overlay(&app.s, &app.vps[idx], &cv, &painter, app.soft.on.then_some((app.soft.radius, app.soft.linear)), hover);
@@ -971,7 +972,7 @@ fn creation_tool(app: &mut IncaApp, idx: usize, resp: &egui::Response, cv: &CamV
     if resp.clicked_by(egui::PointerButton::Primary) {
         if let Some(p) = resp.interact_pointer_pos().and_then(|p| live(app, p)) {
             app.vp_state.tool_pts.push(p);
-            if app.tool == Tool::Arc && app.vp_state.tool_pts.len() == 3 {
+            if (app.tool == Tool::Arc && app.vp_state.tool_pts.len() == 3) || (app.tool == Tool::Distance && app.vp_state.tool_pts.len() == 2) {
                 finish_creation(app);
             }
         }
@@ -1050,6 +1051,7 @@ pub fn finish_creation(app: &mut IncaApp) {
         Tool::CvCurve if pts.len() >= 2 => format!("curve -d {} {};", 3.min(pts.len() - 1), flags(&pts)),
         Tool::EpCurve if pts.len() >= 2 => format!("curve -d 3 {};", pts.iter().map(|p| f(p).replacen("-p", "-ep", 1)).collect::<Vec<_>>().join(" ")),
         Tool::Arc if pts.len() == 3 => format!("curve -arc {};", flags(&pts)),
+        Tool::Distance if pts.len() == 2 => format!("distanceDimension {} {};", f(&pts[0]).replacen("-p", "-sp", 1), f(&pts[1]).replacen("-p", "-ep", 1)),
         Tool::Polygon if pts.len() >= 3 => {
             // face the camera that drew it
             let cam = viewport::cam_view(&app.s, &app.vps[app.active_vp].camera.clone(), [1.0, 1.0]);

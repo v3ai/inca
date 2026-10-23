@@ -39,9 +39,9 @@ registry, menus, UI modules and a 0.1.12 screenshot.
 - [x] B15. Rendering: IPR, Render Sequence (batch to the project images folder), keep/compare images, exposure / gamma / alpha display in Render View, Hardware renderer option, Assign New Material dialog, Material Attributes
 - [ ] B16. Editors: Hypergraph (hierarchy + input/output connections), Connection Editor, Shelf Editor, Hotkey Editor (editable keymap), Modeling Toolkit panel, Component Editor, Preferences window with all JS sections (interface, display, manipulators, animation, time slider, units, undo, files, autosave)
 - [ ] B17. Hypershade node graph work area (drag to connect), swatch renders
-- [ ] B18. Help: Getting Started, Mouse & Navigation
-- [ ] B19. Create: Type (3D text), Distance Tool, Camera and Aim
-- [ ] B20. MEL: `connectionInfo`, `distanceDimension`, `instance`, `inViewMessage`, `python`/`echo` stubs; JavaScript `cmds.*` tab equivalent stays Rhai
+- [x] B18. Help: Getting Started, Mouse & Navigation
+- [x] B19. Create: Type (3D text), Distance Tool, Camera and Aim
+- [x] B20. MEL: `connectionInfo`, `distanceDimension`, `instance`, `inViewMessage`, `python`/`echo` stubs; JavaScript `cmds.*` tab equivalent stays Rhai
 
 ## C. Behaviour differences to check
 

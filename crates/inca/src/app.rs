@@ -27,6 +27,7 @@ pub enum Tool {
     QuadDraw,
     Pencil,
     IkHandle,
+    Distance,
     LatticePoint,
     PaintWeights,
 }
@@ -56,6 +57,7 @@ impl Tool {
             Tool::QuadDraw => "planar",
             Tool::Pencil => "pencilCurve",
             Tool::IkHandle => "joint",
+            Tool::Distance => "locator",
             Tool::LatticePoint => "nurbsCube",
             Tool::PaintWeights => "softSelect",
         }
@@ -64,7 +66,7 @@ impl Tool {
         matches!(self, Tool::Select | Tool::Lasso | Tool::Paint | Tool::Move | Tool::Rotate | Tool::Scale)
     }
     pub fn is_creation(self) -> bool {
-        matches!(self, Tool::CvCurve | Tool::EpCurve | Tool::Arc | Tool::Polygon | Tool::Joint | Tool::Pencil)
+        matches!(self, Tool::CvCurve | Tool::EpCurve | Tool::Arc | Tool::Polygon | Tool::Joint | Tool::Pencil | Tool::Distance)
     }
 }
 
@@ -114,6 +116,7 @@ pub struct Windows {
     pub command_list: bool,
     pub sdk: bool,
     pub assign_material: bool,
+    pub help: bool,
     pub rename: Option<String>,
 }
 
@@ -221,6 +224,8 @@ pub struct IncaApp {
     pub fps_measured: f32,
     pub mesh_tool: crate::mesh_tools::MeshToolState,
     pub rig_tool: crate::rig_tools::RigToolState,
+    /// Create > Type text
+    pub type_text: String,
     pub viz: crate::anim_extras::AnimViz,
     pub playblast: crate::anim_extras::PlayblastUi,
     pub mesh_opts: crate::mesh_tools::MeshToolOpts,
@@ -354,6 +359,7 @@ impl IncaApp {
             fps_measured: 0.0,
             mesh_tool: Default::default(),
             rig_tool: crate::rig_tools::RigToolState::new(),
+            type_text: "Inca".into(),
             viz: Default::default(),
             playblast: Default::default(),
             uv_editor: Default::default(),
@@ -531,6 +537,7 @@ impl IncaApp {
             Tool::Sculpt => "Sculpt: drag on a mesh to sculpt. Ctrl inverts, Shift smooths. Brush and size in Tool Settings",
             Tool::Pencil => "Pencil Curve Tool: drag to draw a curve freehand",
             Tool::IkHandle => "Create IK Handle: click the start joint",
+            Tool::Distance => "Distance Tool: click two points to measure the distance between them",
             Tool::LatticePoint => "Lattice Point Tool: drag lattice points to deform the lattice",
             Tool::PaintWeights => "Paint Skin Weights: pick an influence in Tool Settings and paint on the skinned mesh",
             Tool::QuadDraw => "Quad Draw: click to place dots on the live surface, Shift+click to fill a quad, drag to slide, Enter to finish",

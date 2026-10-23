@@ -1204,6 +1204,7 @@ fn tool_settings(app: &mut IncaApp, ui: &mut egui::Ui) {
         Tool::QuadDraw => "Quad Draw Tool",
         Tool::Pencil => "Pencil Curve Tool",
         Tool::IkHandle => "IK Handle Tool",
+        Tool::Distance => "Distance Tool",
         Tool::LatticePoint => "Lattice Point Tool",
         Tool::PaintWeights => "Paint Skin Weights Tool",
     });

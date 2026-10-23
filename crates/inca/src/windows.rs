@@ -100,6 +100,27 @@ impl WinState {
     }
 }
 
+/// Help > Getting Started / Mouse & Navigation (the JS HELP_HTML); *bold* runs are keys.
+const HELP: &[(&str, &[&str])] = &[
+    ("Navigating the viewport", &["*Alt + Left drag* tumble · *Alt + Middle drag* track (pan) · *Alt + Right drag* or *wheel* dolly (zoom)", "*F* frame selection · *A* frame all · *Space* (tap) toggles single/four view · *Space* (hold) shows the hotbox"]),
+    ("Selecting & transforming", &["*Q* select · *W* move · *E* rotate · *R* scale · *Y* last tool · *D*/*Insert* edit pivot · *+/-* manipulator size", "Click to select, *Shift* toggle, *Ctrl* deselect, *Ctrl+Shift* add, drag for marquee. Middle-drag moves along the last used axis.", "Hold *X* to snap to grid, *V* to snap to points, *J* for step rotation."]),
+    ("Components", &["*Right-click* an object for its marking menu (Vertex / Edge / Face / Object Mode). *F8* object/component, *F9* vertex, *F10* edge, *F11* face. *Shift+Right-click* gives modeling tools. Double-click an edge to select its loop.", "*Ctrl+E* extrude · *Ctrl+B* bevel · *Ctrl+D* duplicate · *Ctrl+G* group · *P* parent · *B* soft select · *1/2/3* smooth preview"]),
+    ("Display", &["*4* wireframe · *5* shaded · *6* textured · *7* use all lights · *Alt+A* X-ray · *Ctrl+1* isolate select · *Ctrl+H* hide"]),
+    ("Animation", &["*S* set key · *Shift+W/E/R* key translate/rotate/scale · *Alt+V* play · *Esc* stop · *,*/*.* previous/next key · *Alt+,*/*Alt+.* previous/next frame"]),
+    ("Files", &["Set a project first (File > Project Window) so scenes, textures and renders are organised in the standard folders."]),
+];
+
+fn help_line(ui: &mut egui::Ui, l: &str) {
+    let mut job = egui::text::LayoutJob::default();
+    let font = egui::FontId::proportional(13.0);
+    for (i, part) in l.split('*').enumerate() {
+        let color = if i % 2 == 1 { Color32::WHITE } else { theme::TEXT_DIM };
+        job.append(part, 0.0, egui::TextFormat { font_id: font.clone(), color, ..Default::default() });
+    }
+    job.wrap.max_width = ui.available_width();
+    ui.label(job);
+}
+
 pub fn show(app: &mut IncaApp, ctx: &egui::Context, _frame: &mut eframe::Frame) {
     if app.playblast.running.is_some() {
         // floating windows would end up in the captured frames
@@ -107,6 +128,19 @@ pub fn show(app: &mut IncaApp, ctx: &egui::Context, _frame: &mut eframe::Frame) 
     }
     crate::rig_tools::sdk_window(app, ctx);
     crate::anim_extras::window(app, ctx);
+    let mut open = app.win.help;
+    egui::Window::new("Getting Started with Inca").open(&mut open).default_size([600.0, 520.0]).show(ctx, |ui| {
+        egui::ScrollArea::vertical().show(ui, |ui| {
+            for (title, lines) in HELP {
+                theme::section_header(ui, title);
+                for l in *lines {
+                    help_line(ui, l);
+                }
+                ui.add_space(4.0);
+            }
+        });
+    });
+    app.win.help = open;
     let mut open = app.win.assign_material;
     let mut pick: Option<&str> = None;
     egui::Window::new("Assign New Material").open(&mut open).default_size([260.0, 300.0]).show(ctx, |ui| {

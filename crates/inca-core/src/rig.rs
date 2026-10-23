@@ -487,8 +487,87 @@ impl Scene {
     }
 
     /// Before the constraints: driven keys and motion paths.
+    /// Distance Tool / distanceDimension: two locators and a node that shows the distance between them.
+    pub fn create_distance(&mut self, p0: DVec3, p1: DVec3) -> (Id, Id, Id) {
+        let l0 = self.create_locator("locator1");
+        self.nodes.get_mut(&l0).unwrap().xf.t = p0.to_array();
+        let l1 = self.create_locator("locator1");
+        self.nodes.get_mut(&l1).unwrap().xf.t = p1.to_array();
+        let d = self.create_handle("distanceDimension", "distanceDimension1");
+        self.set_rig(&d, json!({ "start": l0, "end": l1 }));
+        self.set_extra(&d, "distance", json!((p1 - p0).length()));
+        (d, l0, l1)
+    }
+
+    /// World end points and length of a distance dimension.
+    pub fn distance_of(&self, id: &str) -> Option<(DVec3, DVec3, f64)> {
+        let r = self.rig(id);
+        let (a, b) = (r["start"].as_str()?, r["end"].as_str()?);
+        if self.node(a).is_none() || self.node(b).is_none() {
+            return None;
+        }
+        let (p, q) = (self.world_pos(a), self.world_pos(b));
+        Some((p, q, (q - p).length()))
+    }
+
+    fn eval_distances(&mut self) {
+        let ids: Vec<Id> = self.nodes.values().filter(|n| n.kind == "distanceDimension").map(|n| n.id.clone()).collect();
+        for id in ids {
+            if let Some((_, _, d)) = self.distance_of(&id) {
+                if (self.extra_f(&id, "distance", -1.0) - d).abs() > 1e-12 {
+                    if let Some(n) = self.nodes.get_mut(&id) {
+                        n.extra["distance"] = json!(d);
+                    }
+                }
+            }
+        }
+    }
+
+    /// instance: a new transform whose mesh follows the source's shape.
+    pub fn make_instance(&mut self, src: &str) -> Option<Id> {
+        let n = self.node(src)?;
+        n.mesh()?;
+        let d = self.duplicate(&[src.to_string()], false).into_iter().next()?;
+        if let Some(m) = self.nodes.get_mut(&d) {
+            m.passthrough.insert("instanceOf".into(), json!(src));
+            m.passthrough.insert("instanceRev".into(), json!(-1));
+            if let Some(ms) = m.mesh_mut() {
+                ms.history.clear();
+            }
+        }
+        self.sync_instances();
+        Some(d)
+    }
+
+    /// Copy the source mesh into instances whose source changed since the last sync.
+    pub fn sync_instances(&mut self) -> Vec<Id> {
+        let pairs: Vec<(Id, Id)> = self.nodes.values().filter_map(|n| Some((n.id.clone(), n.passthrough.get("instanceOf")?.as_str()?.to_string()))).collect();
+        let mut changed = vec![];
+        for (inst, src) in pairs {
+            let Some(sn) = self.node(&src) else { continue };
+            let rev = sn.rev as i64;
+            if self.node(&inst).and_then(|n| n.passthrough.get("instanceRev")).and_then(|v| v.as_i64()) == Some(rev) {
+                continue;
+            }
+            let Some(sm) = sn.mesh().map(|m| (m.mesh.clone(), m.material.clone(), m.smooth_level)) else { continue };
+            if let Some(n) = self.nodes.get_mut(&inst) {
+                if let Some(ms) = n.mesh_mut() {
+                    ms.mesh = sm.0;
+                    ms.material = sm.1;
+                    ms.smooth_level = sm.2;
+                }
+                n.passthrough.insert("instanceRev".into(), json!(rev));
+                n.rev += 1;
+                changed.push(inst);
+            }
+        }
+        changed
+    }
+
     pub fn eval_rig_pre(&mut self) -> Vec<Id> {
-        let mut moved = self.eval_sdk();
+        self.eval_distances();
+        let mut moved = self.sync_instances();
+        moved.extend(self.eval_sdk());
         moved.extend(self.eval_motion_paths());
         moved
     }

@@ -519,6 +519,17 @@ pub fn icon_lines(s: &Scene, id: &str, col: [f32; 4]) -> Vec<LineVertex> {
                 circle(&mut o, DVec3::Y * y, DVec3::X, DVec3::Z, 0.5, col);
             }
         }
+        Shape::Locator if n.kind == "distanceDimension" => {
+            if let Some((a, b, _)) = s.distance_of(id) {
+                let inv = s.world_matrix(id).inverse();
+                let (a, b) = (inv.transform_point3(a), inv.transform_point3(b));
+                push_line(&mut o, a, b, col);
+                let t = (b - a).normalize_or_zero().any_orthonormal_vector() * 0.1;
+                for p in [a, b] {
+                    push_line(&mut o, p - t, p + t, col);
+                }
+            }
+        }
         Shape::Locator if n.kind == "ikHandle" => {
             for ax in [DVec3::X, DVec3::Y, DVec3::Z] {
                 push_line(&mut o, -ax * 0.3, ax * 0.3, col);
@@ -1155,6 +1166,19 @@ pub fn region_components(s: &Scene, vp: &Viewport, cv: &CamView, id: &str, mode:
 }
 
 /// Particles as soft dots (drawn with egui on top of the image).
+/// Distance dimension labels at the middle of their lines.
+pub fn draw_annotations(s: &Scene, vp: &Viewport, cv: &CamView, painter: &egui::Painter) {
+    for n in s.nodes.values().filter(|n| n.kind == "distanceDimension") {
+        if !s.is_visible(&n.id) {
+            continue;
+        }
+        let Some((a, b, d)) = s.distance_of(&n.id) else { continue };
+        if let Some(q) = cv.project((a + b) * 0.5, vp.rect) {
+            painter.text(q + egui::vec2(0.0, -8.0), egui::Align2::CENTER_BOTTOM, inca_core::math::fmt_num(d), egui::FontId::proportional(12.0), Color32::WHITE);
+        }
+    }
+}
+
 pub fn draw_particles(s: &Scene, vp: &Viewport, cv: &CamView, painter: &egui::Painter) {
     for (em, list) in &s.dynamics.particles {
         let size = s.node(em).and_then(|n| n.extra["size"].as_f64()).unwrap_or(3.0) as f32;

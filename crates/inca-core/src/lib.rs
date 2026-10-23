@@ -4,6 +4,7 @@
 pub mod booleans;
 pub mod curves;
 pub mod math;
+pub mod text;
 pub mod mesh;
 pub mod ops;
 pub mod params;

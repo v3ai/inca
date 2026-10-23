@@ -109,7 +109,7 @@ pub const CORE_COMMANDS: &[&str] = &[
     "rebuildCurve", "reverseCurve", "file", "undo", "redo", "connectAttr", "disconnectAttr", "listConnections", "isConnected", "warning", "error", "about", "selectMode", "selectType",
     "polyCreateFacet", "polyBevel", "nonLinear", "emitter", "fireEffect", "smokeEffect", "gravity", "drag", "turbulence", "radial", "vortex", "air", "rigidBody", "joint", "skinCluster", "parentConstraint", "pointConstraint", "orientConstraint", "scaleConstraint", "aimConstraint", "assignMaterial", "nurbsToPoly", "displaySmoothness", "toggle", "layerEditor", "createDisplayLayer", "editDisplayLayerMembers", "help", "whatIs",
     "matchTransform", "addAttr", "deleteAttr", "polyChamferVtx", "polyConnectComponents", "polyCollapseEdge", "polyCollapseFacet", "polyToCurve", "polyCleanup", "closeCurve", "openCurve",
-    "particle", "connectDynamic", "deleteRigidBody", "ikHandle", "insertJoint", "mirrorJoint", "cluster", "softMod", "lattice", "blendShape", "poleVectorConstraint", "setDrivenKeyframe", "pathAnimation", "removeConstraints", "deleteDeformers",
+    "distanceDimension", "instance", "connectionInfo", "python", "echo", "particle", "connectDynamic", "deleteRigidBody", "ikHandle", "insertJoint", "mirrorJoint", "cluster", "softMod", "lattice", "blendShape", "poleVectorConstraint", "setDrivenKeyframe", "pathAnimation", "removeConstraints", "deleteDeformers",
 ];
 
 pub fn exists(name: &str) -> bool {
@@ -327,6 +327,9 @@ fn shape_name_for(n: &str) -> String {
 fn create_primitive(s: &mut Scene, ty: &str, a: &Args) -> Val {
     let g = primitives::gen_info(ty).unwrap();
     let mut p = Params::new();
+    if let Some(t) = a.s(&["t", "text"]) {
+        p.insert("text".into(), json!(t));
+    }
     for (f, v) in &a.flags {
         let key = g.short.iter().find(|(k, _)| k == f).map(|x| x.1).or_else(|| g.params.iter().find(|(k, _)| k == f).map(|x| x.0));
         if let (Some(k), Some(v)) = (key, v.first()) {
@@ -517,6 +520,9 @@ pub fn run(s: &mut Scene, h: &mut dyn Host, name: &str, raw: &[Val]) -> Result<V
         "polyProjection" => &[("t|type", 1), ("md|mapDirection", 1), ("ch", 1)],
         "emitter" | "fireEffect" | "smokeEffect" => &[("pos|position", 3), ("type", 1), ("r|rate", 1), ("spd|speed", 1), ("sp|spread", 1), ("lsp|lifespan", 1), ("dx", 1), ("dy", 1), ("dz", 1), ("n|name", 1)],
         "gravity" | "drag" | "turbulence" | "radial" | "vortex" | "air" => &[("pos|position", 3), ("m|magnitude", 1), ("dx", 1), ("dy", 1), ("dz", 1), ("mxd|maxDistance", 1), ("att|attenuation", 1), ("f|frequency", 1)],
+        "distanceDimension" => &[("sp|startPoint", 3), ("ep|endPoint", 3)],
+        "instance" => &[("n|name", 1), ("lf|leaf", 0), ("st|smartTransform", 0)],
+        "connectionInfo" => &[("sfd|sourceFromDestination", 0), ("dfs|destinationFromSource", 0), ("id|isDestination", 0), ("is|isSource", 0), ("ied|isExactDestination", 0), ("ies|isExactSource", 0)],
         "particle" => &[("ll|lowerLeft", 3), ("ur|upperRight", 3), ("grs|gridSpacing", 1), ("c|conserve", 1), ("p|position", 3), ("n|name", 1)],
         "connectDynamic" => &[("f|fields", 1), ("d|delete", 0)],
         "rigidBody" => &[("active", 0), ("passive", 0), ("pas", 0), ("m|mass", 1), ("b|bounciness", 1), ("sf|staticFriction", 1)],
@@ -1490,6 +1496,60 @@ pub fn run(s: &mut Scene, h: &mut dyn Host, name: &str, raw: &[Val]) -> Result<V
             s.select(std::slice::from_ref(&id), SelMode::Replace);
             s.dynamics.frame = None;
             Ok(Val::Str(s.name_of(&id)))
+        }
+        "distanceDimension" => {
+            let p0 = a.v3(&["sp", "startPoint"]).map(DVec3::from_array).unwrap_or(DVec3::ZERO);
+            let p1 = a.v3(&["ep", "endPoint"]).map(DVec3::from_array).unwrap_or(DVec3::new(1.0, 0.0, 0.0));
+            let (d, _, _) = s.create_distance(p0, p1);
+            s.select(std::slice::from_ref(&d), SelMode::Replace);
+            Ok(Val::Str(s.node(&d).and_then(|n| n.shape_name.clone()).unwrap_or_else(|| s.name_of(&d))))
+        }
+        "instance" => {
+            let ts: Vec<Id> = targets(s, &a).into_iter().filter(|i| s.node(i).is_some_and(|n| n.mesh().is_some())).collect();
+            if ts.is_empty() {
+                return Err("instance: select polygon objects".into());
+            }
+            let mut out = vec![];
+            for t in ts {
+                if let Some(d) = s.make_instance(&t) {
+                    out.push(d);
+                }
+            }
+            if let (Some(n), Some(first)) = (a.s(&["n", "name"]), out.first()) {
+                rename(s, first, &n);
+            }
+            s.select(&out, SelMode::Replace);
+            s.touch();
+            Ok(strs(out.iter().map(|i| s.name_of(i)).collect()))
+        }
+        "connectionInfo" => {
+            let t = a.strings().first().cloned().ok_or("connectionInfo: node.attribute required")?;
+            let (o, at) = t.split_once('.').ok_or(format!("{t}: expected node.attribute"))?;
+            let r = s.resolve(o).ok_or(format!("No object matches name: {o}"))?;
+            let id = s.ref_id(&r);
+            let at = alias(at).to_string();
+            let input = s.conns.iter().find(|c| c.dst == id && c.dst_attr == at).cloned();
+            let outs: Vec<Conn> = s.conns.iter().filter(|c| c.src == id && c.src_attr == at).cloned().collect();
+            let plug = |s: &Scene, node: &str, attr: &str| s.ref_by_id(node).map(|r| format!("{}.{attr}", s.ref_name(&r))).unwrap_or_default();
+            if a.has(&["sfd", "sourceFromDestination"]) {
+                return Ok(Val::Str(input.map(|c| plug(s, &c.src, &c.src_attr)).unwrap_or_default()));
+            }
+            if a.has(&["dfs", "destinationFromSource"]) {
+                return Ok(strs(outs.iter().map(|c| plug(s, &c.dst, &c.dst_attr)).collect()));
+            }
+            if a.has(&["id", "isDestination", "ied", "isExactDestination"]) {
+                return Ok(Val::Int(input.is_some() as i64));
+            }
+            if a.has(&["is", "isSource", "ies", "isExactSource"]) {
+                return Ok(Val::Int(!outs.is_empty() as i64));
+            }
+            Ok(Val::Str(String::new()))
+        }
+        "python" => Err("Python is not available in Inca. Use the Rhai tab of the Script Editor for scripting beyond MEL.".into()),
+        "echo" => {
+            let m: Vec<String> = a.pos.iter().map(|v| v.str()).collect();
+            s.msg(MsgKind::Result, m.join(" "));
+            Ok(Val::Str(m.join(" ")))
         }
         "particle" => {
             let sp = a.f(&["grs", "gridSpacing"]).unwrap_or(0.5);
@@ -2720,5 +2780,37 @@ mod more_tests {
         assert_eq!(s.node(&c).unwrap().xf.t, [6.0, 3.0, 6.0]);
         let l = s.find("spotLight1").unwrap();
         assert_eq!(s.node(&l).unwrap().xf.t, [1.0, 2.0, 3.0]);
+    }
+}
+
+#[cfg(test)]
+mod b20_tests {
+    use super::*;
+    use crate::mel::Interp;
+
+    fn mel(s: &mut Scene, src: &str) -> Result<Val, String> {
+        Interp::new().run(s, &mut NoHost, src)
+    }
+
+    #[test]
+    fn distance_instance_connection_info() {
+        let mut s = Scene::new();
+        mel(&mut s, "distanceDimension -sp 0 0 0 -ep 3 4 0;").unwrap();
+        let d = s.nodes.values().find(|n| n.kind == "distanceDimension").unwrap().id.clone();
+        assert!((s.extra_f(&d, "distance", 0.0) - 5.0).abs() < 1e-9);
+        mel(&mut s, "move 0 0 0 locator2;").unwrap();
+        s.eval_constraints();
+        assert!(s.extra_f(&d, "distance", 0.0).abs() < 1e-9);
+        // instances follow their source's shape
+        mel(&mut s, "polyCube -n src; instance -n inst src; setAttr polyCube1.width 3;").unwrap();
+        s.eval_constraints();
+        let inst = s.find("inst").unwrap();
+        let w = s.world_bbox(&inst).size().x;
+        assert!((w - 3.0).abs() < 1e-9, "instance width {w}");
+        // connectionInfo
+        mel(&mut s, "spaceLocator -n a; spaceLocator -n b; connectAttr a.tx b.ty;").unwrap();
+        assert_eq!(mel(&mut s, "connectionInfo -sfd b.ty;").unwrap().str(), "a.translateX");
+        assert_eq!(mel(&mut s, "connectionInfo -is a.tx;").unwrap().str(), "1");
+        assert!(mel(&mut s, "python \"print 1\";").is_err());
     }
 }

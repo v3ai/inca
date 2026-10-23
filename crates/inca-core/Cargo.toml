@@ -11,6 +11,8 @@ serde.workspace = true
 serde_json.workspace = true
 indexmap.workspace = true
 earcutr = "0.5"
+ttf-parser = "0.25"
+epaint_default_fonts = "0.36"
 tobj = "4"
 stl_io = "0.8"
 gltf = { version = "1.4", features = ["import"] }
