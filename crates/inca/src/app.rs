@@ -614,7 +614,7 @@ impl IncaApp {
 
     pub fn open_path(&mut self, p: &std::path::Path) {
         let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
-        let r = if ext == "inca" { inca_core::io::open_scene(&mut self.s, p).map(|_| vec![]) } else { inca_core::io::import(&mut self.s, p) };
+        let r = if matches!(ext.as_str(), "inca" | "ma" | "mb") { inca_core::io::open_scene(&mut self.s, p).map(|_| vec![]) } else { inca_core::io::import(&mut self.s, p) };
         match r {
             Ok(_) => {
                 self.echo(format!("file -o \"{}\";", p.display()));
@@ -801,7 +801,7 @@ impl eframe::App for IncaApp {
         // files dropped on the window open (.inca) or import (everything else)
         let dropped: Vec<std::path::PathBuf> = ctx.input(|i| i.raw.dropped_files.iter().map(|f| f.path().to_path_buf()).filter(|p| !p.as_os_str().is_empty()).collect());
         for p in dropped {
-            if p.extension().is_some_and(|e| e == "inca") && self.s.nodes.values().all(|n| n.startup()) {
+            if p.extension().is_some_and(|e| e == "inca" || e == "ma") && self.s.nodes.values().all(|n| n.startup()) {
                 self.open_path(&p);
             } else {
                 let _ = self.run_mel("import", &format!("file -i \"{}\";", p.display().to_string().replace('\\', "/")));

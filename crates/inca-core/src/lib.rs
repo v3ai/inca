@@ -22,3 +22,4 @@ pub mod rig;
 pub mod deformers;
 pub mod skin;
 pub mod dynamics;
+pub mod maya;

@@ -8,8 +8,8 @@ use serde_json::{json, Value};
 use std::io::Write;
 use std::path::Path;
 
-pub const IMPORT_EXTS: &[&str] = &["inca", "obj", "stl", "gltf", "glb"];
-pub const EXPORT_EXTS: &[&str] = &["inca", "obj", "stl", "glb"];
+pub const IMPORT_EXTS: &[&str] = &["inca", "ma", "mb", "obj", "stl", "gltf", "glb"];
+pub const EXPORT_EXTS: &[&str] = &["inca", "ma", "obj", "stl", "glb"];
 
 fn ext(p: &Path) -> String {
     p.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase()
@@ -27,6 +27,19 @@ pub fn save_scene(s: &mut Scene, path: &Path) -> Result<(), String> {
 }
 
 pub fn open_scene(s: &mut Scene, path: &Path) -> Result<(), String> {
+    // a Maya scene replaces the current one but keeps no .inca path, so Save asks where to write
+    if matches!(ext(path).as_str(), "ma" | "mb") {
+        if ext(path) == "mb" {
+            return Err(crate::maya::MB_MESSAGE.into());
+        }
+        let txt = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
+        s.reset();
+        crate::maya::import_ma(s, &txt)?;
+        s.modified = false;
+        s.undo_stack.clear();
+        s.redo_stack.clear();
+        return Ok(());
+    }
     let txt = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
     let v: Value = serde_json::from_str(&txt).map_err(|e| e.to_string())?;
     s.load(&v)?;
@@ -44,6 +57,8 @@ pub fn import(s: &mut Scene, path: &Path) -> Result<Vec<Id>, String> {
         "obj" => import_obj(s, path),
         "stl" => import_stl(s, path),
         "gltf" | "glb" => import_gltf(s, path),
+        "ma" => crate::maya::import_ma(s, &std::fs::read_to_string(path).map_err(|e| e.to_string())?),
+        "mb" => Err(crate::maya::MB_MESSAGE.into()),
         e => Err(format!("can't import .{e} files")),
     }
 }
@@ -238,6 +253,7 @@ pub fn export(s: &Scene, path: &Path, sel_only: bool) -> Result<(), String> {
         "obj" => export_obj(s, path, sel_only),
         "stl" => export_stl(s, path, sel_only),
         "glb" => export_glb(s, path, sel_only),
+        "ma" => std::fs::write(path, crate::maya::export_ma(s, sel_only)).map_err(|e| e.to_string()),
         "inca" => {
             let mut data = s.serialize();
             if sel_only {
