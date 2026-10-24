@@ -142,7 +142,7 @@ pub fn common(name: &str) -> Vec<M> {
         "Windows" => vec![
             Dyn("Workspaces"),
             Sep,
-            Sub("General Editors", vec![A("scriptEditor"), A("componentEditor"), A("connectionEditor"), A("hypergraph"), A("shelfEditor"), A("melReference")]),
+            Sub("General Editors", vec![A("scriptEditor"), A("componentEditor"), A("connectionEditor"), A("hypergraph"), A("hypergraphConnections"), A("shelfEditor"), A("melReference")]),
             A("modelingToolkit"),
             Sub("Modeling Editors", vec![A("uvEditor")]),
             Sub("Rendering Editors", vec![A("hypershade"), A("renderView"), A("renderSettings"), A("playblast")]),
@@ -216,7 +216,7 @@ pub fn items(app: &mut IncaApp, ui: &mut egui::Ui, list: &[M]) {
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 2.0;
                         if ui.add(b).clicked() {
-                            app.action(id);
+                            menu_pick(app, ui, id);
                             ui.close();
                         }
                         if crate::icons::button_ex(ui, "optionBox", "Options", false, 16.0, 12.0, true).clicked() {
@@ -228,7 +228,7 @@ pub fn items(app: &mut IncaApp, ui: &mut egui::Ui, list: &[M]) {
                         ui.close();
                     }
                 } else if ui.add(b).clicked() {
-                    app.action(id);
+                    menu_pick(app, ui, id);
                     ui.close();
                 }
             }
@@ -274,6 +274,16 @@ pub fn items(app: &mut IncaApp, ui: &mut egui::Ui, list: &[M]) {
                 });
             }
         }
+    }
+}
+
+/// A menu item click: runs the command, or with Ctrl+Shift adds it to the current shelf (as in Maya).
+fn menu_pick(app: &mut IncaApp, ui: &egui::Ui, id: &str) {
+    let m = ui.input(|i| i.modifiers);
+    if (m.ctrl || m.command) && m.shift {
+        crate::toolbar::add_to_shelf(app, id);
+    } else {
+        app.action(id);
     }
 }
 

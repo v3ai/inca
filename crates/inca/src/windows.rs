@@ -208,6 +208,9 @@ pub fn show(app: &mut IncaApp, ctx: &egui::Context, _frame: &mut eframe::Frame) 
     }
     crate::hotkey_editor::window(app, ctx);
     crate::component_editor::window(app, ctx);
+    crate::toolbar::shelf_editor(app, ctx);
+    crate::hypergraph::window(app, ctx);
+    crate::hypergraph::connection_editor(app, ctx);
     let mut open = app.win.command_list;
     egui::Window::new("MEL Command Reference").open(&mut open).default_size([380.0, 480.0]).show(ctx, |ui| {
         ui.label("Commands available to MEL scripts, the command line and the Script Editor:");
@@ -276,7 +279,11 @@ fn script_editor(app: &mut IncaApp, ui: &mut egui::Ui) {
             let src = app.script_text.trim().to_string();
             if !src.is_empty() {
                 let l: String = src.lines().find(|l| !l.trim_start().starts_with("//")).unwrap_or("script").split(|c: char| !c.is_alphanumeric()).find(|w| !w.is_empty()).unwrap_or("script").chars().take(8).collect();
-                app.custom_shelf.push((l, src));
+                if app.shelves.is_empty() {
+                    app.shelves = crate::toolbar::default_shelves(&[]);
+                }
+                let i = app.shelves.iter().position(|s| s.name == "Custom").unwrap_or(app.shelves.len() - 1);
+                app.shelves[i].items.push(crate::toolbar::ShelfEntry { mel: Some(src), label: Some(l), ..Default::default() });
             }
         }
         if ui.button("Load...").clicked() {

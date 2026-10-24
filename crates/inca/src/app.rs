@@ -118,6 +118,9 @@ pub struct Windows {
     pub assign_material: bool,
     pub help: bool,
     pub component_editor: bool,
+    pub shelf_editor: bool,
+    pub hypergraph: bool,
+    pub connection_editor: bool,
     pub rename: Option<String>,
 }
 
@@ -190,7 +193,9 @@ pub struct IncaApp {
     pub test: Option<TestRun>,
     pub recent: Vec<String>,
     /// user shelf buttons (label, MEL), saved between sessions
-    pub custom_shelf: Vec<(String, String)>,
+    pub shelves: Vec<crate::toolbar::ShelfData>,
+    /// Shelf Editor: shelf and button being edited
+    pub shelf_edit: (usize, Option<usize>),
     /// status line: select whole hierarchies instead of objects
     pub select_hierarchy: bool,
     pub last_comp_mode: CompMode,
@@ -233,6 +238,7 @@ pub struct IncaApp {
     pub hk: crate::hotkey_editor::HkState,
     pub ce: crate::component_editor::CeState,
     pub prefs: crate::prefs::Prefs,
+    pub hg: crate::hypergraph::HgState,
     pub prefs_cat: usize,
     pub viz: crate::anim_extras::AnimViz,
     pub playblast: crate::anim_extras::PlayblastUi,
@@ -338,7 +344,11 @@ impl IncaApp {
             clipboard: None,
             test,
             recent: cc.storage.and_then(|s| eframe::get_value(s, "recent")).unwrap_or_default(),
-            custom_shelf: cc.storage.and_then(|s| eframe::get_value(s, "customShelf")).unwrap_or_default(),
+            shelves: cc.storage.and_then(|s| eframe::get_value(s, "shelves")).unwrap_or_else(|| {
+                let old: Vec<(String, String)> = cc.storage.and_then(|s| eframe::get_value(s, "customShelf")).unwrap_or_default();
+                crate::toolbar::default_shelves(&old)
+            }),
+            shelf_edit: (0, None),
             space_down: None,
             select_hierarchy: false,
             last_comp_mode: CompMode::Vertex,
@@ -373,6 +383,7 @@ impl IncaApp {
             hk: Default::default(),
             ce: Default::default(),
             prefs,
+            hg: Default::default(),
             prefs_cat: 0,
             viz: Default::default(),
             playblast: Default::default(),
@@ -752,7 +763,7 @@ impl IncaApp {
 impl eframe::App for IncaApp {
     fn save(&mut self, storage: &mut dyn eframe::Storage) {
         eframe::set_value(storage, "recent", &self.recent);
-        eframe::set_value(storage, "customShelf", &self.custom_shelf);
+        eframe::set_value(storage, "shelves", &self.shelves);
         eframe::set_value(storage, "workspace", &self.workspace);
         eframe::set_value(storage, "bgMode", &self.bg_mode);
         eframe::set_value(storage, "outliner", &self.panels.ol);

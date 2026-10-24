@@ -214,6 +214,10 @@ pub static ACTIONS: &[(&str, &str, &str)] = &[
     ("hotkeyList", "Keyboard Shortcuts", ""),
     ("hotkeyEditor", "Hotkey Editor...", ""),
     ("componentEditor", "Component Editor", ""),
+    ("shelfEditor", "Shelf Editor...", ""),
+    ("hypergraph", "Hypergraph: Hierarchy", ""),
+    ("hypergraphConnections", "Hypergraph: Connections", ""),
+    ("connectionEditor", "Connection Editor", ""),
     ("modelingToolkit", "Modeling Toolkit", ""),
     ("melReference", "MEL Command Reference", ""),
     ("about", "About Inca", ""),
@@ -924,6 +928,20 @@ pub fn builtin(app: &mut IncaApp, id: &str) {
         "preferences" => app.win.prefs = !app.win.prefs,
         "hotkeyList" | "hotkeyEditor" => app.win.hotkeys = !app.win.hotkeys,
         "componentEditor" => app.win.component_editor = !app.win.component_editor,
+        "shelfEditor" => app.win.shelf_editor = !app.win.shelf_editor,
+        "hypergraph" => {
+            app.win.hypergraph = true;
+            app.hg.connections = false;
+        }
+        "hypergraphConnections" => {
+            app.win.hypergraph = true;
+            app.hg.connections = true;
+            app.hg.io = app.s.sel.clone();
+        }
+        "connectionEditor" => {
+            app.win.connection_editor = true;
+            crate::hypergraph::load_connection_editor(app);
+        }
         "modelingToolkit" => {
             app.show_right = true;
             app.right_tab = RightTab::ModelingToolkit;
