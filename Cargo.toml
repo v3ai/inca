@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/inca-core", "crates/inca"]
 
 [workspace.package]
-version = "0.2.0"
+version = "2.1.0"
 edition = "2021"
 license = "MIT"
 
