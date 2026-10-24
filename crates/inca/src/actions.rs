@@ -589,7 +589,7 @@ pub fn builtin(app: &mut IncaApp, id: &str) {
             app.smooth_cache.clear();
         }
         "openScene" => {
-            if let Some(p) = rfd::FileDialog::new().add_filter("Scenes", &["inca", "ma", "mb"]).add_filter("Inca scene", &["inca"]).add_filter("Maya ASCII", &["ma"]).set_directory(crate::project::default_dir(app, "scenes")).pick_file() {
+            if let Some(p) = rfd::FileDialog::new().add_filter("Scenes", &["inca", "ma", "mb", "fbx"]).add_filter("Inca scene", &["inca"]).add_filter("Maya ASCII", &["ma"]).add_filter("FBX", &["fbx"]).set_directory(crate::project::default_dir(app, "scenes")).pick_file() {
                 app.open_path(&p);
             }
         }

@@ -614,7 +614,7 @@ impl IncaApp {
 
     pub fn open_path(&mut self, p: &std::path::Path) {
         let ext = p.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
-        let r = if matches!(ext.as_str(), "inca" | "ma" | "mb") { inca_core::io::open_scene(&mut self.s, p).map(|_| vec![]) } else { inca_core::io::import(&mut self.s, p) };
+        let r = if matches!(ext.as_str(), "inca" | "ma" | "mb" | "fbx") { inca_core::io::open_scene(&mut self.s, p).map(|_| vec![]) } else { inca_core::io::import(&mut self.s, p) };
         match r {
             Ok(_) => {
                 self.echo(format!("file -o \"{}\";", p.display()));

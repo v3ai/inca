@@ -747,7 +747,7 @@ pub fn export_ma(s: &Scene, sel_only: bool) -> String {
         let shape = nd.shape_name.clone().unwrap_or(format!("{}Shape", nd.name));
         match &nd.shape {
             Shape::Mesh(m) => {
-                write_mesh(&mut o, &shape, &nd.name, &m.mesh);
+                write_mesh(&mut o, &shape, &nd.name, crate::skin::bind_mesh(m));
                 mat_users.entry(m.material.clone()).or_default().push(shape.clone());
                 if let Some(h) = m.history.iter().find(|h| h.ty == "skinCluster") {
                     skins.push((nd.name.clone(), shape.clone(), h.params.clone()));

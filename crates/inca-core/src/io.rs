@@ -8,8 +8,8 @@ use serde_json::{json, Value};
 use std::io::Write;
 use std::path::Path;
 
-pub const IMPORT_EXTS: &[&str] = &["inca", "ma", "mb", "obj", "stl", "gltf", "glb"];
-pub const EXPORT_EXTS: &[&str] = &["inca", "ma", "obj", "stl", "glb"];
+pub const IMPORT_EXTS: &[&str] = &["inca", "ma", "mb", "fbx", "obj", "stl", "gltf", "glb"];
+pub const EXPORT_EXTS: &[&str] = &["inca", "ma", "fbx", "obj", "stl", "glb"];
 
 fn ext(p: &Path) -> String {
     p.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase()
@@ -27,14 +27,18 @@ pub fn save_scene(s: &mut Scene, path: &Path) -> Result<(), String> {
 }
 
 pub fn open_scene(s: &mut Scene, path: &Path) -> Result<(), String> {
-    // a Maya scene replaces the current one but keeps no .inca path, so Save asks where to write
-    if matches!(ext(path).as_str(), "ma" | "mb") {
+    // a Maya or FBX scene replaces the current one but keeps no .inca path, so Save asks where to write
+    if matches!(ext(path).as_str(), "ma" | "mb" | "fbx") {
         if ext(path) == "mb" {
             return Err(crate::maya::MB_MESSAGE.into());
         }
-        let txt = std::fs::read_to_string(path).map_err(|e| e.to_string())?;
+        let data = std::fs::read(path).map_err(|e| e.to_string())?;
         s.reset();
-        crate::maya::import_ma(s, &txt)?;
+        if ext(path) == "fbx" {
+            crate::fbx::import_fbx(s, &data, path.parent(), &stem(path))?;
+        } else {
+            crate::maya::import_ma(s, &String::from_utf8_lossy(&data))?;
+        }
         s.modified = false;
         s.undo_stack.clear();
         s.redo_stack.clear();
@@ -59,6 +63,7 @@ pub fn import(s: &mut Scene, path: &Path) -> Result<Vec<Id>, String> {
         "gltf" | "glb" => import_gltf(s, path),
         "ma" => crate::maya::import_ma(s, &std::fs::read_to_string(path).map_err(|e| e.to_string())?),
         "mb" => Err(crate::maya::MB_MESSAGE.into()),
+        "fbx" => crate::fbx::import_fbx(s, &std::fs::read(path).map_err(|e| e.to_string())?, path.parent(), &stem(path)),
         e => Err(format!("can't import .{e} files")),
     }
 }
@@ -254,6 +259,7 @@ pub fn export(s: &Scene, path: &Path, sel_only: bool) -> Result<(), String> {
         "stl" => export_stl(s, path, sel_only),
         "glb" => export_glb(s, path, sel_only),
         "ma" => std::fs::write(path, crate::maya::export_ma(s, sel_only)).map_err(|e| e.to_string()),
+        "fbx" => std::fs::write(path, crate::fbx::export_fbx(s, sel_only)).map_err(|e| e.to_string()),
         "inca" => {
             let mut data = s.serialize();
             if sel_only {

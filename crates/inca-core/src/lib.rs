@@ -23,3 +23,4 @@ pub mod deformers;
 pub mod skin;
 pub mod dynamics;
 pub mod maya;
+pub mod fbx;

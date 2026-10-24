@@ -55,6 +55,14 @@ pub fn bind(s: &Scene, mesh: &str, joints: &[Id], max_influences: usize) -> Para
     p
 }
 
+/// The mesh a skinCluster deforms (the history output before it), or the shape's mesh.
+pub fn bind_mesh(m: &crate::scene::MeshShape) -> &PolyMesh {
+    match m.history.iter().position(|h| h.ty == "skinCluster") {
+        Some(k) if k > 0 => m.history[k - 1].out.as_ref().unwrap_or(&m.mesh),
+        _ => &m.mesh,
+    }
+}
+
 fn mat(v: &Value) -> Option<DMat4> {
     let a: Vec<f64> = v.as_array()?.iter().filter_map(|x| x.as_f64()).collect();
     (a.len() == 16).then(|| DMat4::from_cols_slice(&a))
