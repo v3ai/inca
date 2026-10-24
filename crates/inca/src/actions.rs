@@ -132,6 +132,7 @@ pub static ACTIONS: &[(&str, &str, &str)] = &[
     ("vertexMode", "Vertex", "F9"),
     ("edgeMode", "Edge", "F10"),
     ("faceMode", "Face", "F11"),
+    ("uvMode", "UV", "F12"),
     ("growSelection", "Grow", ">"),
     ("shrinkSelection", "Shrink", "<"),
     ("selectEdgeLoop", "Select Edge Loop", ""),
@@ -343,6 +344,20 @@ pub fn label(id: &str) -> String {
 /// Does the Rust app implement this action (menus / shelves dim the rest)?
 pub fn available(id: &str) -> bool {
     ACTIONS.iter().any(|a| a.0 == id) || GEN_INFO.iter().any(|g| g.ty == id) || LIGHT_TYPES.iter().any(|l| l.0 == id)
+}
+
+/// Whether G (Repeat Last) should repeat this command: modeling commands and tools do; tool
+/// completion, the transform tools, selection, view, playback, files and windows don't.
+pub fn repeatable(id: &str) -> bool {
+    const NO: &[&str] = &[
+        "repeatLast", "undo", "redo", "finishTool", "toolUndoPoint", "cancelTool", "selectTool", "moveTool", "rotateTool", "scaleTool", "lastToolUsed", "lassoTool", "paintSelectTool",
+        "objectMode", "vertexMode", "edgeMode", "faceMode", "uvMode", "componentTypeCycle", "softSelect", "pivotEdit", "manipBigger", "manipSmaller", "copy", "paste", "cut",
+        "newScene", "openScene", "saveScene", "saveSceneAs", "incrementAndSave", "quit", "isolateSelect", "playToggle", "playBackwards", "stopPlayback", "nextFrame", "prevFrame",
+        "nextKey", "prevKey", "goToStart", "goToEnd", "attributeEditor", "channelBox", "toolSettings", "modelingToolkit", "outlinerWindow", "cycleBackground", "invertSelection",
+        "growSelection", "shrinkSelection", "deselectAll", "selectAll", "selectHierarchy", "hideSelection", "showSelection", "showLastHidden", "hideUnselected",
+    ];
+    const NO_PREFIX: &[&str] = &["frame", "toggle", "shade", "layout", "menuSet", "symmetry", "smoothO", "smoothC", "hud", "select", "to", "show", "snap"];
+    !NO.contains(&id) && !NO_PREFIX.iter().any(|p| id.starts_with(p) && id[p.len()..].starts_with(|c: char| c.is_uppercase())) && !matches!(id, "graphEditor" | "dopeSheet" | "hypershade" | "renderView" | "renderSettings" | "scriptEditor" | "uvEditor" | "preferences" | "hotkeyEditor" | "hotkeyList" | "shelfEditor" | "componentEditor" | "connectionEditor" | "hypergraph" | "hypergraphConnections" | "playblast" | "projectWindow")
 }
 
 pub fn hotkey_label(id: &str) -> &'static str {
@@ -786,6 +801,12 @@ pub fn builtin(app: &mut IncaApp, id: &str) {
         "vertexMode" => app.set_comp_mode(Some(CompMode::Vertex)),
         "edgeMode" => app.set_comp_mode(Some(CompMode::Edge)),
         "faceMode" => app.set_comp_mode(Some(CompMode::Face)),
+        "uvMode" => {
+            app.set_comp_mode(Some(CompMode::Vertex));
+            app.uv_mode = true;
+            app.uv_editor.open = true;
+            app.echo("selectType -puv 1;");
+        }
         "growSelection" => {
             selection::grow(&mut app.s, false);
             app.echo("GrowPolygonSelectionRegion;");
@@ -1142,6 +1163,7 @@ pub fn hotkey(key: Key, m: Modifiers, app: &IncaApp) -> Option<&'static str> {
         (Key::F9, ..) => "vertexMode",
         (Key::F10, ..) => "edgeMode",
         (Key::F11, ..) => "faceMode",
+        (Key::F12, ..) => "uvMode",
         (Key::V, false, false, true) => "playToggle",
         (Key::V, false, true, true) => "goToStart",
         (Key::Period, false, false, true) => "nextFrame",

@@ -47,11 +47,16 @@ pub struct UvEditor {
     pending: Option<(DVec2, DVec2)>,
     /// the window's rect last frame (scene hotkeys stay out of it)
     win_rect: Option<Rect>,
+    /// show the mesh's colour texture behind the UVs (Image > Display Image)
+    image: bool,
+    image_tex: Option<(u64, egui::TextureHandle)>,
+    /// UV mode (F12): last synced component selection
+    synced: u64,
 }
 
 impl Default for UvEditor {
     fn default() -> Self {
-        UvEditor { open: false, center: DVec2::splat(0.5), scale: 400.0, sel: HashMap::new(), tool: UvTool::Move, grid: true, checker: false, shade: false, points: true, drag: None, framed: false, pending: None, win_rect: None }
+        UvEditor { open: false, center: DVec2::splat(0.5), scale: 400.0, sel: HashMap::new(), tool: UvTool::Move, grid: true, checker: false, shade: false, points: true, drag: None, framed: false, pending: None, win_rect: None, image: true, image_tex: None, synced: 0 }
     }
 }
 
@@ -231,6 +236,19 @@ pub fn window(app: &mut IncaApp, ctx: &egui::Context) {
     if !app.uv_editor.open {
         return;
     }
+    // UV mode (F12): the viewport's picks select the matching UVs here
+    if app.uv_mode {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        let mut keys: Vec<String> = app.s.comp.iter().map(|(k, v)| format!("{k}{v:?}")).collect();
+        keys.sort();
+        keys.hash(&mut h);
+        let sig = h.finish();
+        if sig != app.uv_editor.synced {
+            app.uv_editor.synced = sig;
+            from_scene(app);
+        }
+    }
     let mut open = true;
     let shown = egui::Window::new("UV Editor").open(&mut open).default_size([760.0, 620.0]).show(ctx, |ui| {
         menus(app, ui);
@@ -322,6 +340,7 @@ fn menus(app: &mut IncaApp, ui: &mut egui::Ui) {
             let e = &mut app.uv_editor;
             ui.checkbox(&mut e.grid, "Grid");
             ui.checkbox(&mut e.checker, "Checker Map");
+            ui.checkbox(&mut e.image, "Display Image");
             ui.checkbox(&mut e.shade, "Shade UVs");
             ui.checkbox(&mut e.points, "UV Points");
         });
@@ -409,6 +428,37 @@ fn nice_step(x: f64) -> f64 {
     10.0 * p
 }
 
+/// The texture on the colour slot of the first shown mesh's material (cached until it changes).
+fn image_texture(app: &mut IncaApp, ctx: &egui::Context) -> Option<egui::TextureId> {
+    let id = targets(app).into_iter().next()?;
+    let mid = app.s.node(&id)?.mesh()?.material.clone();
+    let m = app.s.mats.get(&mid)?;
+    let tid = m.maps.get(m.color_attr())?.as_str()?;
+    let t = app.s.texs.get(tid)?;
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    (tid, serde_json::to_string(&t.attrs).unwrap_or_default()).hash(&mut h);
+    let key = h.finish();
+    if let Some((k, tex)) = &app.uv_editor.image_tex {
+        if *k == key {
+            return Some(tex.id());
+        }
+    }
+    let size = 512usize;
+    let px = match inca_core::materials::texture_swatch(t, size) {
+        Some(p) => p,
+        None => {
+            let path = t.attrs.get("fileTextureName").and_then(|v| v.as_str()).unwrap_or("");
+            let img = image::open(path).ok()?.to_rgba8();
+            image::imageops::resize(&img, size as u32, size as u32, image::imageops::FilterType::Triangle).into_raw()
+        }
+    };
+    let tex = ctx.load_texture("uvImage", egui::ColorImage::from_rgba_unmultiplied([size, size], &px), egui::TextureOptions::LINEAR);
+    let tid = tex.id();
+    app.uv_editor.image_tex = Some((key, tex));
+    Some(tid)
+}
+
 fn canvas(app: &mut IncaApp, ui: &mut egui::Ui, rect: Rect, resp: &egui::Response) {
     if let Some(b) = app.uv_editor.pending.take() {
         app.uv_editor.frame(rect, Some(b));
@@ -419,6 +469,13 @@ fn canvas(app: &mut IncaApp, ui: &mut egui::Ui, rect: Rect, resp: &egui::Respons
     let (t0, t1) = (e.to_screen(rect, DVec2::new(0.0, 1.0)), e.to_screen(rect, DVec2::new(1.0, 0.0)));
     let tile = Rect::from_two_pos(t0, t1);
     p.rect_filled(tile, 0.0, Color32::from_gray(0x3c));
+    // the colour texture of the first mesh's material behind the 0-1 tile
+    if e.image && !e.checker {
+        if let Some(t) = image_texture(app, ui.ctx()) {
+            p.image(t, tile, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::from_white_alpha(200));
+        }
+    }
+    let e = &app.uv_editor;
     if e.checker {
         let n = 8;
         let c = tile.width() / n as f32;

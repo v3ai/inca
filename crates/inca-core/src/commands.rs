@@ -2017,6 +2017,24 @@ pub fn run(s: &mut Scene, h: &mut dyn Host, name: &str, raw: &[Val]) -> Result<V
             };
             let (src, sa) = parse(&st[0])?;
             let (dst, da) = parse(&st[1])?;
+            // a texture's output into a material attribute is a texture map (what the shaders read)
+            if s.texs.contains_key(&src) && s.mats.contains_key(&dst) && (sa == "outColor" || sa == "outAlpha") {
+                let m = s.mats.get_mut(&dst).unwrap();
+                match name {
+                    "connectAttr" => {
+                        if m.maps.contains_key(&da) && !a.has(&["f", "force"]) {
+                            return Err(format!("'{}' is already connected.", st[1]));
+                        }
+                        m.maps.insert(da.clone(), json!(src));
+                    }
+                    "disconnectAttr" => {
+                        m.maps.remove(&da);
+                    }
+                    _ => return Ok(Val::Int((m.maps.get(&da).and_then(|v| v.as_str()) == Some(src.as_str())) as i64)),
+                }
+                s.touch();
+                return Ok(Val::None);
+            }
             let c = Conn { src, src_attr: sa, dst, dst_attr: da };
             match name {
                 "connectAttr" => {

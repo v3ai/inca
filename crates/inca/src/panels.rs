@@ -9,6 +9,15 @@ use inca_core::primitives::ChanKind;
 use inca_core::scene::{NodeRef, SelMode, Shape, CHANNELS};
 use serde_json::{json, Value};
 
+#[derive(Clone)]
+pub struct CbPick {
+    pub targets: Vec<NodeRef>,
+    pub attr: String,
+    pub int: bool,
+    pub min: Option<f64>,
+    pub max: Option<f64>,
+}
+
 #[derive(Default)]
 pub struct PanelState {
     pub outliner_filter: String,
@@ -22,10 +31,12 @@ pub struct PanelState {
     pub editing: bool,
     /// Channel Box channel names picked for the MMB virtual slider (and whether it is armed)
     pub cb_sel: Vec<String>,
+    /// the picked channels themselves: rows' targets, attribute, whole-number?, range
+    pub cb_pick: Vec<CbPick>,
     pub cb_armed: bool,
     cb_last: Option<String>,
     /// virtual slider drag: (target, attribute, start value, int?)
-    pub cb_drag: Option<Vec<(NodeRef, String, f64, bool)>>,
+    pub cb_drag: Option<Vec<(NodeRef, String, f64, bool, Option<f64>, Option<f64>)>>,
     cb_drag_x: f32,
     pub ae_tab: usize,
     pub ol: OutlinerOpts,
@@ -486,7 +497,7 @@ fn modeling_toolkit(app: &mut IncaApp, ui: &mut egui::Ui) {
     use inca_core::scene::CompMode;
     ui.horizontal(|ui| {
         let cm = app.s.comp_mode;
-        for (id, icon, tip, on) in [("objectMode", "selObject", "Object selection", cm.is_none()), ("vertexMode", "compVertex", "Vertex selection (F9)", cm == Some(CompMode::Vertex)), ("edgeMode", "compEdge", "Edge selection (F10)", cm == Some(CompMode::Edge)), ("faceMode", "compFace", "Face selection (F11)", cm == Some(CompMode::Face))] {
+        for (id, icon, tip, on) in [("objectMode", "selObject", "Object selection", cm.is_none()), ("vertexMode", "compVertex", "Vertex selection (F9)", cm == Some(CompMode::Vertex) && !app.uv_mode), ("edgeMode", "compEdge", "Edge selection (F10)", cm == Some(CompMode::Edge)), ("faceMode", "compFace", "Face selection (F11)", cm == Some(CompMode::Face) && !app.uv_mode), ("uvMode", "compUV", "UV selection (F12)", app.uv_mode)] {
             if crate::icons::button(ui, icon, tip, on, 24.0).clicked() {
                 if id == "objectMode" {
                     if cm.is_some() {
@@ -656,14 +667,14 @@ fn cb_order(s: &inca_core::scene::Scene, first: &NodeRef) -> Vec<String> {
 
 /// MMB drag in a viewport with channels picked in the Channel Box: the virtual slider.
 pub fn virtual_slider(app: &mut IncaApp, resp: &egui::Response) -> bool {
-    if resp.drag_started_by(egui::PointerButton::Middle) && app.panels.cb_armed && !app.panels.cb_sel.is_empty() && !app.s.sel.is_empty() {
+    if resp.drag_started_by(egui::PointerButton::Middle) && app.panels.cb_armed && !app.panels.cb_pick.is_empty() {
+        // every picked channel, on every object its row edits (history inputs included); whole-number
+        // channels step in whole numbers within their range
         let mut list = vec![];
-        for id in app.s.sel.clone() {
-            let r = NodeRef::Dag(id.clone());
-            for a in app.panels.cb_sel.clone() {
-                if let Some(v) = app.s.get_attr(&r, &a) {
-                    let int = v.is_i64() || v.is_u64() || v.is_boolean();
-                    list.push((r.clone(), a.clone(), v.as_f64().unwrap_or(v.as_bool().map(|b| b as i32 as f64).unwrap_or(0.0)), int));
+        for p in app.panels.cb_pick.clone() {
+            for r in &p.targets {
+                if let Some(v) = app.s.get_attr(r, &p.attr) {
+                    list.push((r.clone(), p.attr.clone(), v.as_f64().unwrap_or(v.as_bool().map(|b| b as i32 as f64).unwrap_or(0.0)), p.int, p.min, p.max));
                 }
             }
         }
@@ -678,14 +689,21 @@ pub fn virtual_slider(app: &mut IncaApp, resp: &egui::Response) -> bool {
         let m = resp.ctx.input(|i| i.modifiers);
         app.panels.cb_drag_x += resp.drag_delta().x;
         let d = app.panels.cb_drag_x as f64 * 0.1 * if m.ctrl || m.command { 0.1 } else if m.shift { 10.0 } else { 1.0 };
-        for (r, a, start, int) in &list {
-            let v = if *int { json!((start + d).round() as i64) } else { json!(start + d) };
+        for (r, a, start, int, lo, hi) in &list {
+            let mut x = start + d;
+            if let Some(lo) = lo {
+                x = x.max(*lo);
+            }
+            if let Some(hi) = hi {
+                x = x.min(*hi);
+            }
+            let v = if *int { json!(x.round() as i64) } else { json!(x) };
             app.s.set_attr(r, a, v);
         }
     }
     if resp.drag_stopped() || !resp.ctx.input(|i| i.pointer.middle_down()) {
         app.panels.cb_drag = None;
-        let names: Vec<String> = list.iter().map(|(r, a, _, _)| format!("{}.{a}", app.s.ref_name(r))).collect();
+        let names: Vec<String> = list.iter().map(|(r, a, ..)| format!("{}.{a}", app.s.ref_name(r))).collect();
         app.echo(format!("// virtual slider: {}", names.join(" ")));
     }
     true
@@ -742,7 +760,9 @@ fn channel_row(app: &mut IncaApp, ui: &mut egui::Ui, targets: &[NodeRef], attr: 
     ui.horizontal(|ui| {
         let lw = 120.0;
         let (rect, lresp) = ui.allocate_exact_size(egui::vec2(lw, 18.0), egui::Sense::click());
-        let picked = app.panels.cb_sel.iter().any(|c| c == attr);
+        let picked = app.panels.cb_pick.iter().any(|p| p.attr == attr && p.targets.first() == Some(first));
+        let int = matches!(kind, ChanKind::Int | ChanKind::Bool | ChanKind::Enum(_));
+        let me = CbPick { targets: targets.to_vec(), attr: attr.to_string(), int, min, max };
         if picked {
             ui.painter().rect_filled(rect, 2.0, theme::HI.gamma_multiply(0.6));
         }
@@ -754,8 +774,10 @@ fn channel_row(app: &mut IncaApp, ui: &mut egui::Ui, targets: &[NodeRef], attr: 
             if m.ctrl || m.command {
                 if picked {
                     p.cb_sel.retain(|c| c != attr);
+                    p.cb_pick.retain(|q| !(q.attr == attr && q.targets.first() == Some(first)));
                 } else {
                     p.cb_sel.push(attr.to_string());
+                    p.cb_pick.push(me.clone());
                 }
             } else if m.shift && p.cb_last.is_some() {
                 let all = cb_order(&app.s, first);
@@ -764,11 +786,13 @@ fn channel_row(app: &mut IncaApp, ui: &mut egui::Ui, targets: &[NodeRef], attr: 
                     for c in &all[a.min(b)..=a.max(b)] {
                         if !app.panels.cb_sel.contains(c) {
                             app.panels.cb_sel.push(c.clone());
+                            app.panels.cb_pick.push(CbPick { targets: targets.to_vec(), attr: c.clone(), int: c == "visibility", min: None, max: None });
                         }
                     }
                 }
             } else {
                 p.cb_sel = vec![attr.to_string()];
+                p.cb_pick = vec![me.clone()];
             }
             app.panels.cb_last = Some(attr.to_string());
             app.panels.cb_armed = true;
@@ -871,6 +895,15 @@ fn channel_row(app: &mut IncaApp, ui: &mut egui::Ui, targets: &[NodeRef], attr: 
                             app.s.set_attr(t, attr, if kind == ChanKind::Int { json!(nv.round() as i64) } else { json!(nv) });
                         }
                         app.echo(format!("setAttr -r ... {attr} {op}= {}", fmt_num(a)));
+                    } else if r.changed() && !r.dragged() && picked && app.panels.cb_pick.len() > 1 {
+                        // a value typed into one of several picked channels goes into all of them
+                        app.s.checkpoint(&format!("setAttr {attr}"));
+                        for p in app.panels.cb_pick.clone() {
+                            for t in &p.targets {
+                                app.s.set_attr(t, &p.attr, if p.int { json!(x.round() as i64) } else { json!(x) });
+                            }
+                        }
+                        app.echo(format!("// set {} picked channels to {}", app.panels.cb_pick.len(), fmt_num(x)));
                     } else if r.changed() || stepped {
                         let v = if kind == ChanKind::Int { json!(x.round() as i64) } else { json!(x) };
                         if stepped {

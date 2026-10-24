@@ -808,6 +808,32 @@ pub fn edge_ring(pm: &PolyMesh, topo: &Topo, a: u32, b: u32) -> Vec<(u32, u32)> 
 pub fn edge_loop(_pm: &PolyMesh, topo: &Topo, a: u32, b: u32) -> Vec<(u32, u32)> {
     let mut out = vec![epair(a, b)];
     let mut seen: HashSet<(u32, u32)> = out.iter().copied().collect();
+    // a border edge: follow the connected border (an open rim's vertices have three edges)
+    if topo.edge(a, b).is_some_and(|e| topo.edge_faces[e].len() == 1) {
+        for (from, to) in [(a, b), (b, a)] {
+            let (mut p, mut c) = (from, to);
+            loop {
+                let borders: Vec<u32> = topo.vert_edges[c as usize]
+                    .iter()
+                    .filter(|&&e| topo.edge_faces[e].len() == 1)
+                    .map(|&e| {
+                        let (x, y) = topo.edges[e];
+                        if x == c { y } else { x }
+                    })
+                    .filter(|&n| n != p)
+                    .collect();
+                // stop where the border branches (two openings touching) or ends
+                let [n] = borders[..] else { break };
+                if !seen.insert(epair(c, n)) {
+                    break;
+                }
+                out.push(epair(c, n));
+                p = c;
+                c = n;
+            }
+        }
+        return out;
+    }
     for (from, to) in [(a, b), (b, a)] {
         let (mut p, mut c) = (from, to);
         loop {
@@ -1789,5 +1815,24 @@ mod tests {
         let inner = topo.edges.iter().enumerate().find(|(e, _)| topo.edge_faces[*e].len() == 2).unwrap().1;
         let r = op_delete_edges(&p, &[*inner]);
         assert_eq!(r.f.len(), 1);
+    }
+}
+
+#[cfg(test)]
+mod border_loop_tests {
+    use super::*;
+
+    #[test]
+    fn border_edge_selects_the_whole_rim() {
+        // issue #27: an open cylinder's rim
+        let mut pm = crate::primitives::generate("polyCylinder", &Default::default()).unwrap();
+        let top = (0..pm.f.len()).find(|&f| pm.f[f].len() > 4 && pm.face_normal(f).y > 0.5).unwrap();
+        pm.f.remove(top);
+        let topo = pm.topo();
+        let e = (0..topo.edges.len()).find(|&e| topo.edge_faces[e].len() == 1).unwrap();
+        let (a, b) = topo.edges[e];
+        let l = edge_loop(&pm, &topo, a, b);
+        assert_eq!(l.len(), 20, "the full 20-edge rim");
+        assert!(l.iter().all(|&(x, y)| topo.edge(x, y).is_some_and(|e| topo.edge_faces[e].len() == 1)));
     }
 }

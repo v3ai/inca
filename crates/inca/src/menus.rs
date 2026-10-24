@@ -93,6 +93,7 @@ pub fn common(name: &str) -> Vec<M> {
             A("vertexMode"),
             A("edgeMode"),
             A("faceMode"),
+            A("uvMode"),
             Sep,
             A("selectEdgeLoop"),
             A("selectEdgeRing"),

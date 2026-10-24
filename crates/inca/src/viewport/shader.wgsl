@@ -145,7 +145,9 @@ fn shade(n_in: vec3<f32>, world: vec3<f32>, base: vec3<f32>, front: bool) -> vec
 }
 
 @fragment
-fn fs_mesh(i: MeshOut, @builtin(front_facing) front: bool) -> @location(0) vec4<f32> {
+fn fs_mesh(i: MeshOut, @builtin(front_facing) ff: bool) -> @location(0) vec4<f32> {
+    // the projection flips screen handedness: our counter-clockwise faces arrive as back-facing
+    let front = !ff;
     if (frame.mode.w > 0.5 && !front) {
         discard;
     }

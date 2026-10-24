@@ -233,6 +233,10 @@ pub struct IncaApp {
     pub rig_tool: crate::rig_tools::RigToolState,
     /// Create > Type text
     pub type_text: String,
+    /// where the In-View Editor was dragged to (offset from its default corner)
+    pub inview_offset: egui::Vec2,
+    /// UV component mode (F12): vertex picking that selects UVs in the UV Editor
+    pub uv_mode: bool,
     /// user hotkeys (Hotkey Editor)
     pub keymap: crate::hotkey_editor::Keymap,
     pub hk: crate::hotkey_editor::HkState,
@@ -379,6 +383,8 @@ impl IncaApp {
             mesh_tool: Default::default(),
             rig_tool: crate::rig_tools::RigToolState::new(),
             type_text: "Inca".into(),
+            inview_offset: egui::Vec2::ZERO,
+            uv_mode: false,
             keymap: cc.storage.and_then(|s| eframe::get_value(s, "keymap")).unwrap_or_default(),
             hk: Default::default(),
             ce: Default::default(),
@@ -571,6 +577,7 @@ impl IncaApp {
     }
 
     pub fn set_comp_mode(&mut self, m: Option<CompMode>) {
+        self.uv_mode = false;
         if let Some(c) = m {
             self.last_comp_mode = c;
         }
@@ -635,7 +642,7 @@ impl IncaApp {
     /// Run a named action (menus, shelves, hotkeys all go through here).
     pub fn action(&mut self, id: &str) {
         self.hotbox = None;
-        if !matches!(id, "repeatLast" | "undo" | "redo") {
+        if crate::actions::repeatable(id) {
             self.last_action = Some(id.to_string());
         }
         if let Some(mel) = crate::actions::mel_for(self, id) {

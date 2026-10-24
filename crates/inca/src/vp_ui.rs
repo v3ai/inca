@@ -22,11 +22,17 @@ pub struct VpState {
     pub snap_angle: f64,
     /// points placed by the curve / polygon creation tools
     pub tool_pts: Vec<DVec3>,
+    /// the manipulator's active handle (Maya: the last one dragged, Ctrl+click picks one); MMB drags it from anywhere
+    pub active_handle: Option<GizmoMode>,
+    /// an MMB manipulator drag is in progress
+    pub mmb: bool,
+    /// the handle under the cursor when the button went down
+    pub press_handle: Option<GizmoMode>,
 }
 
 impl Default for VpState {
     fn default() -> Self {
-        VpState { gizmos: (0..4).map(|_| Gizmo::default()).collect(), drag: None, marquee: None, stroke: vec![], nav: None, snap_step: 1.0, snap_angle: 15.0, tool_pts: vec![] }
+        VpState { gizmos: (0..4).map(|_| Gizmo::default()).collect(), drag: None, marquee: None, stroke: vec![], nav: None, snap_step: 1.0, snap_angle: 15.0, tool_pts: vec![], active_handle: None, mmb: false, press_handle: None }
     }
 }
 
@@ -42,6 +48,10 @@ pub struct GizmoDrag {
     /// per comps entry: soft selection weights (empty = all 1) and symmetry partner map
     pub weights: Vec<Vec<f64>>,
     pub mirror: Vec<Option<Vec<i64>>>,
+    /// right after an Extrude: the Move drag drives that node's translate (mesh, history index, start translate)
+    pub extrude: Option<(String, usize, DVec3)>,
+    /// the handle being dragged
+    pub handle: Option<GizmoMode>,
 }
 
 impl VpState {
@@ -600,6 +610,11 @@ fn interact(app: &mut IncaApp, ui: &mut egui::Ui, idx: usize, resp: &egui::Respo
             click_select(app, idx, cv, p, sel_mode(mods));
         }
     }
+    // double-click an edge: its loop (on an open border, the whole rim)
+    if resp.double_clicked() && app.s.comp_mode == Some(inca_core::scene::CompMode::Edge) {
+        inca_core::selection::loops(&mut app.s, false);
+        app.echo("SelectEdgeLoopSp;");
+    }
 
 }
 
@@ -737,8 +752,53 @@ fn region_select(app: &mut IncaApp, idx: usize, cv: &CamView, region: &dyn Fn(Po
 
 
 /// Move / rotate / scale manipulator. Returns true while it owns the mouse.
+/// Transform channels picked in the Channel Box (all translate, all rotate or all scale): the
+/// manipulator shows just those axes, as in Maya.
+fn channel_modes(app: &IncaApp) -> Option<(Tool, EnumSet<GizmoMode>)> {
+    if !app.panels.cb_armed || app.panels.cb_sel.is_empty() || app.s.comp_mode.is_some() {
+        return None;
+    }
+    let mut kind = None;
+    let mut modes = EnumSet::new();
+    for c in &app.panels.cb_sel {
+        let (k, axis) = c.split_at(c.len().saturating_sub(1));
+        let (tool, m) = match (k, axis) {
+            ("translate", "X") => (Tool::Move, GizmoMode::TranslateX),
+            ("translate", "Y") => (Tool::Move, GizmoMode::TranslateY),
+            ("translate", "Z") => (Tool::Move, GizmoMode::TranslateZ),
+            ("rotate", "X") => (Tool::Rotate, GizmoMode::RotateX),
+            ("rotate", "Y") => (Tool::Rotate, GizmoMode::RotateY),
+            ("rotate", "Z") => (Tool::Rotate, GizmoMode::RotateZ),
+            ("scale", "X") => (Tool::Scale, GizmoMode::ScaleX),
+            ("scale", "Y") => (Tool::Scale, GizmoMode::ScaleY),
+            ("scale", "Z") => (Tool::Scale, GizmoMode::ScaleZ),
+            _ => return None,
+        };
+        if kind.is_some_and(|t| t != tool) {
+            return None;
+        }
+        kind = Some(tool);
+        modes.insert(m);
+    }
+    kind.map(|k| (k, modes))
+}
+
+/// The manipulator handle under the cursor (probing each handle on its own).
+fn handle_at(config: &GizmoConfig, cursor: Pos2) -> Option<GizmoMode> {
+    // planes / centre last: an axis drawn over a plane wins
+    let mut order: Vec<GizmoMode> = config.modes.iter().collect();
+    order.sort_by_key(|m| (m.axes().len(), matches!(m, GizmoMode::TranslateView | GizmoMode::RotateView | GizmoMode::ScaleUniform)));
+    order.into_iter().find(|m| {
+        let mut c = *config;
+        c.modes = EnumSet::only(*m);
+        c.mode_override = None;
+        Gizmo::new(c).pick_preview((cursor.x, cursor.y))
+    })
+}
+
 fn gizmo(app: &mut IncaApp, ui: &mut egui::Ui, idx: usize, resp: &egui::Response, cv: &CamView, painter: &egui::Painter) -> bool {
-    if !app.tool.is_manip() || !app.vps[idx].show_manips {
+    let chan = channel_modes(app);
+    if (!app.tool.is_manip() && chan.is_none()) || !app.vps[idx].show_manips {
         return false;
     }
     if let Some(d) = &app.vp_state.drag {
@@ -772,12 +832,21 @@ fn gizmo(app: &mut IncaApp, ui: &mut egui::Ui, idx: usize, resp: &egui::Response
         (app.s.world_pivot(lead), rot)
     };
     let pivot_mode = app.pivot_mode && app.s.comp_mode.is_none();
-    let modes = match app.tool {
+    let tool = chan.map(|c| c.0).unwrap_or(app.tool);
+    let modes = match tool {
         _ if pivot_mode => GizmoMode::all_translate(),
+        _ if chan.is_some() => chan.unwrap().1,
         Tool::Move => GizmoMode::all_translate(),
         Tool::Rotate => GizmoMode::all_rotate(),
         _ => GizmoMode::all_scale(),
     };
+    // the active handle must be one of the shown handles
+    let default_handle = match tool {
+        Tool::Rotate => GizmoMode::RotateView,
+        Tool::Scale => GizmoMode::ScaleUniform,
+        _ => GizmoMode::TranslateView,
+    };
+    let active = app.vp_state.active_handle.filter(|m| modes.contains(*m)).or_else(|| modes.contains(default_handle).then_some(default_handle)).or_else(|| modes.iter().next());
     let ppp = ui.ctx().pixels_per_point();
     let g = &mut app.vp_state.gizmos[idx];
     let mut visuals = GizmoVisuals { gizmo_size: 75.0 * app.manip_size, stroke_width: 3.0, ..Default::default() };
@@ -790,7 +859,9 @@ fn gizmo(app: &mut IncaApp, ui: &mut egui::Ui, idx: usize, resp: &egui::Response
         projection_matrix: cv.proj.into(),
         viewport: resp.rect,
         modes,
-        orientation: if app.world_space && app.tool != Tool::Scale && app.s.comp_mode.is_none() { GizmoOrientation::Global } else { GizmoOrientation::Local },
+        orientation: if app.world_space && tool != Tool::Scale && app.s.comp_mode.is_none() { GizmoOrientation::Global } else { GizmoOrientation::Local },
+        // MMB: drag the active handle from anywhere in the view
+        mode_override: if app.vp_state.mmb { active } else { None },
         // hold X: grid snap while moving; hold J: discrete rotate (Maya)
         snapping: app.snap_grid || ui.input(|i| (app.tool == Tool::Move && i.key_down(egui::Key::X)) || (app.tool == Tool::Rotate && i.key_down(egui::Key::J))),
         snap_distance: app.vp_state.snap_step as f32,
@@ -803,11 +874,48 @@ fn gizmo(app: &mut IncaApp, ui: &mut egui::Ui, idx: usize, resp: &egui::Response
     let tf = Transform::from_scale_rotation_translation(DVec3::ONE, rot, pivot);
     let pointer = ui.input(|i| i.pointer.clone());
     let cursor = pointer.hover_pos().unwrap_or_default();
+    // Ctrl+click a handle: move/scale axis -> lock it (drag in the other two), plane -> that plane,
+    // centre -> back to the default; a plain click or drag on a handle makes it the active one
+    let mods = ui.input(|i| i.modifiers);
+    let lmb_pressed = resp.hovered() && pointer.button_pressed(egui::PointerButton::Primary);
+    let probe = (lmb_pressed || (resp.hovered() && pointer.button_pressed(egui::PointerButton::Middle) && (mods.ctrl || mods.command))).then(|| handle_at(g.config(), cursor)).flatten();
+    if let Some(h) = probe {
+        let locked = if mods.ctrl || mods.command {
+            match h {
+                GizmoMode::TranslateX => Some(GizmoMode::TranslateYZ),
+                GizmoMode::TranslateY => Some(GizmoMode::TranslateXZ),
+                GizmoMode::TranslateZ => Some(GizmoMode::TranslateXY),
+                GizmoMode::ScaleX => Some(GizmoMode::ScaleYZ),
+                GizmoMode::ScaleY => Some(GizmoMode::ScaleXZ),
+                GizmoMode::ScaleZ => Some(GizmoMode::ScaleXY),
+                GizmoMode::TranslateView | GizmoMode::ScaleUniform | GizmoMode::RotateView => None,
+                m => Some(m),
+            }
+        } else {
+            Some(h)
+        };
+        app.vp_state.active_handle = locked;
+        if mods.ctrl || mods.command {
+            app.help = format!("Active handle: {}", locked.map(|m| format!("{m:?}")).unwrap_or("centre (default)".into()));
+            return true;
+        }
+    }
+    // MMB press over the view (no Alt) starts dragging the active handle
+    if resp.hovered() && pointer.button_pressed(egui::PointerButton::Middle) && !mods.alt && !(mods.ctrl || mods.command) && active.is_some() {
+        app.vp_state.mmb = true;
+    }
+    if app.vp_state.mmb && !pointer.button_down(egui::PointerButton::Middle) {
+        app.vp_state.mmb = false;
+    }
+    if lmb_pressed {
+        app.vp_state.press_handle = probe;
+    }
+    let drag_handle = if app.vp_state.mmb { active } else { app.vp_state.press_handle };
     let interaction = GizmoInteraction {
         cursor_pos: (cursor.x, cursor.y),
-        hovered: resp.hovered() || app.vp_state.drag.is_some(),
-        drag_started: resp.hovered() && pointer.button_pressed(egui::PointerButton::Primary),
-        dragging: pointer.button_down(egui::PointerButton::Primary),
+        hovered: resp.hovered() || app.vp_state.drag.is_some() || app.vp_state.mmb,
+        drag_started: lmb_pressed || (app.vp_state.mmb && pointer.button_pressed(egui::PointerButton::Middle)),
+        dragging: pointer.button_down(egui::PointerButton::Primary) || app.vp_state.mmb,
     };
     let focused_before = g.is_focused();
     let result = g.update(interaction, &[tf]);
@@ -843,12 +951,36 @@ fn gizmo(app: &mut IncaApp, ui: &mut egui::Ui, idx: usize, resp: &egui::Response
                     mirror.push(m);
                 }
                 let pivots = pivot_mode.then(|| objs.iter().map(|(o, _)| app.s.world_pivot(o)).collect());
-                app.vp_state.drag = Some(GizmoDrag { vp: idx, start: tf, cur: tf, objects: objs, comps, tool: if pivot_mode { Tool::Move } else { app.tool }, pivots, weights, mirror });
+                // the extrude just made (still shown in the In-View Editor) takes the move, as in Maya/JS:
+                // its divisions then spread along the moved distance
+                let extrude = app.inview.clone().filter(|_| app.tool == Tool::Move && !pivot_mode).and_then(|(id, i)| {
+                    let m = app.s.node(&id)?.mesh()?;
+                    let h = m.history.get(i).filter(|h| h.ty == "polyExtrudeFace" && i + 1 == m.history.len())?;
+                    let g = |k: &str| h.params.get(k).and_then(|v| v.as_f64()).unwrap_or(0.0);
+                    Some((id.clone(), i, DVec3::new(g("translateX"), g("translateY"), g("translateZ"))))
+                });
+                let (comps, weights, mirror) = if extrude.is_some() { (vec![], vec![], vec![]) } else { (comps, weights, mirror) };
+                app.vp_state.drag = Some(GizmoDrag { vp: idx, start: tf, cur: tf, objects: objs, comps, tool: if pivot_mode { Tool::Move } else { app.tool }, pivots, weights, mirror, extrude, handle: drag_handle });
             }
             let d = app.vp_state.drag.as_mut().unwrap();
             if let Some(n) = new_tfs.first() {
                 d.cur = *n;
             }
+            // centre handle with grid snap in a perspective view: slide on the ground plane through the
+            // start point and snap X/Z to the grid (not every axis in 3D)
+            if d.tool == Tool::Move && d.handle == Some(GizmoMode::TranslateView) && !cv.ortho && (app.snap_grid || ui.input(|i| i.key_down(egui::Key::X))) {
+                let y0 = DVec3::from(d.start.translation).y;
+                let ray = cv.ray(cursor, app.vps[idx].rect);
+                if ray.dir.y.abs() > 1e-6 {
+                    let t = (y0 - ray.origin.y) / ray.dir.y;
+                    if t > 0.0 {
+                        let p = ray.at(t);
+                        let st = app.vp_state.snap_step.max(1e-6);
+                        d.cur.translation = DVec3::new((p.x / st).round() * st, y0, (p.z / st).round() * st).into();
+                    }
+                }
+            }
+            let d = app.vp_state.drag.as_mut().unwrap();
             // hold C (or the status line toggle): the moved pivot snaps to the nearest curve point
             if d.tool == Tool::Move && (app.snap_curve || ui.input(|i| i.key_down(egui::Key::C))) {
                 let moving: HashSet<String> = d.objects.iter().map(|o| o.0.clone()).collect();
@@ -865,6 +997,18 @@ fn gizmo(app: &mut IncaApp, ui: &mut egui::Ui, idx: usize, resp: &egui::Response
                     let d = app.vp_state.drag.as_mut().unwrap();
                     d.cur.translation = w.into();
                 }
+            }
+            let d = app.vp_state.drag.as_mut().unwrap();
+            if let Some((id, i, t0)) = d.extrude.clone() {
+                let world = DVec3::from(d.cur.translation) - DVec3::from(d.start.translation);
+                let local = app.s.world_matrix(&id).inverse().transform_vector3(world);
+                let t = t0 + local;
+                if let Some(h) = app.s.nodes.get_mut(&id).and_then(|n| n.mesh_mut()).and_then(|m| m.history.get_mut(i)) {
+                    h.params.insert("translateX".into(), serde_json::json!(t.x));
+                    h.params.insert("translateY".into(), serde_json::json!(t.y));
+                }
+                app.s.set_history_param(&id, i, "translateZ", serde_json::json!(t.z));
+                return true;
             }
             let d = app.vp_state.drag.as_mut().unwrap();
             let delta = tf_matrix(&d.cur) * tf_matrix(&d.start).inverse();
@@ -1249,6 +1393,7 @@ fn hud(app: &IncaApp, idx: usize, cv: &CamView, p: &egui::Painter) {
             CompMode::Edge => "Edge",
             CompMode::Face => "Face",
         };
+        let m = if app.uv_mode { "UV" } else { m };
         tag(&format!("{m} mode"), Color32::from_rgb(255, 200, 120));
     }
     if vp.isolate.is_some() {
@@ -1268,13 +1413,20 @@ fn inview_editor(app: &mut IncaApp, ui: &mut egui::Ui, rect: Rect) {
         app.inview = None;
         return;
     };
-    let r = Rect::from_min_size(rect.min + vec2(8.0, 96.0), vec2(250.0, 10.0));
+    // dragged by its title bar; kept inside the viewport
+    let off = app.inview_offset;
+    let min = rect.min + vec2(8.0, 96.0) + off;
+    let min = pos2(min.x.clamp(rect.min.x, (rect.max.x - 250.0).max(rect.min.x)), min.y.clamp(rect.min.y, (rect.max.y - 40.0).max(rect.min.y)));
+    let r = Rect::from_min_size(min, vec2(250.0, 10.0));
     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(Rect::from_min_size(r.min, vec2(250.0, rect.height() - 110.0))));
     let mut close = false;
     egui::Frame::new().fill(Color32::from_rgba_unmultiplied(55, 55, 55, 235)).stroke(Stroke::new(1.0, Color32::from_gray(0x22))).corner_radius(3).inner_margin(egui::Margin::same(6)).show(&mut child, |ui| {
         ui.set_width(238.0);
         ui.horizontal(|ui| {
-            ui.label(RichText::new(&name).strong());
+            let title = ui.add(egui::Label::new(RichText::new(&name).strong()).sense(Sense::drag())).on_hover_cursor(egui::CursorIcon::Grab).on_hover_text("Drag to move the In-View Editor");
+            if title.dragged() {
+                app.inview_offset += title.drag_delta();
+            }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 close = ui.small_button("✕").on_hover_text("Close the In-View Editor").clicked();
             });

@@ -833,7 +833,26 @@ pub fn build_draws(s: &Scene, vp: &Viewport, cv: &CamView, g: &mut Gpu, smooth_c
                     } else {
                         [0.0, 0.0, 0.0, 1.0]
                     };
-                    draws.push(DrawCmd { pass: Pass::Lines, geo: Geo::MeshWire(id.clone()), u: DrawUniform::new(wm).tint([c[0], c[1], c[2]], 1.0).bias(0.00012) });
+                    if vp.backface {
+                        // backface culling: only edges of faces turned towards the camera
+                        let pm = &m.mesh;
+                        let wmd = s.world_matrix(&id);
+                        let facing: Vec<bool> = (0..pm.f.len()).map(|f| {
+                            let n = wmd.inverse().transpose().transform_vector3(pm.face_normal(f));
+                            let to_cam = if cv.ortho { -cv.fwd } else { cv.eye - wmd.transform_point3(pm.face_center(f)) };
+                            n.dot(to_cam) > 0.0
+                        }).collect();
+                        let topo = pm.topo();
+                        let mut l = vec![];
+                        for (e, &(a, b)) in topo.edges.iter().enumerate() {
+                            if topo.edge_faces[e].iter().any(|&f| facing[f]) {
+                                push_line(&mut l, pm.v[a as usize], pm.v[b as usize], c);
+                            }
+                        }
+                        draws.push(DrawCmd { pass: Pass::Lines, geo: Geo::TransientLines(l), u: DrawUniform::new(wm).bias(0.00012) });
+                    } else {
+                        draws.push(DrawCmd { pass: Pass::Lines, geo: Geo::MeshWire(id.clone()), u: DrawUniform::new(wm).tint([c[0], c[1], c[2]], 1.0).bias(0.00012) });
+                    }
                 }
                 if in_comp && s.comp_mode == Some(CompMode::Face) {
                     let cs = s.comp_sel(&id);
@@ -1467,7 +1486,7 @@ mod tests {
     fn navigation_keeps_center_of_interest() {
         let (mut s, _, cv, _) = setup();
         let center = cv.eye + cv.fwd * cv.coi;
-        tumble(&mut s, "persp", 40.0, 10.0);
+        tumble(&mut s, "persp", 40.0, 10.0, false);
         let cv2 = cam_view(&s, "persp", [800.0, 600.0]);
         let center2 = cv2.eye + cv2.fwd * cv2.coi;
         assert!((center - center2).length() < 1e-6);

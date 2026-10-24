@@ -60,11 +60,13 @@ pub fn status_line(app: &mut IncaApp, ui: &mut egui::Ui) {
         icons::separator(ui);
         if comp {
             for (m, i, tip) in [(CompMode::Vertex, "compVertex", "Vertex (F9)"), (CompMode::Edge, "compEdge", "Edge (F10)"), (CompMode::Face, "compFace", "Face (F11)")] {
-                if ib(ui, i, tip, app.s.comp_mode == Some(m)).clicked() {
+                if ib(ui, i, tip, app.s.comp_mode == Some(m) && !app.uv_mode).clicked() {
                     app.set_comp_mode(Some(m));
                 }
             }
-            icons::button_ex(ui, "compUV", "UV (F12) — comes with the UV Editor", false, 24.0, 20.0, false);
+            if ib(ui, "compUV", "UV (F12)", app.uv_mode).clicked() {
+                app.action("uvMode");
+            }
         } else {
             for (k, i, tip) in [("curve", "olCurve", "Select curves"), ("mesh", "olMesh", "Select surfaces (polygons & NURBS)"), ("light", "olLight", "Select lights"), ("camera", "olCamera", "Select cameras"), ("locator", "olLocator", "Select locators")] {
                 let on = !app.sel_mask_off.contains(k);

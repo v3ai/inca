@@ -28,10 +28,10 @@ registry, menus, UI modules and a 0.1.12 screenshot.
 - [x] B6. Mesh Tools: Insert Edge Loop tool (interactive), Multi-Cut, Target Weld, Quad Draw, Sculpt tool (brushes), Make Live
 - [x] B7. Curves / Surfaces: Pencil Curve tool, Open/Close (Attach / Detach / Birail / Boundary are menu-only placeholders in the JS too)
 - [x] B8. UV: UV Editor (select / move / rotate / scale UVs, flip, rotate 90, normalize, layout, unfold/relax, shells, checker / shading)
-- [ ] B8b. UV component mode in the viewport (F12) and the texture image behind the UV Editor
+- [x] B8b. UV component mode in the viewport (F12) and the texture image behind the UV Editor
 - [x] B9. Selection: Lasso and Paint tools, Soft Select (B, B+drag radius, falloff colours, smooth / linear), Symmetry (object X, world X/Y/Z), cycle component type (Shift+Q), pre-selection highlight
 - [x] B10. Manipulators: hold V point snap, hold X grid snap, hold J discrete rotate, W/E/R + LMB marking menus, manipulator size (+/-) readout + reset
-- [ ] B10b. Ctrl+click axis lock and MMB drag along the active handle (needs a custom manipulator instead of transform-gizmo)
+- [x] B10b. Ctrl+click axis lock and MMB drag along the active handle (needs a custom manipulator instead of transform-gizmo)
 - [x] B11. Marking menus: RMB object/component menus, Shift+RMB tool menus, Ctrl+RMB conversion; In-View Editor for new history nodes; option boxes (smooth, mirror, add divisions, extrude, bridge, bevel, merge, planar map, revolve, group, chamfer, duplicate special)
 - [x] B12. Rigging: IK handles (RP / SC, pole vector, twist), Insert / Mirror / Orient Joint, Unbind Skin, Paint Skin Weights, Cluster, Lattice (+ point tool), Soft Modification, Blend Shape, Delete Deformers, Pole Vector constraint, Remove Constraints, Set Driven Key window; load the JS rig nodes (joints, IK, lattices, constraints) instead of keeping them as locators
 - [x] B13. Animation: (Play Backwards, Stop, Copy/Paste Keys done) Bake, Ghosting, Motion Trails, Playblast (video / PNG sequence)
@@ -49,3 +49,29 @@ registry, menus, UI modules and a 0.1.12 screenshot.
 - [x] C2. Preferences persisted to a prefs file (JS stores menu set, workspace, HUD, shelves, hotkeys)
 - [x] C3. Viewport visuals: pre-selection highlight, component colours, wire colours, selected-face colour as in JS
 - [x] C4. Channel Box: MMB virtual slider in viewport, Ctrl/MMB drag in fields, expressions (`+=2`), int/enum stepping
+
+## Closed GitHub issues re-checked against the Rust version
+
+| Issue | Status in Rust |
+|---|---|
+| #1 ghost keyframes from Channel Box clicks | ok: rows only show key colours for real anim curves |
+| #2 backface culling | fixed (front faces were culled, back edges drawn) |
+| #3 extrude local translate | fixed: Move after Extrude drives the extrude node, divisions follow |
+| #4 integer channels as floats | fixed: virtual slider steps whole numbers within range (INPUTS too) |
+| #5 Multi-Cut zoom commits | ok |
+| #6 Multi-Cut snaps to own points | ok |
+| #7 G repeat | fixed: tool completion / view / selection commands no longer replace the repeat |
+| #8 Outliner Ctrl selection | ok |
+| #9 gizmo moves during Alt navigation | ok |
+| #10 face highlight follows pointer | ok |
+| #11 In-View Editor movable | fixed: drag its title |
+| #12 one value into several picked channels | fixed |
+| #13 hotbox menus open on hover | ok |
+| #14 / #15 status line and shelf icons | ok |
+| #16 Channel Box channels drive the manipulator | fixed: picked transform channels show their axes, MMB drags them |
+| #17 W/E/R + LMB marking menu | ok |
+| #18 Edit Pivot vertex snap | ok |
+| #19 Edit Pivot / centre handle grid snap | fixed: centre handle snaps on the ground plane; D is a hold key, Insert toggles |
+| #20 Hypergraph InputOutput multiple objects | ok |
+| #21 Connection Editor | ok |
+| #27 double-click border edge selects rim | fixed (double-click edge loop was missing; loops now follow open borders) |
