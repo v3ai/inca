@@ -50,7 +50,7 @@ Legend: ✅ built · 🟡 partial / simplified · ⏭ planned
 - ⏭ Shadows in the viewport (the path tracer renders them)
 
 ## 4. Selection & transforms
-- ✅ Click/Shift/Ctrl/Ctrl+Shift, marquee, lasso, paint selection, select all/inverse/by type/hierarchy/similar/by name
+- ✅ Click/Shift/Ctrl/Ctrl+Shift, marquee, lasso, paint selection, Tab+drag select (whatever the pointer passes over; Ctrl+Tab+drag deselects), select all/inverse/by type/hierarchy/similar/by name
 - ✅ Move/Rotate/Scale manipulators (world/object space), MMB drag along the active handle (dragging a handle makes it active; Ctrl+click an axis to lock it and work in the other two, Ctrl+click the centre for the view plane), Discrete Move/Rotate/Scale with step size, grid snap (X; the centre handle snaps onto the ground grid in persp), point snap (V), curve snap (C), discrete rotate (J), manipulator size +/- (with a size readout and Reset)
 - ✅ Hold W / E / R + LMB: tool marking menus (axis orientation, edit pivot, soft select, discrete step, symmetry, tool settings)
 - ✅ Edit Pivot shows its blue ring (and an inner ring while point snapping); manipulator guide lines along the dragged axis (Preferences ▸ Manipulators ▸ Show manipulator guides)
@@ -61,8 +61,8 @@ Legend: ✅ built · 🟡 partial / simplified · ⏭ planned
 
 ## 5. Polygon modeling
 - ✅ Primitives with construction history: Sphere, Cube, Cylinder, Cone, Plane, Torus, Pyramid, Prism, Pipe, Helix, Disc, Platonic solids
-- ✅ Component modes (F8–F12, UV mode synced with the UV Editor), grow/shrink, edge loop/ring/border (double-click an edge; loops follow open borders), convert selection, pre-selection highlight
-- ✅ Extrude (faces/edges; the move manipulator after a face extrude drives Translate / Local Translate Z, with divisions spread along it), Bevel, Bridge, Insert Edge Loop tool, Multi-Cut, Target Weld, Merge / Merge to Center / Collapse, Connect, Chamfer vertex, Poke, Delete Edge/Vertex, Extract, Duplicate faces, Fill Hole, Triangulate, Quadrangulate, Add Divisions, Reverse normals
+- ✅ Component modes (F8–F12, UV mode synced with the UV Editor), grow/shrink, edge loop/ring/border (double-click an edge; loops follow open borders), face loops (Shift+double-click a face next to a selected one), convert selection, pre-selection highlight
+- ✅ Extrude (faces/edges; the move manipulator after a face extrude drives Translate / Local Translate Z, with divisions spread along it), Bevel, Bridge, Insert Edge Loop tool (the loop previews on hover and stays highlighted while you slide it), Multi-Cut (hold Ctrl to preview and click to insert an edge loop), Target Weld, Merge / Merge to Center / Collapse, Connect, Chamfer vertex, Poke, Delete Edge/Vertex, Extract, Duplicate faces, Fill Hole, Triangulate, Quadrangulate, Add Divisions, Reverse normals
 - ✅ Combine, Separate, Smooth, Mirror, Cleanup, Booleans (union/difference/intersection, with history), Create Polygon tool, Quad Draw (retopology)
 - ✅ Soften/Harden edges, Delete History, Modeling Toolkit panel
 - ✅ UV: planar/cylindrical/spherical/automatic projection; UV Editor (select/move/rotate/scale, flip, rotate 90, normalize, layout, unfold/relax, texture image or checker behind the UVs)

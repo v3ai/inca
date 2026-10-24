@@ -52,6 +52,8 @@ pub struct MeshToolState {
     pub cut_obj: Option<String>,
     /// Insert Edge Loop drag: mesh, history index, screen ends of the clicked edge
     loop_drag: Option<(String, usize, Pos2, Pos2)>,
+    /// the ring of edges (world ends) the dragged loop slides along, and whether it closes
+    loop_ring: Option<(Vec<(DVec3, DVec3)>, bool)>,
     /// Target Weld drag: mesh, source vertex
     weld: Option<(String, u32)>,
     sculpt: Option<SculptStroke>,
@@ -189,10 +191,32 @@ fn loop_ts(n: u32, t: f64) -> Vec<f64> {
     }
 }
 
+/// The edge ring a loop through the hit edge crosses, as world-space edge ends in a consistent
+/// direction (so one t lines up across the loop), and whether the ring closes.
+fn ring_of(app: &IncaApp, h: &EdgeHit) -> (Vec<(DVec3, DVec3)>, bool) {
+    let pm = &app.s.node(&h.id).unwrap().mesh().unwrap().mesh;
+    let topo = pm.topo();
+    let ring = edge_ring(pm, &topo, h.a, h.b);
+    let closed = ring.len() > 2 && {
+        let (f0, f1) = (ring[0], ring[ring.len() - 1]);
+        let fa = topo.edge(f0.0, f0.1).map(|e| topo.edge_faces[e].clone()).unwrap_or_default();
+        let fb = topo.edge(f1.0, f1.1).map(|e| topo.edge_faces[e].clone()).unwrap_or_default();
+        fa.iter().any(|f| fb.contains(f))
+    };
+    (ring.iter().map(|&(a, b)| (h.w[a as usize], h.w[b as usize])).collect(), closed)
+}
+
+fn draw_loops(painter: &egui::Painter, cv: &CamView, rect: Rect, ring: &(Vec<(DVec3, DVec3)>, bool), ts: &[f64]) {
+    for &t in ts {
+        let pts: Vec<DVec3> = ring.0.iter().map(|(a, b)| a.lerp(*b, t)).collect();
+        line(painter, cv, rect, &pts, ring.1, GREEN);
+    }
+}
+
 fn edge_loop(app: &mut IncaApp, resp: &egui::Response, cv: &CamView, rect: Rect, painter: &egui::Painter) {
     let n = app.mesh_opts.edge_loops.max(1);
     if let Some((id, hi, sa, sb)) = app.mesh_tool.loop_drag.clone() {
-        // drag slides a single new loop along the edge
+        // drag slides a single new loop along the edge; the loop stays highlighted while it moves
         if n == 1 {
             if let Some(q) = resp.interact_pointer_pos() {
                 let ab = sb - sa;
@@ -200,36 +224,29 @@ fn edge_loop(app: &mut IncaApp, resp: &egui::Response, cv: &CamView, rect: Rect,
                 app.s.set_attr(&NodeRef::History(id.clone(), hi), "t", json!(t));
             }
         }
+        if let Some(ring) = &app.mesh_tool.loop_ring {
+            let t = app.s.node(&id).and_then(|n| n.mesh()).and_then(|m| m.history.get(hi)).and_then(|h| h.params.get("t")).and_then(|v| v.as_f64()).unwrap_or(0.5);
+            draw_loops(painter, cv, rect, ring, &loop_ts(n, t));
+        }
         if resp.drag_stopped() || resp.clicked() || !resp.is_pointer_button_down_on() {
             let t = app.s.node(&id).and_then(|n| n.mesh()).and_then(|m| m.history.get(hi)).and_then(|h| h.params.get("t")).and_then(|v| v.as_f64()).unwrap_or(0.5);
             app.echo(format!("polySplitRing -ch on -splitType 1 -weight {t:.4} -smoothingAngle 30 -fixQuads 1 -insertWithEdgeFlow 0;"));
             app.mesh_tool.loop_drag = None;
+            app.mesh_tool.loop_ring = None;
         }
         return;
     }
     let objs = meshes(app);
     let hover = resp.hover_pos().and_then(|p| pick_edge(app, cv, rect, p, &objs));
     if let Some(h) = &hover {
-        let pm = &app.s.node(&h.id).unwrap().mesh().unwrap().mesh;
-        let topo = pm.topo();
-        let ring = edge_ring(pm, &topo, h.a, h.b);
-        let closed = ring.len() > 2 && {
-            let (f0, f1) = (ring[0], ring[ring.len() - 1]);
-            let fa = topo.edge(f0.0, f0.1).map(|e| topo.edge_faces[e].clone()).unwrap_or_default();
-            let fb = topo.edge(f1.0, f1.1).map(|e| topo.edge_faces[e].clone()).unwrap_or_default();
-            fa.iter().any(|f| fb.contains(f))
-        };
-        for t in loop_ts(n, h.t) {
-            // ring edges keep a consistent direction, so t lines up across the loop
-            let pts: Vec<DVec3> = ring.iter().map(|&(a, b)| h.w[a as usize].lerp(h.w[b as usize], t)).collect();
-            line(painter, cv, rect, &pts, closed, GREEN);
-        }
+        draw_loops(painter, cv, rect, &ring_of(app, h), &loop_ts(n, h.t));
     }
     let press = resp.drag_started_by(egui::PointerButton::Primary) || resp.clicked_by(egui::PointerButton::Primary);
     // the edge under the press, not where the drag has already moved to
     let at_press = resp.interact_pointer_pos().map(|p| if resp.drag_started() { p - resp.drag_delta() } else { p }).and_then(|p| pick_edge(app, cv, rect, p, &objs));
     if let (true, Some(h)) = (press, at_press) {
         app.s.checkpoint("insert edge loop");
+        app.mesh_tool.loop_ring = Some(ring_of(app, &h));
         if app.s.comp_mode.is_none() && !app.s.sel.contains(&h.id) {
             app.select_names(std::slice::from_ref(&h.id), SelMode::Replace);
         }
@@ -246,6 +263,7 @@ fn edge_loop(app: &mut IncaApp, resp: &egui::Response, cv: &CamView, rect: Rect,
         if resp.clicked() || !app.history_on {
             app.echo(format!("polySplitRing -ch on -splitType 1 -weight {:.4} -smoothingAngle 30 -fixQuads 1 -insertWithEdgeFlow 0;", h.t));
             app.mesh_tool.loop_drag = None;
+            app.mesh_tool.loop_ring = None;
         }
     }
 }
@@ -301,8 +319,16 @@ pub fn multi_cut_complete(app: &mut IncaApp) {
 fn multi_cut(app: &mut IncaApp, resp: &egui::Response, cv: &CamView, rect: Rect, painter: &egui::Painter) {
     let mods = resp.ctx.input(|i| i.modifiers);
     let hover = resp.hover_pos().and_then(|p| cut_pick(app, cv, rect, p, mods.shift));
+    let ctrl = mods.ctrl || mods.command;
+    // Ctrl: the edge loop a click would insert
+    if ctrl {
+        let objs = meshes(app);
+        if let Some(h) = resp.hover_pos().and_then(|p| pick_edge(app, cv, rect, p, &objs)) {
+            draw_loops(painter, cv, rect, &ring_of(app, &h), &[h.t.clamp(0.001, 0.999)]);
+        }
+    }
     let mut pts: Vec<DVec3> = app.mesh_tool.cut.iter().map(|c| c.w).collect();
-    if let Some((_, h)) = &hover {
+    if let Some((_, h)) = hover.as_ref().filter(|_| !ctrl) {
         pts.push(h.w);
     }
     line(painter, cv, rect, &pts, false, YELLOW);

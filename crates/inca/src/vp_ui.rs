@@ -31,11 +31,13 @@ pub struct VpState {
     /// Three Point Arc editing: point being dragged (0-2, 3 = centre) and the last drag position
     pub arc_drag: Option<usize>,
     pub arc_anchor: Option<DVec3>,
+    /// Tab+drag select in progress: what it has picked so far, and whether it deselects
+    pub tab_drag: Option<(Vec<String>, bool, Option<Pos2>)>,
 }
 
 impl Default for VpState {
     fn default() -> Self {
-        VpState { gizmos: (0..4).map(|_| Gizmo::default()).collect(), drag: None, marquee: None, stroke: vec![], nav: None, snap_step: 1.0, snap_angle: 15.0, tool_pts: vec![], active_handle: None, mmb: false, press_handle: None, arc_drag: None, arc_anchor: None }
+        VpState { gizmos: (0..4).map(|_| Gizmo::default()).collect(), drag: None, marquee: None, stroke: vec![], nav: None, snap_step: 1.0, snap_angle: 15.0, tool_pts: vec![], active_handle: None, mmb: false, press_handle: None, arc_drag: None, arc_anchor: None, tab_drag: None }
     }
 }
 
@@ -546,6 +548,52 @@ fn interact(app: &mut IncaApp, ui: &mut egui::Ui, idx: usize, resp: &egui::Respo
     if gizmo_used {
         return;
     }
+    // Tab over a viewport is for drag select, not keyboard focus traversal
+    if resp.hovered() && ui.input(|i| i.key_pressed(egui::Key::Tab)) {
+        if let Some(f) = ui.memory(|m| m.focused()) {
+            ui.memory_mut(|m| m.surrender_focus(f));
+        }
+    }
+    // ---- Tab+drag: select whatever the pointer passes over (Ctrl deselects)
+    if resp.drag_started_by(egui::PointerButton::Primary) && ui.input(|i| i.key_down(egui::Key::Tab)) && !app.lock_selection {
+        let remove = (mods.ctrl || mods.command) && !mods.shift;
+        if sel_mode(mods) == SelMode::Replace {
+            if app.s.comp_mode.is_some() {
+                for id in app.s.hilite() {
+                    app.s.comp.remove(&id);
+                }
+                app.s.rev += 1;
+            } else {
+                app.s.select(&[], SelMode::Replace);
+            }
+        }
+        app.vp_state.tab_drag = Some((vec![], remove, resp.interact_pointer_pos().map(|p| p - resp.drag_delta())));
+    }
+    if let Some((mut picked, remove, last)) = app.vp_state.tab_drag.clone() {
+        if let Some(p) = pointer.interact_pos() {
+            // everything under the path since the last frame, not just the current point
+            let from = last.unwrap_or(p);
+            let steps = (from.distance(p) / 4.0).ceil().max(1.0) as usize;
+            let mut new = vec![];
+            for k in 0..=steps {
+                if let Some(n) = pick_name(app, idx, cv, from.lerp(p, k as f32 / steps as f32)).filter(|n| !picked.contains(n)) {
+                    picked.push(n.clone());
+                    new.push(n);
+                }
+            }
+            if !new.is_empty() {
+                let _ = app.exec_mel(&format!("select {} {};", if remove { "-d" } else { "-add" }, new.join(" ")), false);
+            }
+            app.vp_state.tab_drag = Some((picked.clone(), remove, Some(p)));
+        }
+        if resp.drag_stopped() || !pointer.primary_down() {
+            if !picked.is_empty() {
+                app.echo(format!("select {} {};", if remove { "-d" } else { "-add" }, picked.join(" ")));
+            }
+            app.vp_state.tab_drag = None;
+        }
+        return;
+    }
     // ---- selection: click, marquee, lasso or paint stroke (LMB)
     if resp.drag_started_by(egui::PointerButton::Primary) {
         if let Some(p) = resp.interact_pointer_pos() {
@@ -617,6 +665,22 @@ fn interact(app: &mut IncaApp, ui: &mut egui::Ui, idx: usize, resp: &egui::Respo
     if resp.double_clicked() && app.s.comp_mode == Some(inca_core::scene::CompMode::Edge) {
         inca_core::selection::loops(&mut app.s, false);
         app.echo("SelectEdgeLoopSp;");
+    }
+    // Shift+double-click a face beside a selected one: the face loop through both
+    if resp.double_clicked() && app.s.comp_mode == Some(inca_core::scene::CompMode::Face) && !app.lock_selection {
+        if let Some(p) = resp.interact_pointer_pos() {
+            let vp = app.vps[idx].clone();
+            let hit = app.s.hilite().into_iter().find_map(|id| match viewport::pick_component(&app.s, &vp, cv, &id, inca_core::scene::CompMode::Face, p) {
+                Some(Comp::F(f)) => Some((id, f)),
+                _ => None,
+            });
+            if let Some((id, f)) = hit {
+                if inca_core::selection::add_face_loop(&mut app.s, &id, f) {
+                    let faces: Vec<String> = app.s.comp_sel(&id).f.iter().map(|f| format!("{}.f[{f}]", app.s.name_of(&id))).collect();
+                    app.echo(format!("select -r {};", faces.join(" ")));
+                }
+            }
+        }
     }
 
 }
@@ -710,6 +774,23 @@ fn filter_picks(app: &IncaApp, ids: Vec<String>) -> Vec<String> {
         }
     }
     out
+}
+
+/// The component (in component mode) or object under `p`, as a MEL name.
+fn pick_name(app: &IncaApp, idx: usize, cv: &CamView, p: Pos2) -> Option<String> {
+    let vp = &app.vps[idx];
+    match app.s.comp_mode {
+        Some(cm) => app.s.hilite().into_iter().find_map(|id| {
+            let c = viewport::pick_component(&app.s, vp, cv, &id, cm, p)?;
+            let name = app.s.name_of(&id);
+            Some(match c {
+                Comp::V(v) => format!("{name}.vtx[{v}]"),
+                Comp::E(a, b) => format!("{name}.e[{}]", app.s.node(&id)?.mesh()?.mesh.topo().edge(a, b)?),
+                Comp::F(f) => format!("{name}.f[{f}]"),
+            })
+        }),
+        None => viewport::pick_object(&app.s, vp, cv, p).and_then(|h| filter_picks(app, vec![h]).pop()).map(|id| app.s.name_of(&id)),
+    }
 }
 
 fn region_select(app: &mut IncaApp, idx: usize, cv: &CamView, region: &dyn Fn(Pos2) -> bool, mode: SelMode) {
