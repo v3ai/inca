@@ -6,7 +6,7 @@
 //! materials with their shading-group assignments and file textures, skinClusters with their
 //! weights, and keyframe animation. Export writes the same node types.
 
-use crate::math::{DMat4, DVec2, DVec3};
+use crate::math::{DVec2, DVec3};
 use crate::mesh::PolyMesh;
 use crate::params::Params;
 use crate::scene::{CamShape, Id, Scene, Shape};
