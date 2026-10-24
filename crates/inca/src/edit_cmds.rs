@@ -1,5 +1,5 @@
 //! Edit / Select menu commands that need more than one MEL line or a dialog
-//! (src/js/core/commands.js, src/js/ui/extraCommands.js).
+//!.
 
 use crate::app::IncaApp;
 use inca_core::scene::{SelMode, Shape};

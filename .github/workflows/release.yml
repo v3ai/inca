@@ -1,13 +1,13 @@
-# Build and publish a GitHub Release. Runs when a tag like v0.1.1 is pushed (`npm run release`),
-# or when package.json's version changes on master: then the workflow creates the vX.Y.Z tag itself
-# (cloud sessions can push commits but not tags). Nothing happens if that version is already released.
+# Build and publish a GitHub Release. Runs when a tag like v0.2.1 is pushed, or when the workspace
+# version in Cargo.toml changes on master: then the workflow creates the vX.Y.Z tag itself (cloud
+# sessions can push commits but not tags). Nothing happens if that version is already released.
 name: release
 
 on:
   push:
     tags: ['v*']
     branches: [master]
-    paths: [package.json]
+    paths: [Cargo.toml]
   workflow_dispatch:
 
 permissions:
@@ -27,9 +27,13 @@ jobs:
       - id: v
         shell: bash
         run: |
-          if [[ "$GITHUB_REF" == refs/tags/* ]]; then tag="${GITHUB_REF#refs/tags/}"; else tag="v$(node -p "require('./package.json').version")"; fi
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then tag="${GITHUB_REF#refs/tags/}"; else tag="v$(grep -m1 '^version' Cargo.toml | cut -d'"' -f2)"; fi
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          if gh release view "$tag" >/dev/null 2>&1; then echo "$tag is already released"; echo "build=false" >> "$GITHUB_OUTPUT"; exit 0; fi
+          if gh release view "$tag" >/dev/null 2>&1; then
+            # a draft left by a failed run is rebuilt; a published release is left alone
+            if [[ "$(gh release view "$tag" --json isDraft -q .isDraft)" == "true" ]]; then echo "build=true" >> "$GITHUB_OUTPUT"; else echo "$tag is already released"; echo "build=false" >> "$GITHUB_OUTPUT"; fi
+            exit 0
+          fi
           if [[ "$GITHUB_REF" != refs/tags/* ]]; then
             if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null; then echo "$tag was pushed as a tag; that run builds it"; echo "build=false" >> "$GITHUB_OUTPUT"; exit 0; fi
             git tag "$tag" "$GITHUB_SHA" && git push origin "$tag"
@@ -44,34 +48,43 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
-            args: --linux AppImage --x64
-            files: dist/*.AppImage
+          - os: ubuntu-22.04
+            package: linux
+            target: x86_64-unknown-linux-gnu
+            files: dist/*.AppImage dist/*.tar.gz
           - os: windows-latest
-            args: --win zip portable --x64
+            package: windows
+            target: x86_64-pc-windows-msvc
             files: dist/*.zip dist/*-portable.exe
-          # unsigned apart from an ad-hoc signature (scripts/adhoc-sign.js); there is no Apple Developer account
+          # unsigned apart from an ad-hoc signature; there is no Apple Developer account
           - os: macos-latest
-            args: --mac dmg --x64 --arm64
+            package: mac
+            target: aarch64-apple-darwin
+            files: dist/*.dmg
+          - os: macos-latest
+            package: mac
+            target: x86_64-apple-darwin
             files: dist/*.dmg
     runs-on: ${{ matrix.os }}
     env:
       GH_TOKEN: ${{ github.token }}
-      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ needs.prepare.outputs.tag }}
-      - uses: actions/setup-node@v4
+      - uses: dtolnay/rust-toolchain@stable
         with:
-          node-version: 20
-          cache: npm
-      - run: npm ci
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
       - name: Build
         shell: bash
-        run: >
-          npx electron-builder ${{ matrix.args }} --publish never
-          '-c.portable.artifactName=${productName}-${version}-win-x64-portable.${ext}'
+        run: |
+          if [[ "${{ matrix.package }}" == mac ]]; then cargo build --release -p inca --target ${{ matrix.target }}; else cargo build --release -p inca; fi
+      - name: Package
+        shell: bash
+        run: packaging/package.sh ${{ matrix.package }} ${{ matrix.target }}
       - name: Upload
         shell: bash
         run: gh release upload "${{ needs.prepare.outputs.tag }}" ${{ matrix.files }} --clobber

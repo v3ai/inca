@@ -1,4 +1,4 @@
-//! Preferences window (src/js/ui/prefsWindow.js): categories on the left, settings on the right.
+//! Preferences window: categories on the left, settings on the right.
 //! Settings that live elsewhere in the app (background, HUD, manipulator size, time range, undo,
 //! autosave, UI elements) are edited in place; the rest are kept here and saved with the app state.
 

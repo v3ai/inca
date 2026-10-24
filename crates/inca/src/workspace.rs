@@ -1,4 +1,4 @@
-//! Workspaces and UI element visibility (src/js/ui/docks.js).
+//! Workspaces and UI element visibility.
 
 use crate::app::{IncaApp, Layout, RightTab};
 
@@ -120,13 +120,20 @@ mod tests {
     use super::*;
 
     #[test]
-    fn workspace_names_match_js() {
-        let js = include_str!("../../../src/js/ui/docks.js");
+    fn workspaces_and_elements_are_unique() {
+        let mut names: Vec<&str> = WORKSPACES.iter().map(|w| w.name).collect();
+        names.sort();
+        names.dedup();
+        assert_eq!(names.len(), WORKSPACES.len());
+        let mut keys: Vec<&str> = ELEMENTS.iter().map(|e| e.0).collect();
+        keys.sort();
+        keys.dedup();
+        assert_eq!(keys.len(), ELEMENTS.len());
+        // every element a workspace hides is a real UI element
         for w in WORKSPACES {
-            assert!(js.contains(&format!("'{}': {{", w.name)), "{}", w.name);
-        }
-        for (k, _) in ELEMENTS {
-            assert!(js.contains(&format!("{k}: '#")), "{k}");
+            for h in w.hide {
+                assert!(ELEMENTS.iter().any(|e| e.0 == *h), "{} hides unknown {h}", w.name);
+            }
         }
     }
 }

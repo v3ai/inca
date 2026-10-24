@@ -148,7 +148,7 @@ mod tests {
 }
 
 // ---------------------------------------------------------------- cluster, soft mod, lattice, blend shape
-// (src/js/core/deformers.js). History ops on the deformed mesh; the handle / lattice is a node.
+//. History ops on the deformed mesh; the handle / lattice is a node.
 
 fn mat16(v: Option<&serde_json::Value>) -> Option<DMat4> {
     let a: Vec<f64> = v?.as_array()?.iter().filter_map(|x| x.as_f64()).collect();

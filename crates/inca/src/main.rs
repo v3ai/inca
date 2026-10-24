@@ -1,4 +1,5 @@
-//! Inca — a free 3D modeling, animation and rendering application (Rust edition).
+//! Inca — a free 3D modeling, animation and rendering application.
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod actions;
 mod anim_extras;

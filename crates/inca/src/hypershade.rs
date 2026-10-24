@@ -1,4 +1,4 @@
-//! Hypershade (src/js/ui/hypershade.js): material / texture palette with rendered swatches, a node
+//! Hypershade: material / texture palette with rendered swatches, a node
 //! graph work area (drag a texture's output onto a material slot to connect, a material's output
 //! onto an object to assign) and the property editor for the selected node.
 

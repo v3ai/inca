@@ -1,6 +1,6 @@
-//! Hypergraph (src/js/ui/hypergraph.js): the DAG as a top-down tree, or the selected objects'
+//! Hypergraph: the DAG as a top-down tree, or the selected objects'
 //! input and output connections (transform → history → shape → material); and the Connection
-//! Editor (src/js/ui/connectionEditor.js) for direct attribute connections.
+//! Editor for direct attribute connections.
 
 use crate::app::IncaApp;
 use crate::theme;

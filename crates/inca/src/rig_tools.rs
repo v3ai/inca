@@ -1,4 +1,4 @@
-//! Interactive rigging tools (src/js/ui/rigTools.js): Create IK Handle, Lattice Point and Paint Skin Weights.
+//! Interactive rigging tools: Create IK Handle, Lattice Point and Paint Skin Weights.
 
 use crate::app::{IncaApp, Tool};
 use crate::viewport::CamView;

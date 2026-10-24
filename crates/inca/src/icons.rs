@@ -1,4 +1,4 @@
-//! The JS app's SVG icon set (icons_svg.rs, generated from src/js/ui/icons.js), rasterized with
+//! The JS app's SVG icon set (icons_svg.rs, Inca's SVG icon set), rasterized with
 //! resvg into cached egui textures.
 
 use crate::icons_svg::{CMD_ICONS, ICONS};

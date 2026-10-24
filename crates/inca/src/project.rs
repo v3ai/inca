@@ -1,4 +1,4 @@
-//! Projects, Increment & Save, Revert and autosave (src/js/core/io.js).
+//! Projects, Increment & Save, Revert and autosave.
 
 use crate::app::IncaApp;
 use std::path::{Path, PathBuf};

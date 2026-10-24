@@ -1,4 +1,4 @@
-//! Animation > Visualize (Ghost Selected, Motion Trail) and Playblast (src/js/ui/rigTools.js, renderView.js).
+//! Animation > Visualize (Ghost Selected, Motion Trail) and Playblast.
 
 use crate::app::IncaApp;
 use crate::viewport::gpu::{DrawCmd, DrawUniform, Geo, LineVertex, MeshVertex, Pass};

@@ -1,4 +1,4 @@
-//! UV editing math (src/js/ui/editorMath.js): face corners, UV shells, layout and relax.
+//! UV editing math: face corners, UV shells, layout and relax.
 //!
 //! A *corner* is one face-vertex: id = `base[face] + index in face`. UVs live per corner in
 //! `PolyMesh::uv`.

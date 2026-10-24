@@ -1,22 +1,18 @@
 # Inca
 
-A free, open-source 3D modeling, animation and rendering application for the desktop
+A free, open-source 3D modeling, animation and rendering application for the desktop, with the
+workflow and layout of Autodesk Maya. Inca is a native app written in Rust (egui + wgpu).
 
 Website and downloads: **https://incacad.com**
-
-## Contributing
-
-Write an issue on the gh issues page
-
 
 ![INCA](inca.png)
 
 See [FEATURES.md](FEATURES.md) for the full feature list.
 
-## Rust edition (in progress)
+## Contributing
 
-A native Rust rewrite (egui + wgpu) lives in `crates/` on the `rust-rewrite` branch:
-`cargo run --release -p inca`. See [RUST.md](RUST.md) for the plan, architecture and feature status.
+Write an issue on the [GitHub issues page](https://github.com/v3ai/inca/issues). Pull requests are welcome;
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) explains how the code is organised.
 
 ## Download and run
 
@@ -29,17 +25,19 @@ Go to the [Releases page](https://github.com/v3ai/inca/releases) and open the ne
 
 You can also download the **`.zip`** instead. Unzip it, then double-click **`Inca.exe`** inside the folder.
 
+Inca needs a graphics card with DirectX 12, Vulkan or OpenGL support (any card from the last ten years).
+
 ### Linux
 1. Download **`Inca-<version>-linux-x86_64.AppImage`**.
 2. Right-click the file, open **Properties → Permissions**, and tick **Allow executing file as program**.
    In a terminal you can do the same with `chmod +x Inca-*.AppImage`.
 3. Double-click it to start Inca.
 
-If it doesn't open, start it from a terminal so you can see the error:
-```
-./Inca-*.AppImage --no-sandbox
-```
+If it doesn't open, start it from a terminal so you can see the error: `./Inca-*.AppImage`.
 On Ubuntu 22.04 or newer, if you get an error about **FUSE**, run `sudo apt install libfuse2` once. On Ubuntu 24.04 the package is called `libfuse2t64`.
+You can also download the **`.tar.gz`**, unpack it and run `./inca` inside the folder.
+
+Inca needs a Vulkan or OpenGL driver (Mesa is fine) and the usual X11 / Wayland libraries.
 
 ### macOS
 1. Download **`Inca-<version>-mac-arm64.dmg`** for Apple Silicon Macs (M1 and newer), or **`Inca-<version>-mac-x64.dmg`** for older Intel Macs.
@@ -52,76 +50,53 @@ On Ubuntu 22.04 or newer, if you get an error about **FUSE**, run `sudo apt inst
 
 ## Run from source
 
-### 1. Install Node.js (version 18 or newer)
-Ubuntu / Linux Mint: `sudo apt install nodejs npm` is enough. (If `apt update` complains about one broken
-third-party repository, such as an old `apt.kitware.com` entry, that only affects that repository; you can
-disable it in Software Sources.)
+1. Install Rust (current stable) from https://rustup.rs, or update it with `rustup update`.
+2. In the `inca` folder:
+   ```
+   cargo run --release -p inca                 # start Inca
+   cargo run --release -p inca -- scene.inca   # open a scene
+   ```
+   The first build takes a few minutes; later builds are quick.
 
-Inca runs on [Electron](https://www.electronjs.org/), which is installed through npm, so you need a
-recent Node.js. Check with `node -v`.
-
-- **Linux Mint / Ubuntu / Debian:** the distro's `nodejs` package is often too old. Use NodeSource or nvm:
-  ```
-  curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
-  sudo apt-get install -y nodejs
-  ```
-  or `curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash`, open a new terminal, then `nvm install 22`.
-- **Windows / macOS:** install the LTS version from https://nodejs.org.
-
-### 2. Install the dependencies (this also installs Electron)
-In a terminal, inside the `inca` folder (the one containing `package.json`):
-```
-npm install
-```
-This downloads Electron, three.js and the other libraries into `node_modules/`, then copies the
-three.js add-ons into `vendor/three-addons/` (the app also recreates that folder on start-up if it is missing).
-
-If Electron did not get installed (for example `npm start` says `electron: not found`), install it explicitly:
-```
-npm install --save-dev electron@38.8.6
-```
-If its download was blocked or interrupted, delete `node_modules/electron` and run the command again.
-
-### 3. Start Inca
-```
-npm start
-```
-**Linux:** if Electron exits with an error about `chrome-sandbox` / "SUID sandbox helper", either fix the
-helper's permissions once:
-```
-sudo chown root node_modules/electron/dist/chrome-sandbox && sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
-```
-or start without the sandbox: `npm start -- --no-sandbox`.
-
-### Blank window?
-If the window opens but stays empty or shows "Inca could not start", the libraries are incomplete.
-Run `npm install` again in the `inca` folder, then `npm start`. Ctrl+Shift+F12 opens the developer
-tools, where the Console tab shows the exact file that failed to load.
-
-## Build installers
-Works with Node.js 18 or newer (including Ubuntu / Linux Mint's own `nodejs` 18.19 package).
-If you get `ERR_REQUIRE_ESM ... @noble/hashes/blake2.js`, your `node_modules` still has a newer
-electron-builder from an older copy of Inca: run `rm -rf node_modules package-lock.json && npm install`.
-```
-npm run dist:linux          # dist/Inca-<ver>-linux-x86_64.AppImage
-npm run dist:win            # dist/Inca-<ver>-win-x64.zip (unzip on Windows, run Inca.exe)
-npm run dist:win-portable   # dist/Inca-<ver>-win-x64-portable.exe (single file, just double-click)
-npm run dist:win-installer  # NSIS setup .exe - build this on Windows, or on Linux with Wine installed
-npm run dist:mac            # run on macOS
-```
-Each build runs on its own, so `npm run dist:linux && npm run dist:win` builds both.
+Linux builds need no extra packages beyond a C toolchain (`build-essential`); running needs a
+Vulkan or OpenGL driver and X11 / Wayland. Windows needs the MSVC build tools (rustup offers to
+install them). macOS needs the Xcode command line tools (`xcode-select --install`).
 
 ## Tests
 ```
-npm test                                   # geometry kernel + editor maths
-INCA_TEST=script.js INCA_SHOTS=out npx electron .   # drive the real app with a script and capture screenshots
+cargo test --workspace     # geometry kernel, construction history, MEL, file IO, booleans, path tracer, rigging, UI logic
+```
+Drive the real app from a MEL script and capture the window:
+```
+INCA_TEST=script.mel INCA_SHOT=out.png [INCA_SHOT_FRAME=12] cargo run -p inca
+```
+Lines starting with `//!ui <action>` in the script run UI actions, e.g. `//!ui layoutFour` or `//!ui renderCurrent`.
+
+## Build release packages
+```
+cargo build --release -p inca
+packaging/package.sh linux                          # dist/Inca-<ver>-linux-x86_64.AppImage and .tar.gz
+packaging/package.sh windows                        # dist/Inca-<ver>-win-x64.zip and -portable.exe (run in Git Bash)
+cargo build --release -p inca --target aarch64-apple-darwin
+packaging/package.sh mac aarch64-apple-darwin       # dist/Inca-<ver>-mac-arm64.dmg (x86_64-apple-darwin for Intel)
 ```
 
-## Layout
-- `main.js`, `preload.js` — Electron main process & native bridge (files, dialogs, prefs)
-- `src/js/core` — engine: scene graph & construction history (`scene.js`), polygon kernel (`polymesh.js`, `ops.js`),
-  primitives, curves, materials, animation, undo, MEL interpreter, file I/O, rigging, deformers, constraints, dynamics, booleans
-- `src/js/ui` — interface: viewports, menus, shelves, panels, editors and tools
-- `docs/ui-contract.md` — how UI modules plug into the app
+## Releases
+Bump `version` under `[workspace.package]` in `Cargo.toml` and push to `master`. The
+[release workflow](.github/workflows/release.yml) tags `v<version>`, builds Windows, Linux and macOS
+packages and publishes them on the [Releases page](https://github.com/v3ai/inca/releases). Pushing a
+`v*` tag does the same. Every push and pull request also runs the [CI workflow](.github/workflows/ci.yml)
+(tests and release builds on all three platforms).
 
-MIT licensed. Built with three.js, three-mesh-bvh, three-gpu-pathtracer, three-bvh-csg and Electron.
+## Layout
+- `crates/inca-core` — engine without a GUI: scene graph and construction history, polygon kernel and
+  modeling ops, primitives, curves, materials, animation, undo, MEL interpreter, file I/O, rigging,
+  deformers, constraints, dynamics, booleans, the Inca Path Tracer
+- `crates/inca` — the application: viewports, menus, shelves, panels, editors and tools
+- `packaging/` — release packaging (AppImage, zip, dmg)
+- `build/` — app icons
+
+The `.inca` scene format is the same JSON format the earlier Electron versions (up to 0.1.12) used,
+so old scenes open in this version.
+
+MIT licensed. Built with egui, wgpu, glam, rapier3d, boolmesh, rhai and other Rust crates.

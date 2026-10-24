@@ -1,7 +1,8 @@
 # Inca — Master Feature List
 
 Inca is a free, open desktop 3D content-creation app that recreates the workflow and layout of
-Autodesk Maya (2020-era UI). The list was derived from the supplied course videos (Maya 2018/2020 UI,
+Autodesk Maya (2020-era UI). It is a native Rust application (egui + wgpu); see
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md). The list was derived from the supplied course videos (Maya 2018/2020 UI,
 project setup, shelves/prefs/hotkeys, box modeling a sofa, modeling a rocket, lighting, shading,
 keyframes and timing) and the *Maya Tutorials Collection* book (Maya 2–4 era: Hypergraph, Hypershade,
 NURBS, deformers, skeletons, MEL, dynamics, Artisan sculpting, rendering). The book's screenshots are
@@ -12,11 +13,11 @@ Legend: ✅ built · 🟡 partial / simplified · ⏭ planned
 ---
 
 ## 1. Application shell & interface
-- ✅ Maya-style dark theme, title `scene* - Inca - project`, splash screen, app icon
+- ✅ Maya-style dark theme, title `scene* - Inca - project`, app icon
 - ✅ Main menu bar: File, Edit, Create, Select, Modify, Display, Windows + menu-set menus + Help
 - ✅ Menu sets (Modeling F2, Rigging F3, Animation F4, FX F5, Rendering F6) swapping the right-hand menus
 - ✅ Status line: menu set, new/open/save, undo/redo, hierarchy/object/component modes, object & component masks, lock selection, snap toggles (grid/curve/point/live), construction history, render buttons, numeric input line (absolute/relative/rename/select by name), symmetry, panel toggles
-- ✅ Shelves: Curves/Surfaces, Poly Modeling, Sculpting, Rigging, Animation, Rendering, FX, Custom; Ctrl+Shift+click a menu item to add it; right-click/MMB-drag to edit; Shelf Editor; save/load shelves
+- ✅ Shelves: Curves/Surfaces, Poly Modeling, Sculpting, Rigging, Animation, Rendering, FX, Custom; Ctrl+Shift+click a menu item to add it; right-click to delete or edit; Shelf Editor (new / rename / reorder shelves, MEL buttons, icons); shelves are saved between sessions
 - ✅ Tool box (Select, Lasso, Paint, Move, Rotate, Scale, Last tool) + Quick Layout buttons
 - ✅ Workspaces (Maya Classic, Modeling Standard/Expert, Sculpting, Animation, Rigging, Rendering, UV Editing)
 - ✅ Channel Box / Layer Editor: channels, SHAPES, INPUTS (construction history), virtual sliders (MMB in viewport, Ctrl/MMB-drag in fields; int/enum channels step in whole numbers and respect min/max), expressions in fields (`+=2`); a value typed into a selected channel goes to all selected channels, right-click Key/Lock/Hide/Break, keyed/locked colouring
@@ -24,61 +25,62 @@ Legend: ✅ built · 🟡 partial / simplified · ⏭ planned
 - ✅ Attribute Editor (Ctrl+A) with tabs for transform, shape, history nodes, material and textures; texture map buttons; Copy Tab; lock/focus
 - ✅ Outliner (dock), hierarchy, drag to parent/reorder/unparent, inline rename, search, shapes/sets/materials display
 - ✅ Time Slider, Range Slider, playback controls, auto key, fps menu, looping, key ticks, shift-drag range edits
-- ✅ Command line (MEL / JS), result line, help line, Script Editor
+- ✅ Command line (MEL), result line, help line, Script Editor
 - ✅ Floating editors; side tabs; dock resizing
 - ✅ Hotbox (hold Space, click a menu name to open it), RMB marking menus (object, component, Shift+RMB tool menus, Ctrl+RMB conversion)
-- ✅ In-View Editor for history nodes (drag labels to scrub values, drag the title to move it; position is remembered); option boxes remember settings
+- ✅ In-View Editor for history nodes (drag the title to move it); option boxes remember settings
 - ✅ Preferences (interface, display, manipulators, animation, time slider, units, undo, files, autosave); Hotkey Editor with keyboard map
 - ⏭ Arbitrary panel docking / saving custom workspaces, tear-off menus
 
 ## 2. Projects & files
 - ✅ Project Window / Set Project (standard folder tree + workspace file), recent projects
 - ✅ New / Open / Save / Save As / Increment & Save / Revert; native `.inca` scene format (JSON); recent files; autosave
-- ✅ Import OBJ (keeps n-gons, MTL colours/textures), FBX, glTF/GLB, STL, Inca scenes; Export All / Selection to OBJ+MTL, glTF/GLB, STL, Inca
-- ⏭ References / proxies, archive scene
+- ✅ Import OBJ (keeps n-gons, MTL colours/textures), glTF/GLB, STL, Inca scenes (including scenes saved by the old Electron app); Export All / Selection to OBJ+MTL, glTF/GLB, STL, Inca
+- ⏭ FBX import/export ([#31](https://github.com/v3ai/inca/issues/31)), Maya `.ma` / `.mb` ([#29](https://github.com/v3ai/inca/issues/29)), references / proxies, archive scene
 
 ## 3. Viewports & navigation
 - ✅ Persp/Top/Front/Side, single/four/two/three layouts, tap Space to toggle
 - ✅ Alt+LMB tumble, Alt+MMB track, Alt+RMB/wheel dolly; F/A frame, Shift+F/A all views; bookmarks; default view
-- ✅ Shading 4/5/6/7, wireframe on shaded, X-ray, backface culling (also hides wires/components of back faces and makes them unpickable), shadows, flat/none lighting, exposure, background toggle (Alt+B)
+- ✅ Shading 4/5/6/7, wireframe on shaded, X-ray, backface culling (also hides the wires of back faces and makes them unpickable), flat/none lighting, exposure, background toggle (Alt+B)
 - ✅ Smooth mesh preview 1/2/3; resolution & film gates; HUD (poly count, fps, frame, camera names, view axis)
 - ✅ Panel menus & toolbar, Isolate Select, Show filters, look through selected, new cameras
 - ✅ Face normals / border edge display
+- ⏭ Shadows in the viewport (the path tracer renders them)
 
 ## 4. Selection & transforms
 - ✅ Click/Shift/Ctrl/Ctrl+Shift, marquee, lasso, paint selection, select all/inverse/by type/hierarchy/similar/by name
-- ✅ Move/Rotate/Scale manipulators (world/object space), MMB drag along the active handle (click a handle to make it active; Ctrl+click an axis to lock it and work in the other two, Ctrl+click the centre for the view plane; Shift+MMB picks the axis from the drag direction), Discrete Move/Rotate/Scale with step size, grid snap (X; the centre handle snaps onto the ground grid in persp), point snap (V; the manipulator stays on the nearest point, projected onto the dragged axis), discrete rotate (J), manipulator size +/- (with a size readout and Reset), only the dragged axis shown while dragging, Edit Pivot manipulator without arrow heads and with a centre ring, Preferences to hide plane / negative-axis handles, locked and connected channels are left alone
+- ✅ Move/Rotate/Scale manipulators (world/object space), MMB drag along the active handle (dragging a handle makes it active; Ctrl+click an axis to lock it and work in the other two, Ctrl+click the centre for the view plane), Discrete Move/Rotate/Scale with step size, grid snap (X; the centre handle snaps onto the ground grid in persp), point snap (V), curve snap (C), discrete rotate (J), manipulator size +/- (with a size readout and Reset)
 - ✅ Hold W / E / R + LMB: tool marking menus (axis orientation, edit pivot, soft select, discrete step, symmetry, tool settings)
 - ✅ Selecting translate/rotate/scale channels in the Channel Box shows that manipulator with those axes active; an LMB click in a viewport ends the MMB channel drag and restores the tool
-- ✅ Pivot edit (hold D, Insert toggles; snaps to grid and to the object's own vertices), Center Pivot, Freeze, Reset, Match transforms, Snap to ground
+- ✅ Pivot edit (hold D, Insert toggles; snaps to grid and to vertices), Center Pivot, Freeze, Reset, Match transforms, Snap to ground
 - ✅ Duplicate, Duplicate Special, Shift+D with transform, Group/Ungroup, Parent/Unparent, Copy/Paste, Delete
 - ✅ Soft selection (B) with falloff display; symmetry (Object X, World X/Y/Z) mirrors component moves/rotates/scales
 
 ## 5. Polygon modeling
 - ✅ Primitives with construction history: Sphere, Cube, Cylinder, Cone, Plane, Torus, Pyramid, Prism, Pipe, Helix, Disc, Platonic solids
-- ✅ Component modes (F8–F12), grow/shrink, edge loop/ring/border, convert selection, pre-selection highlight
+- ✅ Component modes (F8–F12, UV mode synced with the UV Editor), grow/shrink, edge loop/ring/border (double-click an edge; loops follow open borders), convert selection, pre-selection highlight
 - ✅ Extrude (faces/edges; the move manipulator after a face extrude drives Translate / Local Translate Z, with divisions spread along it), Bevel, Bridge, Insert Edge Loop tool, Multi-Cut, Target Weld, Merge / Merge to Center / Collapse, Connect, Chamfer vertex, Poke, Delete Edge/Vertex, Extract, Duplicate faces, Fill Hole, Triangulate, Quadrangulate, Add Divisions, Reverse normals
 - ✅ Combine, Separate, Smooth, Mirror, Cleanup, Booleans (union/difference/intersection, with history), Create Polygon tool, Quad Draw (retopology)
 - ✅ Soften/Harden edges, Delete History, Modeling Toolkit panel
-- ✅ UV: planar/cylindrical/spherical/automatic projection; UV Editor (select/move/rotate/scale, flip, rotate 90, normalize, layout, unfold/relax)
+- ✅ UV: planar/cylindrical/spherical/automatic projection; UV Editor (select/move/rotate/scale, flip, rotate 90, normalize, layout, unfold/relax, texture image or checker behind the UVs)
 - ✅ Sculpting: Sculpt, Smooth, Relax, Grab, Pinch, Flatten, Inflate brushes with mirror
 
 ## 6. NURBS & curves
 - ✅ NURBS primitives (tessellated, with isoparm display); circle & square curves
 - ✅ CV / EP / Pencil curve tools; Revolve, Loft, Extrude along path, Planar — all with live history from the curves
-- ✅ Three Point Circular Arc tool (Create ▸ Curve Tools, Curves/Surfaces shelf): click the start, a point on the arc and the end; drag any point or the centre, click the arc to flip it, live radius readout; the arc stays an exact circle until rebuilt
+- ✅ Three Point Circular Arc tool (Create ▸ Curve Tools, Curves/Surfaces shelf): click the start, a point on the arc and the end
 - ✅ Rebuild, Reverse, Open/Close curve; polygon edges → curve; NURBS → polygons
 - ⏭ Birail, Boundary, Attach/Detach, true NURBS evaluation with trims
 
 ## 7. Materials, shading & textures
 - ✅ Lambert, Blinn, Phong, Standard Surface, Surface Shader
 - ✅ Assign New / Existing material (menus & marking menus), per-face assignment
-- ✅ Hypershade: browser tabs with swatches, Create panel, node graph with drag-to-connect, property editor, drag a material onto objects
-- ✅ File (incl. HDR/EXR), Checker, Ramp, Noise, Grid textures; bump, roughness, metalness, emission maps
+- ✅ Hypershade: material / texture tabs with rendered swatches, create bar, node graph work area (drag a texture's output onto a material slot, a material's output onto an object; right-click a slot to disconnect), property editor
+- ✅ File (PNG / JPEG / HDR), Checker, Ramp, Noise, Grid textures; bump, roughness, metalness, emission maps
 - ⏭ Layered shader, Paint Effects, 3D paint
 
 ## 8. Lighting
-- ✅ Ambient, Directional, Point, Spot, Area, Sky Dome (HDRI image or procedural sky)
+- ✅ Ambient, Directional, Point, Spot, Area, Sky Dome
 - ✅ Intensity, colour, decay, cone/penumbra/dropoff, shadows & softness; viewport default / all lights / shadows
 - ⏭ Light linking, fog, glow
 
@@ -86,7 +88,7 @@ Legend: ✅ built · 🟡 partial / simplified · ⏭ planned
 - ✅ Set Key (S), Shift+W/E/R, Key Selected channels, Auto Key, delete/copy/paste/bake keys
 - ✅ Scrubbing, ranges, playback (real-time / every frame / speeds), step frames/keys, frame rates
 - ✅ Graph Editor: curves, key select/move, tangent types, tangent handles, infinity modes, framing, stats fields
-- ✅ Dope Sheet; Playblast (WebM video or PNG sequence)
+- ✅ Dope Sheet; Playblast (PNG sequence)
 - ✅ Set Driven Key, Attach to Motion Path, ghosting, motion trails
 - ⏭ Animation layers, Time Editor/Trax, character sets, sound
 
@@ -105,20 +107,20 @@ Legend: ✅ built · 🟡 partial / simplified · ⏭ planned
 - ⏭ Render layers, AOVs
 
 ## 12. Scripting & editors
-- ✅ Script Editor (MEL & JavaScript tabs, history, save to shelf, load/save scripts)
-- ✅ MEL-style language: variables, procs, loops, and commands (polyCube, move, rotate, scale, select, setAttr, getAttr, setKeyframe, currentTime, ls, xform, parent, group, duplicate, file, …); `cmds.*` JavaScript API
+- ✅ Script Editor (MEL & Rhai tabs, history, save to shelf, load/save scripts)
+- ✅ MEL-style language: variables, procs, loops, and commands (polyCube, move, rotate, scale, select, setAttr, getAttr, setKeyframe, currentTime, ls, xform, parent, group, duplicate, file, …); Rhai scripting as a second language
 - ✅ Every UI action echoes its command; MEL command reference window
-- ✅ Hypergraph (hierarchy and input/output connections of every selected object, shared materials drawn once; the I/O graph is kept until graphed again, Maya's row layout and yellow selection, clicking a node shows its Attribute Editor tab, Freeform / Automatic layout, toolbar, connection lines coloured by type with attribute tooltips)
-- ✅ Connection Editor (Windows > General Editors): outputs / inputs side by side, compound attributes expand, incompatible inputs greyed out, Auto Connect or Make / Break, from → to, Reload Left / Right, network navigation arrows, Left / Right Display filters, bounding box / center outputs, template, rotate pivot translate, joint orient; MMB-drag a node onto another in the Hypergraph's Input/Output view to open it
+- ✅ Hypergraph (hierarchy, MMB-drag a node onto another to parent; input/output connections of every selected object with Maya's row layout, shared materials drawn once, connection lines coloured by type)
+- ✅ Connection Editor (Windows > General Editors): outputs / inputs side by side, click an output then an input to connect, click a connected input to break it, Reload Left / Right, Swap
 - ✅ Direct attribute connections: connectAttr / disconnectAttr / listConnections / isConnected / connectionInfo, live evaluation, saved with the scene, yellow in the Channel Box (Break Connections removes them), arrows in the Hypergraph, driven objects drawn purple when the driver is selected (also constraints); texture outColor → material attribute = texture map
 - ⏭ Plug-in API, custom UI from scripts
 
 ## 13. Dynamics & FX
-- ✅ Emitters (omni/directional/volume/surface/vertex), emit from object, particles (points / soft sprites with colour, size and opacity over lifetime)
-- ✅ Fields: gravity, turbulence, radial, drag, air, vortex
+- ✅ Emitters (omni/directional/volume/surface), emit from object, Create Particles (grids), particles with colour and opacity over lifetime
+- ✅ Fields: gravity, turbulence, radial, drag, air, vortex; per-field connections (Affect Selected Object(s))
 - ✅ Active / passive rigid bodies with gravity, bounciness, friction
 - ✅ Fire and smoke presets; cached simulation that resets at the start frame
 - ⏭ nCloth, fluids, hair
 
 ## Packaging
-- ✅ Windows (portable `.exe` and `.zip`), Linux (`.AppImage`), macOS (`.dmg` for Apple Silicon and Intel, ad-hoc signed, not notarized); every release builds all three in GitHub Actions
+- ✅ Windows (portable `.exe` and `.zip`), Linux (`.AppImage` and `.tar.gz`), macOS (`.dmg` for Apple Silicon and Intel, ad-hoc signed, not notarized); every release builds all of them in GitHub Actions

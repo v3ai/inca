@@ -1,4 +1,4 @@
-//! Rigging (src/js/core/rigging.js, constraints.js): joint orient / insert / mirror, IK handles,
+//! Rigging: joint orient / insert / mirror, IK handles,
 //! pole vector constraints, set driven keys and motion paths.
 //!
 //! Rig data uses the JS app's formats so scenes move between the two: structural data in the node's

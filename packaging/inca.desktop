@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Inca
+Comment=Free 3D modeling, animation and rendering
+Exec=inca %F
+Icon=inca
+Categories=Graphics;3DGraphics;
+Terminal=false
+MimeType=application/x-inca;

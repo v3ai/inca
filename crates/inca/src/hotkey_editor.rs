@@ -1,4 +1,4 @@
-//! Hotkey Editor (src/js/ui/hotkeyEditor.js): user key bindings layered over the Maya defaults.
+//! Hotkey Editor: user key bindings layered over the Maya defaults.
 
 use crate::app::IncaApp;
 use crate::theme;

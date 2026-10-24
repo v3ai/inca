@@ -1,4 +1,4 @@
-//! UV Editor window (src/js/ui/uvEditor.js): select, move, rotate and scale UVs, flip / rotate /
+//! UV Editor window: select, move, rotate and scale UVs, flip / rotate /
 //! normalize / layout / unfold, projections, grid / checker / shaded display.
 
 use crate::app::IncaApp;

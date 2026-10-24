@@ -1,4 +1,4 @@
-//! Marking menus (src/js/ui/markingMenus.js): RMB object / component menus, Shift+RMB tool menus,
+//! Marking menus: RMB object / component menus, Shift+RMB tool menus,
 //! Ctrl+RMB selection conversion, W/E/R + LMB transform tool menus.
 
 use crate::app::{IncaApp, Tool};

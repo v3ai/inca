@@ -200,7 +200,7 @@ pub enum Shelf {
     Sep,
 }
 
-/// The JS app's default shelves (src/js/ui/shelf.js).
+/// The JS app's default shelves.
 pub fn shelves() -> Vec<(&'static str, Vec<Shelf>)> {
     let it = |action| Shelf::Item(ShelfItem { action, icon: None, label: None });
     let ic = |action, icon| Shelf::Item(ShelfItem { action, icon: Some(icon), label: None });
@@ -395,7 +395,7 @@ pub fn shelf(app: &mut IncaApp, ui: &mut egui::Ui) {
                     };
                     let tip = match (&it.action, &it.mel) {
                         (Some(a), _) if avail => label(a),
-                        (Some(a), _) => format!("{} (not in the Rust version yet)", label(a)),
+                        (Some(a), _) => format!("{} (not available yet)", label(a)),
                         (None, Some(m)) => m.clone(),
                         _ => String::new(),
                     };

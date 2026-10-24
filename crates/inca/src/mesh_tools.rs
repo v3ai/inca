@@ -1,4 +1,4 @@
-//! Interactive Mesh Tools (src/js/ui/tools.js, quadDraw.js): Insert Edge Loop, Multi-Cut, Target Weld,
+//! Interactive Mesh Tools: Insert Edge Loop, Multi-Cut, Target Weld,
 //! Sculpt brushes, Quad Draw and Make Live.
 
 use crate::app::{IncaApp, Tool};

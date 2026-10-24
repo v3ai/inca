@@ -1,7 +1,7 @@
 # JS → Rust parity checklist
 
-Everything the Electron app (0.1.12, `src/`) has that the Rust app (`crates/`) doesn't yet, or does
-differently. Items are worked top to bottom and ticked when done. Compiled from the JS command
+What the Electron app (0.1.12) had that the Rust app needed, worked top to bottom and ticked when
+done. Kept as a record; the Electron app was removed from the tree in 0.2.0. Compiled from the JS command
 registry, menus, UI modules and a 0.1.12 screenshot.
 
 ## A. Look & layout (what you see at start-up)

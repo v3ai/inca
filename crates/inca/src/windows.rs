@@ -230,7 +230,7 @@ pub fn show(app: &mut IncaApp, ctx: &egui::Context, _frame: &mut eframe::Frame) 
     let mut open = app.win.about;
     egui::Window::new("About Inca").open(&mut open).collapsible(false).resizable(false).show(ctx, |ui| {
         ui.heading("Inca");
-        ui.label(format!("version {} (Rust)", env!("CARGO_PKG_VERSION")));
+        ui.label(format!("version {}", env!("CARGO_PKG_VERSION")));
         ui.label("A free, open-source 3D modeling, animation and rendering application.");
         ui.label("Built with egui/eframe, wgpu, glam, transform-gizmo, boolmesh, tobj, gltf, stl_io, rayon and rhai.");
         ui.hyperlink("https://incacad.com");

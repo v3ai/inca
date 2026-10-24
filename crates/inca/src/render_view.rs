@@ -1,4 +1,4 @@
-//! Render View (src/js/ui/renderView.js): display exposure / gamma / alpha, kept images to compare,
+//! Render View: display exposure / gamma / alpha, kept images to compare,
 //! IPR, Render Sequence and the two renderers (Inca Path Tracer, Inca Hardware).
 
 use crate::app::IncaApp;
