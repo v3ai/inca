@@ -20,6 +20,8 @@ pub const C_TEMPLATE: [f32; 4] = [0.55, 0.55, 0.55, 1.0];
 pub const C_ICON: [f32; 4] = [0.063, 0.063, 0.063, 1.0];
 pub const C_CURVE: [f32; 4] = [0.05, 0.05, 0.4, 1.0];
 pub const C_FACE_SEL: [f32; 3] = [1.0, 0.54, 0.12];
+/// objects driven by the selection (JS COLORS.affected)
+pub const C_AFFECTED: [f32; 4] = [0.78, 0.235, 0.82, 1.0];
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ShadeMode {
@@ -776,6 +778,7 @@ pub fn build_draws(s: &Scene, vp: &Viewport, cv: &CamView, g: &mut Gpu, smooth_c
     }
     let hilite = s.hilite();
     let lead = s.lead().cloned();
+    let affected = if vp.show_sel_highlight && !s.sel.is_empty() && !vp.beauty { s.affected_by(&s.sel) } else { Default::default() };
     for id in s.all_dag(false) {
         if !s.is_visible(&id) {
             continue;
@@ -793,7 +796,8 @@ pub fn build_draws(s: &Scene, vp: &Viewport, cv: &CamView, g: &mut Gpu, smooth_c
         let selected = vp.show_sel_highlight && s.sel.iter().any(|x| x == &id || s.is_ancestor(x, &id));
         let is_lead = vp.show_sel_highlight && lead.as_ref().is_some_and(|l| l == &id || s.is_ancestor(l, &id));
         let template = s.is_template(&id);
-        let sel_col = if template { C_TEMPLATE } else if is_lead { C_LEAD } else if selected { C_SEL } else { C_WIRE };
+        let is_affected = !selected && affected.contains(&id);
+        let sel_col = if template { C_TEMPLATE } else if is_lead { C_LEAD } else if selected { C_SEL } else if is_affected { C_AFFECTED } else { C_WIRE };
         match &n.shape {
             Shape::Mesh(m) => {
                 let key = mesh_key(s, &id);
@@ -820,11 +824,11 @@ pub fn build_draws(s: &Scene, vp: &Viewport, cv: &CamView, g: &mut Gpu, smooth_c
                         draws.push(DrawCmd { pass: Pass::Mesh, geo: Geo::MeshTris(id.clone()), u });
                     }
                 }
-                let show_wire = !vp.beauty && (vp.shade == ShadeMode::Wire || vp.wire_on_shaded || selected || in_comp);
+                let show_wire = !vp.beauty && (vp.shade == ShadeMode::Wire || vp.wire_on_shaded || selected || in_comp || is_affected);
                 if show_wire {
                     let c = if in_comp {
                         C_HILITE
-                    } else if vp.shade == ShadeMode::Wire || selected || template {
+                    } else if vp.shade == ShadeMode::Wire || selected || template || is_affected {
                         sel_col
                     } else {
                         [0.0, 0.0, 0.0, 1.0]
@@ -844,7 +848,7 @@ pub fn build_draws(s: &Scene, vp: &Viewport, cv: &CamView, g: &mut Gpu, smooth_c
                                 }
                             }
                         }
-                        draws.push(DrawCmd { pass: Pass::MeshBlend, geo: Geo::TransientTris(tris), u: DrawUniform::new(wm).unlit().alpha(0.5).bias(0.0002) });
+                        draws.push(DrawCmd { pass: Pass::MeshBlend, geo: Geo::TransientTris(tris), u: DrawUniform::new(wm).unlit().alpha(0.45).bias(0.0002) });
                     }
                 }
                 if in_comp && s.comp_mode == Some(CompMode::Edge) {
@@ -862,19 +866,19 @@ pub fn build_draws(s: &Scene, vp: &Viewport, cv: &CamView, g: &mut Gpu, smooth_c
                 }
             }
             Shape::Light(_) => {
-                let c = if selected { sel_col } else { [0.9, 0.85, 0.3, 1.0] };
+                let c = if selected || is_affected { sel_col } else { [0.9, 0.85, 0.3, 1.0] };
                 draws.push(DrawCmd { pass: Pass::Lines, geo: Geo::TransientLines(icon_lines(s, &id, c)), u: DrawUniform::new(wm) });
             }
             Shape::Camera(_) => {
-                let c = if selected { sel_col } else { C_ICON };
+                let c = if selected || is_affected { sel_col } else { C_ICON };
                 draws.push(DrawCmd { pass: Pass::Lines, geo: Geo::TransientLines(icon_lines(s, &id, c)), u: DrawUniform::new(wm) });
             }
             Shape::Curve(_) => {
-                let c = if selected { sel_col } else if template { C_TEMPLATE } else { C_CURVE };
+                let c = if selected || is_affected { sel_col } else if template { C_TEMPLATE } else { C_CURVE };
                 draws.push(DrawCmd { pass: Pass::Lines, geo: Geo::TransientLines(icon_lines(s, &id, c)), u: DrawUniform::new(wm) });
             }
             Shape::Locator => {
-                let c = if selected {
+                let c = if selected || is_affected {
                     sel_col
                 } else if n.kind == "joint" {
                     [0.1, 0.35, 0.9, 1.0]

@@ -27,11 +27,13 @@ pub struct Prefs {
     pub recent_projects_count: usize,
     pub autosave_limit: usize,
     pub incremental_save: bool,
+    /// red pre-selection highlight of the component under the cursor
+    pub preselect: bool,
 }
 
 impl Default for Prefs {
     fn default() -> Self {
-        Prefs { ui_scale: 1.0, menu_set: 0, tooltips: true, confirm_quit: true, ortho_tumble: false, grid_size: 12.0, grid_spacing: 1.0, grid_major: 5, tangent_in: "auto".into(), tangent_out: "auto".into(), playback_speed: 1, linear_unit: 1, angular_unit: 0, recent_count: 10, recent_projects_count: 5, autosave_limit: 10, incremental_save: false }
+        Prefs { ui_scale: 1.0, menu_set: 0, tooltips: true, confirm_quit: true, ortho_tumble: false, grid_size: 12.0, grid_spacing: 1.0, grid_major: 5, tangent_in: "auto".into(), tangent_out: "auto".into(), playback_speed: 1, linear_unit: 1, angular_unit: 0, recent_count: 10, recent_projects_count: 5, autosave_limit: 10, incremental_save: false, preselect: true }
     }
 }
 
@@ -51,6 +53,8 @@ impl Prefs {
 
 /// Apply the settings that act every frame (UI scale, tooltips, grid, list sizes, time).
 pub fn apply(app: &mut IncaApp, ctx: &egui::Context) {
+    // like the JS, the menu set in use is the one the next session starts with
+    app.prefs.menu_set = MENU_SETS.iter().position(|m| m.1 == app.menu_set).unwrap_or(0);
     let p = &app.prefs;
     if (ctx.zoom_factor() - p.ui_scale).abs() > 1e-4 {
         ctx.set_zoom_factor(p.ui_scale.clamp(0.5, 2.0));
@@ -131,6 +135,7 @@ fn category(app: &mut IncaApp, ui: &mut egui::Ui) {
             row(ui, "Default menu set", |ui| {
                 let names: Vec<&str> = MENU_SETS.iter().map(|m| m.0).collect();
                 combo(ui, "pms", &mut app.prefs.menu_set, &names);
+                app.menu_set = MENU_SETS[app.prefs.menu_set.min(4)].1;
             });
             row(ui, "Show tooltips", |ui| {
                 ui.checkbox(&mut app.prefs.tooltips, "");

@@ -327,7 +327,7 @@ impl IncaApp {
             script_text: String::from("// MEL\npolySphere -r 1;\nmove -r 0 1 0;\n"),
             script_log: vec![],
             script_lang_rhai: false,
-            shelf_tab: 1,
+            shelf_tab: cc.storage.and_then(|s| eframe::get_value(s, "shelfTab")).unwrap_or(1),
             world_space: true,
             snap_grid: false,
             history_on: true,
@@ -781,6 +781,7 @@ impl eframe::App for IncaApp {
             eframe::set_value(storage, "lastProject", p);
         }
         eframe::set_value(storage, "rightTab", &self.right_tab);
+        eframe::set_value(storage, "shelfTab", &self.shelf_tab);
         eframe::set_value(storage, "showRight", &self.show_right);
         eframe::set_value(storage, "showOutliner", &self.show_outliner);
         // a Ctrl+Space hide isn't remembered

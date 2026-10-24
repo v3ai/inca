@@ -301,10 +301,19 @@ impl Gpu {
         slice.map_async(wgpu::MapMode::Read, |_| {});
         let _ = self.device.poll(wgpu::PollType::wait_indefinitely());
         let Ok(data) = slice.get_mapped_range() else { return vec![] };
+        // the target stores sRGB-encoded bytes of what the shader wrote, and the shader already
+        // gamma-encodes (the viewport shows the decoded values): undo the storage encoding once
+        let lut: Vec<u8> = (0..256).map(|i| {
+            let x = i as f32 / 255.0;
+            let l = if x <= 0.04045 { x / 12.92 } else { ((x + 0.055) / 1.055).powf(2.4) };
+            (l * 255.0 + 0.5) as u8
+        }).collect();
         let mut out = Vec::with_capacity((size[0] * size[1] * 4) as usize);
         for y in 0..size[1] {
             let r = (y * row) as usize;
-            out.extend_from_slice(&data[r..r + (size[0] * 4) as usize]);
+            for px in data[r..r + (size[0] * 4) as usize].chunks(4) {
+                out.extend_from_slice(&[lut[px[0] as usize], lut[px[1] as usize], lut[px[2] as usize], px[3]]);
+            }
         }
         drop(data);
         buf.unmap();

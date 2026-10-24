@@ -843,3 +843,65 @@ mod tests {
         assert!((s.world_pos(&b) - DVec3::new(2.0, 0.0, -0.2)).length() < 1e-9);
     }
 }
+
+impl Scene {
+    /// Objects driven by `objs` through connections, constraints and rig links (the viewport's
+    /// purple "affected" highlight), not counting `objs` themselves.
+    pub fn affected_by(&self, objs: &[Id]) -> std::collections::HashSet<Id> {
+        let owner = |id: &str| -> Option<Id> {
+            match self.ref_by_id(id)? {
+                crate::scene::NodeRef::Dag(i) | crate::scene::NodeRef::History(i, _) => Some(i),
+                _ => None,
+            }
+        };
+        let mut edges: Vec<(Id, Id)> = vec![];
+        for c in &self.conns {
+            if let (Some(a), Some(b)) = (owner(&c.src), owner(&c.dst)) {
+                if a != b {
+                    edges.push((a, b));
+                }
+            }
+        }
+        for c in &self.constraints {
+            for t in &c.targets {
+                if *t != c.driven {
+                    edges.push((t.clone(), c.driven.clone()));
+                }
+            }
+        }
+        // deformer handles and IK handles drive what they deform / move
+        for n in self.nodes.values() {
+            if let Some(m) = n.mesh() {
+                for h in &m.history {
+                    for k in ["handle", "joints"] {
+                        match h.params.get(k) {
+                            Some(Value::String(s)) => edges.push((s.clone(), n.id.clone())),
+                            Some(Value::Array(a)) => edges.extend(a.iter().filter_map(|x| x.as_str()).map(|s| (s.to_string(), n.id.clone()))),
+                            _ => {}
+                        }
+                    }
+                }
+            }
+            if n.kind == "ikHandle" {
+                if let Some(ch) = self.rig(&n.id)["chain"].as_array() {
+                    edges.extend(ch.iter().filter_map(|j| j.as_str()).map(|j| (n.id.clone(), j.to_string())));
+                }
+            }
+        }
+        let mut out = std::collections::HashSet::new();
+        if edges.is_empty() {
+            return out;
+        }
+        let mut todo: Vec<Id> = objs.to_vec();
+        let mut seen: std::collections::HashSet<Id> = objs.iter().cloned().collect();
+        while let Some(a) = todo.pop() {
+            for (x, y) in &edges {
+                if *x == a && seen.insert(y.clone()) {
+                    out.insert(y.clone());
+                    todo.push(y.clone());
+                }
+            }
+        }
+        out
+    }
+}

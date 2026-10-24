@@ -1,7 +1,7 @@
 //! Actions: every menu item, shelf button and hotkey is an action id. Most map to MEL so they
 //! echo in the Script Editor and undo as one step; the rest are UI built-ins.
 
-use crate::app::{IncaApp, Layout, RightTab, Tool};
+use crate::app::{IncaApp, Layout, MenuSet, RightTab, Tool};
 use crate::viewport::{self, LightMode, ShadeMode};
 use egui::{Key, Modifiers};
 use inca_core::primitives::GEN_INFO;
@@ -213,6 +213,11 @@ pub static ACTIONS: &[(&str, &str, &str)] = &[
     ("preferences", "Preferences", ""),
     ("hotkeyList", "Keyboard Shortcuts", ""),
     ("hotkeyEditor", "Hotkey Editor...", ""),
+    ("menuSetModeling", "Modeling Menu Set", "F2"),
+    ("menuSetRigging", "Rigging Menu Set", "F3"),
+    ("menuSetAnimation", "Animation Menu Set", "F4"),
+    ("menuSetFx", "FX Menu Set", "F5"),
+    ("menuSetRendering", "Rendering Menu Set", "F6"),
     ("componentEditor", "Component Editor", ""),
     ("shelfEditor", "Shelf Editor...", ""),
     ("hypergraph", "Hypergraph: Hierarchy", ""),
@@ -927,6 +932,11 @@ pub fn builtin(app: &mut IncaApp, id: &str) {
         "renderSettings" => app.win.render_settings = !app.win.render_settings,
         "preferences" => app.win.prefs = !app.win.prefs,
         "hotkeyList" | "hotkeyEditor" => app.win.hotkeys = !app.win.hotkeys,
+        "menuSetModeling" => app.menu_set = MenuSet::Modeling,
+        "menuSetRigging" => app.menu_set = MenuSet::Rigging,
+        "menuSetAnimation" => app.menu_set = MenuSet::Animation,
+        "menuSetFx" => app.menu_set = MenuSet::Fx,
+        "menuSetRendering" => app.menu_set = MenuSet::Rendering,
         "componentEditor" => app.win.component_editor = !app.win.component_editor,
         "shelfEditor" => app.win.shelf_editor = !app.win.shelf_editor,
         "hypergraph" => {
@@ -1052,6 +1062,21 @@ pub fn hotkey(key: Key, m: Modifiers, app: &IncaApp) -> Option<&'static str> {
     }
     Some(match (key, ctrl, m.shift, m.alt) {
         (Key::Space, true, false, false) => "toggleUIElements",
+        (Key::F2, false, false, false) => "menuSetModeling",
+        (Key::F3, false, false, false) => "menuSetRigging",
+        (Key::F4, false, false, false) => "menuSetAnimation",
+        (Key::F5, false, false, false) => "menuSetFx",
+        (Key::F6, false, false, false) => "menuSetRendering",
+        (Key::F9, true, _, _) => "toVertices",
+        (Key::F10, true, _, _) => "toEdges",
+        (Key::F11, true, _, _) => "toFaces",
+        (Key::Z, false, false, false) => "undo",
+        (Key::Z, false, true, false) => "redo",
+        (Key::S, false, true, false) => "setKey",
+        (Key::D, false, true, true) => "deleteHistory",
+        (Key::Home, false, false, false) => "frameAll",
+        (Key::Backspace, true, _, _) => "deleteEdgeVertex",
+        (Key::N, true, true, _) => "createEmptyGroup",
         (Key::N, true, false, _) => "newScene",
         (Key::O, true, false, _) => "openScene",
         (Key::S, true, false, true) => "incrementAndSave",

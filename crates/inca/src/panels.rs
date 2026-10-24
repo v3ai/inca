@@ -20,6 +20,13 @@ pub struct PanelState {
     pub quit_confirm: bool,
     /// a channel drag is in progress (one undo step per drag)
     pub editing: bool,
+    /// Channel Box channel names picked for the MMB virtual slider (and whether it is armed)
+    pub cb_sel: Vec<String>,
+    pub cb_armed: bool,
+    cb_last: Option<String>,
+    /// virtual slider drag: (target, attribute, start value, int?)
+    pub cb_drag: Option<Vec<(NodeRef, String, f64, bool)>>,
+    cb_drag_x: f32,
     pub ae_tab: usize,
     pub ol: OutlinerOpts,
     /// Attribute Editor locked to a node (List > Auto Load off, or the lock button)
@@ -545,6 +552,145 @@ fn modeling_toolkit(app: &mut IncaApp, ui: &mut egui::Ui) {
 }
 
 /// Apply a channel edit to every selected object (Maya edits all selected channels).
+/// One wheel notch over a field: +1 up, -1 down, 0 none.
+fn wheel_notch(ui: &egui::Ui) -> f32 {
+    ui.input(|i| i.events.iter().filter_map(|e| match e {
+        egui::Event::MouseWheel { delta, .. } => Some(delta.y),
+        _ => None,
+    }).sum::<f32>().signum() * if i.events.iter().any(|e| matches!(e, egui::Event::MouseWheel { .. })) { 1.0 } else { 0.0 })
+}
+
+fn apply_rel(op: char, c: f64, a: f64) -> f64 {
+    match op {
+        '+' => c + a,
+        '-' => c - a,
+        '*' => c * a,
+        _ if a != 0.0 => c / a,
+        _ => c,
+    }
+}
+
+/// Arithmetic typed into a channel field: numbers, + - * /, parentheses.
+pub fn eval_expr(s: &str) -> Option<f64> {
+    fn num(t: &[u8], i: &mut usize) -> Option<f64> {
+        while *i < t.len() && t[*i] == b' ' {
+            *i += 1;
+        }
+        if *i < t.len() && t[*i] == b'(' {
+            *i += 1;
+            let v = sum(t, i)?;
+            while *i < t.len() && t[*i] == b' ' {
+                *i += 1;
+            }
+            if *i < t.len() && t[*i] == b')' {
+                *i += 1;
+            }
+            return Some(v);
+        }
+        if *i < t.len() && (t[*i] == b'-' || t[*i] == b'+') {
+            let neg = t[*i] == b'-';
+            *i += 1;
+            return num(t, i).map(|v| if neg { -v } else { v });
+        }
+        let st = *i;
+        while *i < t.len() && (t[*i].is_ascii_digit() || t[*i] == b'.' || ((t[*i] == b'e' || t[*i] == b'E') && *i > st) || ((t[*i] == b'-' || t[*i] == b'+') && *i > st && (t[*i - 1] == b'e' || t[*i - 1] == b'E'))) {
+            *i += 1;
+        }
+        std::str::from_utf8(&t[st..*i]).ok()?.parse().ok()
+    }
+    fn prod(t: &[u8], i: &mut usize) -> Option<f64> {
+        let mut v = num(t, i)?;
+        loop {
+            while *i < t.len() && t[*i] == b' ' {
+                *i += 1;
+            }
+            match t.get(*i) {
+                Some(b'*') => {
+                    *i += 1;
+                    v *= num(t, i)?;
+                }
+                Some(b'/') => {
+                    *i += 1;
+                    v /= num(t, i)?;
+                }
+                _ => return Some(v),
+            }
+        }
+    }
+    fn sum(t: &[u8], i: &mut usize) -> Option<f64> {
+        let mut v = prod(t, i)?;
+        loop {
+            while *i < t.len() && t[*i] == b' ' {
+                *i += 1;
+            }
+            match t.get(*i) {
+                Some(b'+') => {
+                    *i += 1;
+                    v += prod(t, i)?;
+                }
+                Some(b'-') => {
+                    *i += 1;
+                    v -= prod(t, i)?;
+                }
+                _ => return Some(v),
+            }
+        }
+    }
+    let t = s.trim().as_bytes();
+    let mut i = 0;
+    let v = sum(t, &mut i)?;
+    (i == t.len() && v.is_finite()).then_some(v)
+}
+
+/// Channel names in Channel Box order (for Shift range picks).
+fn cb_order(s: &inca_core::scene::Scene, first: &NodeRef) -> Vec<String> {
+    let mut v: Vec<String> = CHANNELS.iter().map(|c| c.to_string()).collect();
+    if let NodeRef::Dag(id) = first {
+        if let Some(e) = s.node(id).and_then(|n| n.extra.as_object()) {
+            v.extend(e.iter().filter(|(_, x)| x.is_number() || x.is_boolean()).map(|(k, _)| k.clone()));
+        }
+        v.extend(s.shape_channels(id));
+    }
+    v
+}
+
+/// MMB drag in a viewport with channels picked in the Channel Box: the virtual slider.
+pub fn virtual_slider(app: &mut IncaApp, resp: &egui::Response) -> bool {
+    if resp.drag_started_by(egui::PointerButton::Middle) && app.panels.cb_armed && !app.panels.cb_sel.is_empty() && !app.s.sel.is_empty() {
+        let mut list = vec![];
+        for id in app.s.sel.clone() {
+            let r = NodeRef::Dag(id.clone());
+            for a in app.panels.cb_sel.clone() {
+                if let Some(v) = app.s.get_attr(&r, &a) {
+                    let int = v.is_i64() || v.is_u64() || v.is_boolean();
+                    list.push((r.clone(), a.clone(), v.as_f64().unwrap_or(v.as_bool().map(|b| b as i32 as f64).unwrap_or(0.0)), int));
+                }
+            }
+        }
+        if !list.is_empty() {
+            app.s.checkpoint("channel drag");
+            app.panels.cb_drag = Some(list);
+            app.panels.cb_drag_x = 0.0;
+        }
+    }
+    let Some(list) = app.panels.cb_drag.clone() else { return false };
+    if resp.dragged_by(egui::PointerButton::Middle) {
+        let m = resp.ctx.input(|i| i.modifiers);
+        app.panels.cb_drag_x += resp.drag_delta().x;
+        let d = app.panels.cb_drag_x as f64 * 0.1 * if m.ctrl || m.command { 0.1 } else if m.shift { 10.0 } else { 1.0 };
+        for (r, a, start, int) in &list {
+            let v = if *int { json!((start + d).round() as i64) } else { json!(start + d) };
+            app.s.set_attr(r, a, v);
+        }
+    }
+    if resp.drag_stopped() || !resp.ctx.input(|i| i.pointer.middle_down()) {
+        app.panels.cb_drag = None;
+        let names: Vec<String> = list.iter().map(|(r, a, _, _)| format!("{}.{a}", app.s.ref_name(r))).collect();
+        app.echo(format!("// virtual slider: {}", names.join(" ")));
+    }
+    true
+}
+
 fn edit_channel(app: &mut IncaApp, targets: &[NodeRef], attr: &str, v: Value, resp: &egui::Response) {
     if (resp.drag_started() || (resp.changed() && !resp.dragged())) && !app.panels.editing {
         app.s.checkpoint(&format!("setAttr {attr}"));
@@ -596,7 +742,38 @@ fn channel_row(app: &mut IncaApp, ui: &mut egui::Ui, targets: &[NodeRef], attr: 
     ui.horizontal(|ui| {
         let lw = 120.0;
         let (rect, lresp) = ui.allocate_exact_size(egui::vec2(lw, 18.0), egui::Sense::click());
+        let picked = app.panels.cb_sel.iter().any(|c| c == attr);
+        if picked {
+            ui.painter().rect_filled(rect, 2.0, theme::HI.gamma_multiply(0.6));
+        }
         ui.painter().text(rect.right_center() - egui::vec2(4.0, 0.0), egui::Align2::RIGHT_CENTER, label, egui::FontId::proportional(12.0), theme::TEXT);
+        if lresp.clicked() {
+            // pick channels for the MMB virtual slider: click, Ctrl toggles, Shift adds a range
+            let m = ui.input(|i| i.modifiers);
+            let p = &mut app.panels;
+            if m.ctrl || m.command {
+                if picked {
+                    p.cb_sel.retain(|c| c != attr);
+                } else {
+                    p.cb_sel.push(attr.to_string());
+                }
+            } else if m.shift && p.cb_last.is_some() {
+                let all = cb_order(&app.s, first);
+                let (a, b) = (all.iter().position(|c| Some(c) == app.panels.cb_last.as_ref()), all.iter().position(|c| c == attr));
+                if let (Some(a), Some(b)) = (a, b) {
+                    for c in &all[a.min(b)..=a.max(b)] {
+                        if !app.panels.cb_sel.contains(c) {
+                            app.panels.cb_sel.push(c.clone());
+                        }
+                    }
+                }
+            } else {
+                p.cb_sel = vec![attr.to_string()];
+            }
+            app.panels.cb_last = Some(attr.to_string());
+            app.panels.cb_armed = true;
+            app.help = "Middle-drag in a viewport to change the selected channels (virtual slider; Ctrl slower, Shift faster)".into();
+        }
         let fill = if locked {
             theme::LOCKED
         } else if driven {
@@ -627,6 +804,15 @@ fn channel_row(app: &mut IncaApp, ui: &mut egui::Ui, targets: &[NodeRef], attr: 
                     let mut i = cur.as_f64().map(|x| x as usize).or_else(|| cur.as_str().and_then(|s| opts.iter().position(|o| *o == s))).unwrap_or(0);
                     let before = i;
                     let r = egui::ComboBox::from_id_salt(("enum", attr, id.clone())).width(w - 8.0).selected_text(opts.get(i).copied().unwrap_or("?")).show_index(ui, &mut i, opts.len(), |k| opts[k].to_string());
+                    // the wheel steps through the options
+                    if r.hovered() {
+                        let sc = wheel_notch(ui);
+                        if sc > 0.0 && i > 0 {
+                            i -= 1;
+                        } else if sc < 0.0 && i + 1 < opts.len() {
+                            i += 1;
+                        }
+                    }
                     if i != before {
                         let v = if cur.is_string() { json!(opts[i]) } else { json!(i) };
                         app.s.checkpoint(&format!("setAttr {attr}"));
@@ -639,7 +825,20 @@ fn channel_row(app: &mut IncaApp, ui: &mut egui::Ui, targets: &[NodeRef], attr: 
                 }
                 _ => {
                     let mut x = cur.as_f64().unwrap_or(0.0);
-                    let mut dv = egui::DragValue::new(&mut x).speed(if kind == ChanKind::Int { 0.1 } else { 0.02 }).max_decimals(3);
+                    // typed expressions: "2*3", or relative "+=2" "-=1" "*=2" "/=2" applied to each selected object's own value
+                    let rel: std::cell::Cell<Option<(char, f64)>> = std::cell::Cell::new(None);
+                    let x0 = x;
+                    let mut dv = egui::DragValue::new(&mut x).speed(if kind == ChanKind::Int { 0.1 } else { 0.02 }).max_decimals(3).custom_parser(|t| {
+                        let t = t.trim();
+                        for op in ['+', '-', '*', '/'] {
+                            if let Some(rest) = t.strip_prefix(op).and_then(|r| r.strip_prefix('=')) {
+                                let a = eval_expr(rest)?;
+                                rel.set(Some((op, a)));
+                                return Some(apply_rel(op, x0, a));
+                            }
+                        }
+                        eval_expr(t.strip_prefix('=').unwrap_or(t))
+                    });
                     if kind == ChanKind::Int {
                         dv = dv.fixed_decimals(0);
                     }
@@ -649,9 +848,39 @@ fn channel_row(app: &mut IncaApp, ui: &mut egui::Ui, targets: &[NodeRef], attr: 
                         dv = dv.range(a..=f64::MAX);
                     }
                     let r = ui.add_sized([w - 4.0, 18.0], dv);
-                    if r.changed() {
+                    // the wheel over an int channel steps it by one
+                    let mut stepped = false;
+                    if kind == ChanKind::Int && r.hovered() && !locked {
+                        let sc = wheel_notch(ui);
+                        if sc != 0.0 {
+                            x += sc.signum() as f64;
+                            if let Some(a) = min {
+                                x = x.max(a);
+                            }
+                            if let Some(b) = max {
+                                x = x.min(b);
+                            }
+                            stepped = true;
+                        }
+                    }
+                    if let (true, Some((op, a))) = (r.changed(), rel.get()) {
+                        app.s.checkpoint(&format!("setAttr {attr}"));
+                        for t in targets {
+                            let c = app.s.get_attr(t, attr).and_then(|v| v.as_f64()).unwrap_or(0.0);
+                            let nv = apply_rel(op, c, a);
+                            app.s.set_attr(t, attr, if kind == ChanKind::Int { json!(nv.round() as i64) } else { json!(nv) });
+                        }
+                        app.echo(format!("setAttr -r ... {attr} {op}= {}", fmt_num(a)));
+                    } else if r.changed() || stepped {
                         let v = if kind == ChanKind::Int { json!(x.round() as i64) } else { json!(x) };
-                        edit_channel(app, targets, attr, v, &r);
+                        if stepped {
+                            app.s.checkpoint(&format!("setAttr {attr}"));
+                            for t in targets {
+                                app.s.set_attr(t, attr, v.clone());
+                            }
+                        } else {
+                            edit_channel(app, targets, attr, v, &r);
+                        }
                     }
                     finish_edit(app, targets, attr, &r);
                     r
@@ -1285,6 +1514,9 @@ fn tool_settings(app: &mut IncaApp, ui: &mut egui::Ui) {
     if app.tool.is_creation() {
         ui.label("Click in a viewport to place points (on the ground grid in perspective, on the view plane in orthographic views). Enter completes, Backspace removes the last point, Esc cancels.");
         ui.checkbox(&mut app.snap_grid, "Snap to grid");
+    }
+    if app.tool.is_select() {
+        ui.checkbox(&mut app.prefs.preselect, "Pre-selection highlight");
     }
     if app.tool == Tool::Paint {
         ui.horizontal(|ui| {

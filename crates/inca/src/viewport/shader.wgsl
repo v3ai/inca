@@ -75,14 +75,21 @@ fn vs_mesh(v: MeshIn) -> MeshOut {
     return o;
 }
 
+fn linear_to_srgb(c: vec3<f32>) -> vec3<f32> {
+    let lo = c * 12.92;
+    let hi = 1.055 * pow(max(c, vec3(0.0)), vec3(1.0 / 2.4)) - 0.055;
+    return select(hi, lo, c <= vec3(0.0031308));
+}
+
 fn shade(n_in: vec3<f32>, world: vec3<f32>, base: vec3<f32>, front: bool) -> vec3<f32> {
     var n = normalize(n_in);
-    if (!front) {
-        n = -n;
-    }
     var v = normalize(frame.cam_pos.xyz - world);
     if (frame.cam_pos.w > 0.5) {
         v = -frame.cam_dir.xyz;
+    }
+    // two-sided: light the side that faces the camera (independent of winding / front_facing)
+    if (dot(n, v) < 0.0) {
+        n = -n;
     }
     let spec_k = draw.params.w;
     let rough = max(draw.params2.x, 0.03);
@@ -93,7 +100,7 @@ fn shade(n_in: vec3<f32>, world: vec3<f32>, base: vec3<f32>, front: bool) -> vec
         let d = max(dot(n, l), 0.0);
         let h = normalize(l + v);
         let s = spec_k * pow(max(dot(n, h), 0.0), max(shin, 1.0)) * 0.5;
-        return base * (0.12 + 0.88 * d) + vec3(s);
+        return base * d + vec3(s);
     }
     if (frame.mode.x > 2.5) {
         return base * 0.06;
@@ -145,9 +152,14 @@ fn fs_mesh(i: MeshOut, @builtin(front_facing) front: bool) -> @location(0) vec4<
     let base = mix(i.color, draw.tint.rgb, draw.tint.a);
     var c = base;
     if (draw.params.x < 0.5) {
+        // lit surfaces: material colours are linear and the result is gamma-encoded once, as in the
+        // JS (three.js sRGB output); the egui texture path shows these values as they are
         c = shade(i.normal, i.world, base, front);
+        c = pow(max(c * exp2(frame.post.x), vec3(0.0)), vec3(1.0 / frame.post.y));
+        c = linear_to_srgb(c);
+    } else {
+        c = pow(max(c * exp2(frame.post.x), vec3(0.0)), vec3(1.0 / frame.post.y));
     }
-    c = pow(max(c * exp2(frame.post.x), vec3(0.0)), vec3(1.0 / frame.post.y));
     return vec4(c, draw.params.y);
 }
 

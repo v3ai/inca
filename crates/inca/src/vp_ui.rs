@@ -124,7 +124,7 @@ fn pane(app: &mut IncaApp, ui: &mut egui::Ui, frame: &mut eframe::Frame, idx: us
     viewport::draw_particles(&app.s, &app.vps[idx], &cv, &painter);
     viewport::draw_annotations(&app.s, &app.vps[idx], &cv, &painter);
     crate::anim_extras::overlay(app, &cv, img_rect, &painter);
-    let hover = if app.vp_state.drag.is_none() && app.tool.is_select() { resp.hover_pos() } else { None };
+    let hover = if app.vp_state.drag.is_none() && app.tool.is_select() && app.prefs.preselect { resp.hover_pos() } else { None };
     viewport::draw_component_overlay(&app.s, &app.vps[idx], &cv, &painter, app.soft.on.then_some((app.soft.radius, app.soft.linear)), hover);
     viewport::draw_gate(&app.s, &app.vps[idx], &painter);
     mesh_overlays(app, &cv, img_rect, &painter);
@@ -521,6 +521,13 @@ fn interact(app: &mut IncaApp, ui: &mut egui::Ui, idx: usize, resp: &egui::Respo
         creation_tool(app, idx, resp, cv, painter);
         return;
     }
+    // ---- Channel Box virtual slider (MMB with channels picked); an LMB click disarms it
+    if crate::panels::virtual_slider(app, resp) {
+        return;
+    }
+    if resp.clicked_by(egui::PointerButton::Primary) {
+        app.panels.cb_armed = false;
+    }
     // ---- manipulator
     let gizmo_used = gizmo(app, ui, idx, resp, cv, painter);
     if gizmo_used {
@@ -842,6 +849,15 @@ fn gizmo(app: &mut IncaApp, ui: &mut egui::Ui, idx: usize, resp: &egui::Response
             if let Some(n) = new_tfs.first() {
                 d.cur = *n;
             }
+            // hold C (or the status line toggle): the moved pivot snaps to the nearest curve point
+            if d.tool == Tool::Move && (app.snap_curve || ui.input(|i| i.key_down(egui::Key::C))) {
+                let moving: HashSet<String> = d.objects.iter().map(|o| o.0.clone()).collect();
+                if let Some(w) = snap_curve_point(&app.s, &app.vps[idx], cv, cursor, &moving) {
+                    let d = app.vp_state.drag.as_mut().unwrap();
+                    d.cur.translation = w.into();
+                }
+            }
+            let d = app.vp_state.drag.as_mut().unwrap();
             // hold V (or the status line toggle): the moved pivot snaps to the vertex nearest the cursor
             if d.tool == Tool::Move && (app.snap_point || ui.input(|i| i.key_down(egui::Key::V))) {
                 let moving: HashSet<String> = d.comps.iter().map(|c| c.0.clone()).chain(d.objects.iter().map(|o| o.0.clone())).collect();
@@ -1068,6 +1084,29 @@ pub fn finish_creation(app: &mut IncaApp) {
 }
 
 /// Nearest vertex of a visible mesh (not one being moved) within 40 px of the cursor.
+/// Nearest point on a visible curve (not one being moved) within 40 px of the cursor.
+fn snap_curve_point(s: &inca_core::scene::Scene, vp: &viewport::Viewport, cv: &CamView, cursor: Pos2, skip: &HashSet<String>) -> Option<DVec3> {
+    let mut best: Option<(f32, DVec3)> = None;
+    for id in s.all_dag(false) {
+        if skip.contains(&id) || !s.is_visible(&id) {
+            continue;
+        }
+        let Some(inca_core::scene::Shape::Curve(c)) = s.node(&id).map(|n| &n.shape) else { continue };
+        let wm = s.world_matrix(&id);
+        let pts: Vec<DVec3> = c.sample(16).into_iter().map(|p| wm.transform_point3(p)).collect();
+        for w in pts.windows(2) {
+            let (Some(a), Some(b)) = (cv.project(w[0], vp.rect), cv.project(w[1], vp.rect)) else { continue };
+            let ab = b - a;
+            let t = ((cursor - a).dot(ab) / ab.length_sq().max(1e-6)).clamp(0.0, 1.0);
+            let d = (a + ab * t).distance(cursor);
+            if d < 40.0 && best.as_ref().is_none_or(|x| d < x.0) {
+                best = Some((d, w[0].lerp(w[1], t as f64)));
+            }
+        }
+    }
+    best.map(|b| b.1)
+}
+
 fn snap_vertex(s: &inca_core::scene::Scene, vp: &viewport::Viewport, cv: &CamView, cursor: Pos2, skip: &HashSet<String>) -> Option<DVec3> {
     let mut best: Option<(f32, DVec3)> = None;
     for id in s.all_dag(false) {

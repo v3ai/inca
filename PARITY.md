@@ -45,7 +45,7 @@ registry, menus, UI modules and a 0.1.12 screenshot.
 
 ## C. Behaviour differences to check
 
-- [ ] C1. Hotkeys: compare every JS hotkey (F2–F6 menu sets, Alt+B, Ctrl+Space, B, V, J, Shift+D, Ctrl+Shift+click to shelf, …)
-- [ ] C2. Preferences persisted to a prefs file (JS stores menu set, workspace, HUD, shelves, hotkeys)
-- [ ] C3. Viewport visuals: pre-selection highlight, component colours, wire colours, selected-face colour as in JS
-- [ ] C4. Channel Box: MMB virtual slider in viewport, Ctrl/MMB drag in fields, expressions (`+=2`), int/enum stepping
+- [x] C1. Hotkeys: compare every JS hotkey (F2–F6 menu sets, Alt+B, Ctrl+Space, B, V, J, Shift+D, Ctrl+Shift+click to shelf, …)
+- [x] C2. Preferences persisted to a prefs file (JS stores menu set, workspace, HUD, shelves, hotkeys)
+- [x] C3. Viewport visuals: pre-selection highlight, component colours, wire colours, selected-face colour as in JS
+- [x] C4. Channel Box: MMB virtual slider in viewport, Ctrl/MMB drag in fields, expressions (`+=2`), int/enum stepping
