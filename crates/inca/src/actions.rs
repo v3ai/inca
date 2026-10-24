@@ -80,6 +80,11 @@ pub static ACTIONS: &[(&str, &str, &str)] = &[
     ("insertJoint", "Insert Joint", ""),
     ("mirrorJoint", "Mirror Joints", ""),
     ("orientJoint", "Orient Joint", ""),
+    ("humanIK", "HumanIK...", ""),
+    ("hikCreateSkeleton", "Create HumanIK Skeleton", ""),
+    ("hikDefineCharacter", "Define Character from Selection", ""),
+    ("hikCreateControlRig", "Create Control Rig", ""),
+    ("hikBakeCharacter", "Bake to Skeleton", ""),
     ("smoothBind", "Bind Skin", ""),
     ("unbindSkin", "Unbind Skin", ""),
     ("paintWeights", "Paint Skin Weights", ""),
@@ -357,7 +362,7 @@ pub fn repeatable(id: &str) -> bool {
         "growSelection", "shrinkSelection", "deselectAll", "selectAll", "selectHierarchy", "hideSelection", "showSelection", "showLastHidden", "hideUnselected",
     ];
     const NO_PREFIX: &[&str] = &["frame", "toggle", "shade", "layout", "menuSet", "symmetry", "smoothO", "smoothC", "hud", "select", "to", "show", "snap"];
-    !NO.contains(&id) && !NO_PREFIX.iter().any(|p| id.starts_with(p) && id[p.len()..].starts_with(|c: char| c.is_uppercase())) && !matches!(id, "graphEditor" | "dopeSheet" | "hypershade" | "renderView" | "renderSettings" | "scriptEditor" | "uvEditor" | "preferences" | "hotkeyEditor" | "hotkeyList" | "shelfEditor" | "componentEditor" | "connectionEditor" | "hypergraph" | "hypergraphConnections" | "playblast" | "projectWindow")
+    !NO.contains(&id) && !NO_PREFIX.iter().any(|p| id.starts_with(p) && id[p.len()..].starts_with(|c: char| c.is_uppercase())) && !matches!(id, "graphEditor" | "dopeSheet" | "hypershade" | "renderView" | "renderSettings" | "scriptEditor" | "uvEditor" | "preferences" | "hotkeyEditor" | "hotkeyList" | "shelfEditor" | "componentEditor" | "connectionEditor" | "hypergraph" | "hypergraphConnections" | "playblast" | "projectWindow" | "humanIK")
 }
 
 pub fn hotkey_label(id: &str) -> &'static str {
@@ -854,6 +859,17 @@ pub fn builtin(app: &mut IncaApp, id: &str) {
         "latticePointTool" => app.set_tool(Tool::LatticePoint),
         "paintWeights" => app.set_tool(Tool::PaintWeights),
         "setDrivenKeyWindow" => app.win.sdk = true,
+        "humanIK" => app.win.hik = true,
+        "hikCreateSkeleton" => {
+            crate::hik_ui::create_skeleton(app);
+            app.win.hik = true;
+        }
+        "hikDefineCharacter" => {
+            crate::hik_ui::define_from_selection(app);
+            app.win.hik = true;
+        }
+        "hikCreateControlRig" => crate::hik_ui::create_control_rig(app),
+        "hikBakeCharacter" => crate::hik_ui::bake(app),
         "jointTool" => {
             app.select_names(&[], SelMode::Replace);
             app.set_tool(Tool::Joint);

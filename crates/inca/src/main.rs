@@ -8,6 +8,7 @@ mod component_editor;
 mod edit_cmds;
 mod hypershade;
 mod hotkey_editor;
+mod hik_ui;
 mod hypergraph;
 mod icons;
 mod icons_svg;

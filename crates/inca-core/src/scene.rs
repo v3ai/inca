@@ -325,6 +325,8 @@ pub struct Scene {
     pub anim: Anim,
     pub conns: Vec<Conn>,
     pub constraints: Vec<Constraint>,
+    /// HumanIK character definitions
+    pub characters: Vec<crate::hik::Character>,
     pub time: TimeState,
     pub render: Params,
     pub sel: Vec<Id>,
@@ -375,6 +377,7 @@ impl Scene {
             anim: Anim::default(),
             conns: vec![],
             constraints: vec![],
+            characters: vec![],
             time: TimeState::default(),
             render: Params::new(),
             sel: vec![],
@@ -1781,6 +1784,7 @@ impl Scene {
             "anim": self.anim.serialize(),
             "conns": self.conns,
             "constraints": self.constraints,
+            "characters": if self.characters.is_empty() { Value::Null } else { serde_json::to_value(&self.characters).unwrap() },
             "time": TimeState { playing: false, ..self.time.clone() },
             "render": if self.render.is_empty() { Value::Null } else { Value::Object(self.render.clone()) },
             "sel": self.sel,
@@ -1798,6 +1802,7 @@ impl Scene {
         self.anim = Anim::default();
         self.conns.clear();
         self.constraints.clear();
+        self.characters.clear();
         self.dynamics = Default::default();
         self.sel.clear();
         self.comp.clear();
@@ -1842,6 +1847,7 @@ impl Scene {
             self.time = TimeState { playing: false, ..t };
         }
         self.render = data["render"].as_object().cloned().unwrap_or_default();
+        self.characters = serde_json::from_value(data["characters"].clone()).unwrap_or_default();
         self.sel = data["sel"].as_array().map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).filter(|i| self.nodes.contains_key(i)).collect()).unwrap_or_default();
         self.project = data["project"].as_str().map(String::from);
         self.import_js_rig();

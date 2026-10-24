@@ -579,6 +579,9 @@ impl Scene {
         for h in handles {
             moved.extend(self.solve_ik(&h));
         }
+        if !self.characters.is_empty() {
+            moved.extend(self.eval_hik());
+        }
         moved
     }
 

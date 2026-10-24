@@ -9,6 +9,10 @@ Website and downloads: **https://incacad.com**
 
 See [FEATURES.md](FEATURES.md) for the full feature list.
 
+Inca saves `.inca` scenes, opens, imports and exports Maya ASCII (`.ma`) and FBX (with skeletons, skin
+weights and animation), imports OBJ, glTF/GLB and STL, and exports OBJ, GLB and STL. Maya Binary (`.mb`)
+is an undocumented format Inca can't read: in Maya, save the scene as Maya ASCII instead.
+
 ## Contributing
 
 Write an issue on the [GitHub issues page](https://github.com/v3ai/inca/issues). Pull requests are welcome;

@@ -121,6 +121,7 @@ pub struct Windows {
     pub shelf_editor: bool,
     pub hypergraph: bool,
     pub connection_editor: bool,
+    pub hik: bool,
     pub rename: Option<String>,
 }
 
@@ -243,6 +244,7 @@ pub struct IncaApp {
     pub ce: crate::component_editor::CeState,
     pub prefs: crate::prefs::Prefs,
     pub hg: crate::hypergraph::HgState,
+    pub hik_ui: crate::hik_ui::HikState,
     pub prefs_cat: usize,
     pub viz: crate::anim_extras::AnimViz,
     pub playblast: crate::anim_extras::PlayblastUi,
@@ -390,6 +392,7 @@ impl IncaApp {
             ce: Default::default(),
             prefs,
             hg: Default::default(),
+            hik_ui: Default::default(),
             prefs_cat: 0,
             viz: Default::default(),
             playblast: Default::default(),

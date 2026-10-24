@@ -173,7 +173,7 @@ pub fn set_menus(ms: MenuSet) -> Vec<(&'static str, Vec<M>)> {
             ("Curves", vec![A("cvCurveTool"), A("epCurveTool"), A("pencilCurveTool"), Sep, A("reverseCurve"), A("rebuildCurve"), A("openCloseCurve"), Sep, A("curveFromEdges")]),
         ],
         MenuSet::Rigging => vec![
-            ("Skeleton", vec![A("jointTool"), A("ikHandleTool"), Sep, A("insertJoint"), A("mirrorJoint"), A("orientJoint")]),
+            ("Skeleton", vec![A("jointTool"), A("ikHandleTool"), Sep, A("insertJoint"), A("mirrorJoint"), A("orientJoint"), Sep, A("humanIK"), Sub("HumanIK", vec![A("hikCreateSkeleton"), A("hikDefineCharacter"), A("hikCreateControlRig"), Sep, A("hikBakeCharacter")])]),
             ("Skin", vec![A("smoothBind"), A("unbindSkin"), Sep, A("paintWeights")]),
             ("Deform", vec![Sub("Nonlinear", vec![A("bendDeformer"), A("flareDeformer"), A("sineDeformer"), A("squashDeformer"), A("twistDeformer"), A("waveDeformer")]), Sep, A("createCluster"), A("softModDeformer"), A("createLattice"), A("latticePointTool"), A("blendShape"), Sep, A("deleteDeformers")]),
             ("Constrain", vec![A("parentConstraint"), A("pointConstraint"), A("orientConstraint"), A("scaleConstraint"), A("aimConstraint"), A("poleVectorConstraint"), Sep, A("removeConstraints"), Sep, A("attachToMotionPath")]),

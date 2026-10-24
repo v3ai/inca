@@ -75,3 +75,17 @@ registry, menus, UI modules and a 0.1.12 screenshot.
 | #20 Hypergraph InputOutput multiple objects | ok |
 | #21 Connection Editor | ok |
 | #27 double-click border edge selects rim | fixed (double-click edge loop was missing; loops now follow open borders) |
+
+## Electron pull requests and open issues ported to Rust
+
+| PR / issue | Rust version |
+|---|---|
+| #22 Three Point Arc editing | drag points / centre, click to flip, radius readout |
+| #23 Edit Pivot rings | blue ring, inner ring while point snapping |
+| #24 Hypergraph parallel connections | one line per connection, coloured by attribute type, hover labels |
+| #25 template selection and display | wireframe-only, pink when selected, not pickable in viewports |
+| #26 manipulator guides preference | Preferences ▸ Manipulators ▸ Show manipulator guides |
+| #28 border edge loop | done (see #27) |
+| #29 Maya .ma / .mb | `.ma` open / import / export; `.mb` explains how to resave as `.ma` |
+| #31 HumanIK, FBX rigs, skin and weights | FBX import / export with skeletons, skin weights, bind pose and animation; HumanIK skeleton, definitions, control rig, retargeting and baking |
+| #30 Hacker News ideas | not started (the issue asks not to implement yet) |

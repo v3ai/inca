@@ -211,6 +211,7 @@ pub fn show(app: &mut IncaApp, ctx: &egui::Context, _frame: &mut eframe::Frame) 
     crate::toolbar::shelf_editor(app, ctx);
     crate::hypergraph::window(app, ctx);
     crate::hypergraph::connection_editor(app, ctx);
+    crate::hik_ui::window(app, ctx);
     let mut open = app.win.command_list;
     egui::Window::new("MEL Command Reference").open(&mut open).default_size([380.0, 480.0]).show(ctx, |ui| {
         ui.label("Commands available to MEL scripts, the command line and the Script Editor:");

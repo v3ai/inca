@@ -34,6 +34,9 @@ crates/inca-core/          engine, no GUI (unit-tested)
   mel.rs                   MEL lexer, parser and interpreter
   commands.rs              Maya command set used by MEL and the UI
   io.rs                    .inca, OBJ/MTL, STL, glTF/GLB
+  maya.rs                  Maya ASCII (.ma) reader and writer
+  fbx.rs                   FBX reader (binary and ASCII 7.x) and binary FBX 7.4 writer
+  hik.rs                   HumanIK skeleton, character definitions, control rig, retargeting
   render.rs                Inca Path Tracer (CPU, BVH, rayon)
   rig.rs, skin.rs          joints, IK, driven keys, motion paths, skinning
   deformers.rs             nonlinear deformers, cluster, soft mod, lattice, blend shapes
@@ -73,6 +76,7 @@ crates/inca/               the application (eframe/egui + wgpu)
 | Booleans | `boolmesh` | pure-Rust Manifold port; union/difference/intersection with live history |
 | Triangulation | `earcutr` | concave n-gons |
 | OBJ / STL / glTF | `tobj`, `stl_io`, `gltf` | import; OBJ/STL/GLB exporters are written in-house |
+| FBX / Maya ASCII | `flate2` | readers and writers are written in-house; `flate2` (zlib) handles FBX's compressed arrays |
 | Images | `image` | textures, screenshots, render output |
 | Parallelism | `rayon` | path tracer |
 | Scripting | `rhai` | second scripting language next to MEL |
@@ -91,6 +95,7 @@ crates/inca/               the application (eframe/egui + wgpu)
 | Booleans | `boolmesh` | pure-Rust Manifold port; union/difference/intersection with live history |
 | Triangulation | `earcutr` | concave n-gons |
 | OBJ / STL / glTF | `tobj`, `stl_io`, `gltf` | import; OBJ/STL/GLB exporters are written in-house |
+| FBX / Maya ASCII | `flate2` | readers and writers are written in-house; `flate2` (zlib) handles FBX's compressed arrays |
 | Images | `image` | textures, screenshots, render output |
 | Parallelism | `rayon` | path tracer |
 | Scripting | `rhai` | second scripting language next to MEL |

@@ -110,6 +110,7 @@ pub const CORE_COMMANDS: &[&str] = &[
     "polyCreateFacet", "polyBevel", "nonLinear", "emitter", "fireEffect", "smokeEffect", "gravity", "drag", "turbulence", "radial", "vortex", "air", "rigidBody", "joint", "skinCluster", "parentConstraint", "pointConstraint", "orientConstraint", "scaleConstraint", "aimConstraint", "assignMaterial", "nurbsToPoly", "displaySmoothness", "toggle", "layerEditor", "createDisplayLayer", "editDisplayLayerMembers", "help", "whatIs",
     "matchTransform", "addAttr", "deleteAttr", "polyChamferVtx", "polyConnectComponents", "polyCollapseEdge", "polyCollapseFacet", "polyToCurve", "polyCleanup", "closeCurve", "openCurve",
     "distanceDimension", "instance", "connectionInfo", "python", "echo", "particle", "connectDynamic", "deleteRigidBody", "ikHandle", "insertJoint", "mirrorJoint", "cluster", "softMod", "lattice", "blendShape", "poleVectorConstraint", "setDrivenKeyframe", "pathAnimation", "removeConstraints", "deleteDeformers",
+    "hikCreateSkeleton", "hikCreateCharacter", "hikCreateControlRig", "hikDeleteControlRig", "hikDeleteCharacter", "hikSetSource", "hikSetSlot", "hikBake", "hikListCharacters",
 ];
 
 pub fn exists(name: &str) -> bool {
@@ -533,6 +534,10 @@ pub fn run(s: &mut Scene, h: &mut dyn Host, name: &str, raw: &[Val]) -> Result<V
         "lattice" => &[("dv|divisions", 3), ("oc|objectCentered", 1), ("n|name", 1)],
         "blendShape" => &[("n|name", 1)],
         "poleVectorConstraint" => &[("w|weight", 1)],
+        "hikCreateSkeleton" => &[("n|name", 1), ("h|height", 1), ("sp|spines", 1), ("f|fingers", 1)],
+        "hikCreateCharacter" => &[("n|name", 1)],
+        "hikSetSource" => &[("s|source", 1)],
+        "hikBake" => &[("st|startTime", 1), ("et|endTime", 1)],
         "setDrivenKeyframe" => &[("cd|currentDriver", 1), ("at|attribute", 1), ("dv|driverValue", 1), ("v|value", 1)],
         "pathAnimation" => &[("c|curve", 1), ("f|follow", 1), ("fa|followAxis", 1), ("ua|upAxis", 1), ("fm|fractionMode", 1), ("stu|startTimeU", 1), ("etu|endTimeU", 1), ("wut|worldUpType", 1)],
         "parentConstraint" | "pointConstraint" | "orientConstraint" | "scaleConstraint" | "aimConstraint" => &[("mo|maintainOffset", 0), ("w|weight", 1), ("aim|aimVector", 3), ("u|upVector", 3)],
@@ -1311,6 +1316,61 @@ pub fn run(s: &mut Scene, h: &mut dyn Host, name: &str, raw: &[Val]) -> Result<V
             s.select(std::slice::from_ref(&base), SelMode::Replace);
             Ok(Val::Str(last_history_name(s, &base)))
         }
+        "hikCreateSkeleton" => {
+            let name = s.hik_create_skeleton(&a.s(&["n", "name"]).unwrap_or("Character1".into()), a.f(&["h", "height"]).unwrap_or(170.0), a.f(&["sp", "spines"]).unwrap_or(3.0) as usize, a.f(&["f", "fingers"]).is_none_or(|f| f != 0.0))?;
+            let hips = s.hik_character(&name).and_then(|c| c.joints.get("Hips").cloned());
+            if let Some(h) = hips {
+                s.select(&[h], SelMode::Replace);
+            }
+            Ok(Val::Str(name))
+        }
+        "hikCreateCharacter" => {
+            let root = targets(s, &a).into_iter().next().ok_or("hikCreateCharacter: select the skeleton's root joint")?;
+            Ok(Val::Str(s.hik_define(&root, a.s(&["n", "name"]).as_deref())?))
+        }
+        "hikCreateControlRig" | "hikDeleteControlRig" | "hikDeleteCharacter" | "hikBake" | "hikSetSource" | "hikSetSlot" => {
+            let args = a.strings();
+            let ch = args.first().cloned().or_else(|| s.characters.last().map(|c| c.name.clone())).ok_or(format!("{name}: no character"))?;
+            if s.hik_character(&ch).is_none() {
+                return Err(format!("{name}: no character named {ch}"));
+            }
+            match name {
+                "hikCreateControlRig" => {
+                    let r = s.hik_create_control_rig(&ch)?;
+                    Ok(Val::Str(s.name_of(&r)))
+                }
+                "hikDeleteControlRig" => {
+                    s.hik_delete_control_rig(&ch);
+                    Ok(Val::None)
+                }
+                "hikDeleteCharacter" => {
+                    s.hik_delete(&ch);
+                    Ok(Val::None)
+                }
+                "hikSetSource" => {
+                    s.hik_set_source(&ch, &a.s(&["s", "source"]).unwrap_or_default())?;
+                    Ok(Val::None)
+                }
+                "hikSetSlot" => {
+                    // hikSetSlot character slot [joint]
+                    let slot = args.get(1).ok_or("hikSetSlot: character slot [joint]")?;
+                    if !crate::hik::SLOTS.iter().any(|x| x.0 == slot) {
+                        return Err(format!("hikSetSlot: unknown slot {slot}"));
+                    }
+                    let j = match args.get(2) {
+                        Some(n) => Some(s.find(n).ok_or(format!("hikSetSlot: no joint {n}"))?),
+                        None => None,
+                    };
+                    s.hik_set_slot(&ch, slot, j.as_deref());
+                    Ok(Val::None)
+                }
+                _ => {
+                    let (st, et) = (a.f(&["st", "startTime"]).unwrap_or(s.time.start), a.f(&["et", "endTime"]).unwrap_or(s.time.end));
+                    Ok(Val::Int(s.hik_bake(&ch, st, et)? as i64))
+                }
+            }
+        }
+        "hikListCharacters" => Ok(strs(s.characters.iter().map(|c| c.name.clone()).collect())),
         "poleVectorConstraint" => {
             let mut ts = targets(s, &a);
             let driven = ts.pop().ok_or("poleVectorConstraint: select the target, then the IK handle")?;

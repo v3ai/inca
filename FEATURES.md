@@ -21,7 +21,7 @@ Legend: ✅ built · 🟡 partial / simplified · ⏭ planned
 - ✅ Tool box (Select, Lasso, Paint, Move, Rotate, Scale, Last tool) + Quick Layout buttons
 - ✅ Workspaces (Maya Classic, Modeling Standard/Expert, Sculpting, Animation, Rigging, Rendering, UV Editing)
 - ✅ Channel Box / Layer Editor: channels, SHAPES, INPUTS (construction history), virtual sliders (MMB in viewport, Ctrl/MMB-drag in fields; int/enum channels step in whole numbers and respect min/max), expressions in fields (`+=2`); a value typed into a selected channel goes to all selected channels, right-click Key/Lock/Hide/Break, keyed/locked colouring
-- ✅ Display layers: create (empty/from selected), V / T / R, colour, select, rename, delete
+- ✅ Display layers: create (empty/from selected), V / T / R, colour, select, rename, delete; templated objects (and Template layers) draw as grey wireframes, pink when selected from the Outliner, and can't be picked in viewports
 - ✅ Attribute Editor (Ctrl+A) with tabs for transform, shape, history nodes, material and textures; texture map buttons; Copy Tab; lock/focus
 - ✅ Outliner (dock), hierarchy, drag to parent/reorder/unparent, inline rename, search, shapes/sets/materials display
 - ✅ Time Slider, Range Slider, playback controls, auto key, fps menu, looping, key ticks, shift-drag range edits
@@ -35,8 +35,10 @@ Legend: ✅ built · 🟡 partial / simplified · ⏭ planned
 ## 2. Projects & files
 - ✅ Project Window / Set Project (standard folder tree + workspace file), recent projects
 - ✅ New / Open / Save / Save As / Increment & Save / Revert; native `.inca` scene format (JSON); recent files; autosave
-- ✅ Import OBJ (keeps n-gons, MTL colours/textures), glTF/GLB, STL, Inca scenes (including scenes saved by the old Electron app); Export All / Selection to OBJ+MTL, glTF/GLB, STL, Inca
-- ⏭ FBX import/export ([#31](https://github.com/v3ai/inca/issues/31)), Maya `.ma` / `.mb` ([#29](https://github.com/v3ai/inca/issues/29)), references / proxies, archive scene
+- ✅ Import OBJ (keeps n-gons, MTL colours/textures), glTF/GLB, STL, FBX, Maya ASCII, Inca scenes (including scenes saved by the old Electron app); Export All / Selection to OBJ+MTL, glTF/GLB, STL, FBX, Maya ASCII, Inca
+- ✅ Maya ASCII (`.ma`) open, import and export [#29](https://github.com/v3ai/inca/issues/29): transforms and hierarchy, joints with joint orients, meshes (primitive creation nodes stay live construction history; stored polyFaces with UVs and vertex tweaks otherwise), cameras, lights, locators, Lambert / Blinn / Phong / Standard Surface / Surface Shader materials with file textures, shading-group assignments, skinCluster weights, keyframe animation
+- ✅ FBX open, import and export [#31](https://github.com/v3ai/inca/issues/31): reads binary and ASCII FBX 7.x (2011 and later), writes binary FBX 7.4; transform hierarchy (pre-rotations become joint orients), meshes with UVs, normals and per-face materials, Lambert / Phong materials with file textures, skeletons, skin clusters with their weights and bind pose, cameras, lights, translate / rotate / scale / visibility animation; unit scale and Z-up files are converted
+- ⏭ Maya Binary (`.mb`: Autodesk's undocumented format; Inca says how to resave as `.ma`), FBX blend shapes and constraints, references / proxies, archive scene
 
 ## 3. Viewports & navigation
 - ✅ Persp/Top/Front/Side, single/four/two/three layouts, tap Space to toggle
@@ -51,6 +53,7 @@ Legend: ✅ built · 🟡 partial / simplified · ⏭ planned
 - ✅ Click/Shift/Ctrl/Ctrl+Shift, marquee, lasso, paint selection, select all/inverse/by type/hierarchy/similar/by name
 - ✅ Move/Rotate/Scale manipulators (world/object space), MMB drag along the active handle (dragging a handle makes it active; Ctrl+click an axis to lock it and work in the other two, Ctrl+click the centre for the view plane), Discrete Move/Rotate/Scale with step size, grid snap (X; the centre handle snaps onto the ground grid in persp), point snap (V), curve snap (C), discrete rotate (J), manipulator size +/- (with a size readout and Reset)
 - ✅ Hold W / E / R + LMB: tool marking menus (axis orientation, edit pivot, soft select, discrete step, symmetry, tool settings)
+- ✅ Edit Pivot shows its blue ring (and an inner ring while point snapping); manipulator guide lines along the dragged axis (Preferences ▸ Manipulators ▸ Show manipulator guides)
 - ✅ Selecting translate/rotate/scale channels in the Channel Box shows that manipulator with those axes active; an LMB click in a viewport ends the MMB channel drag and restores the tool
 - ✅ Pivot edit (hold D, Insert toggles; snaps to grid and to vertices), Center Pivot, Freeze, Reset, Match transforms, Snap to ground
 - ✅ Duplicate, Duplicate Special, Shift+D with transform, Group/Ungroup, Parent/Unparent, Copy/Paste, Delete
@@ -68,7 +71,7 @@ Legend: ✅ built · 🟡 partial / simplified · ⏭ planned
 ## 6. NURBS & curves
 - ✅ NURBS primitives (tessellated, with isoparm display); circle & square curves
 - ✅ CV / EP / Pencil curve tools; Revolve, Loft, Extrude along path, Planar — all with live history from the curves
-- ✅ Three Point Circular Arc tool (Create ▸ Curve Tools, Curves/Surfaces shelf): click the start, a point on the arc and the end
+- ✅ Three Point Circular Arc tool (Create ▸ Curve Tools, Curves/Surfaces shelf): click the start, a point on the arc and the end; then drag any of the three points or the centre, click the arc to flip it to the other side of the chord (radius readout), Enter / RMB to finish
 - ✅ Rebuild, Reverse, Open/Close curve; polygon edges → curve; NURBS → polygons
 - ⏭ Birail, Boundary, Attach/Detach, true NURBS evaluation with trims
 
@@ -97,7 +100,8 @@ Legend: ✅ built · 🟡 partial / simplified · ⏭ planned
 - ✅ Smooth bind (linear blend skinning), unbind, paint skin weights
 - ✅ Deformers: Bend, Twist, Flare, Sine, Squash, Wave, Lattice (with lattice point tool), Cluster, Soft Modification, Blend Shape
 - ✅ Constraints: Parent, Point, Orient, Scale, Aim, Pole Vector (with maintain offset & weights)
-- ⏭ HumanIK-style auto rig, flexors
+- ✅ HumanIK (Skeleton ▸ HumanIK, Character Controls window) [#31](https://github.com/v3ai/inca/issues/31): standard humanoid skeleton in a T-pose (height, spine joints, fingers); character definitions mapped automatically from HumanIK, Mixamo, Unreal, Blender, 3ds Max Biped and BVH joint names (and the hierarchy), editable slot by slot; control rig with FK hips / spine / neck / head / shoulders and IK hand and foot effectors with pole vectors; live retargeting from another character (world rotations relative to each T-pose, hips motion scaled by height) and Bake to Skeleton; MEL `hikCreateSkeleton`, `hikCreateCharacter`, `hikCreateControlRig`, `hikSetSource`, `hikSetSlot`, `hikBake`
+- ⏭ Flexors, HumanIK full-body solver (reach / pinning, finger effectors)
 
 ## 11. Rendering
 - ✅ Render View: render current frame from any camera, IPR, keep/compare images, exposure/gamma/alpha display, save image
@@ -110,7 +114,7 @@ Legend: ✅ built · 🟡 partial / simplified · ⏭ planned
 - ✅ Script Editor (MEL & Rhai tabs, history, save to shelf, load/save scripts)
 - ✅ MEL-style language: variables, procs, loops, and commands (polyCube, move, rotate, scale, select, setAttr, getAttr, setKeyframe, currentTime, ls, xform, parent, group, duplicate, file, …); Rhai scripting as a second language
 - ✅ Every UI action echoes its command; MEL command reference window
-- ✅ Hypergraph (hierarchy, MMB-drag a node onto another to parent; input/output connections of every selected object with Maya's row layout, shared materials drawn once, connection lines coloured by type)
+- ✅ Hypergraph (hierarchy, MMB-drag a node onto another to parent; input/output connections of every selected object with Maya's row layout, shared materials drawn once, connection lines coloured by type: green for vector attributes, blue for single values, one line per connection between the same two nodes, hover a line for its attributes)
 - ✅ Connection Editor (Windows > General Editors): outputs / inputs side by side, click an output then an input to connect, click a connected input to break it, Reload Left / Right, Swap
 - ✅ Direct attribute connections: connectAttr / disconnectAttr / listConnections / isConnected / connectionInfo, live evaluation, saved with the scene, yellow in the Channel Box (Break Connections removes them), arrows in the Hypergraph, driven objects drawn purple when the driver is selected (also constraints); texture outColor → material attribute = texture map
 - ⏭ Plug-in API, custom UI from scripts

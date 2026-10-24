@@ -24,3 +24,4 @@ pub mod skin;
 pub mod dynamics;
 pub mod maya;
 pub mod fbx;
+pub mod hik;
