@@ -63,7 +63,7 @@ pub fn apply(app: &mut IncaApp, ctx: &egui::Context) {
     }
     let delay = if p.tooltips { 0.5 } else { f32::INFINITY };
     if ctx.global_style().interaction.tooltip_delay != delay {
-        ctx.global_style_mut(|s| s.interaction.tooltip_delay = delay);
+        ctx.all_styles_mut(|s| s.interaction.tooltip_delay = delay);
     }
     for v in app.vps.iter_mut() {
         v.grid_cfg = (p.grid_size.max(0.01), p.grid_spacing.max(0.001), p.grid_major.max(1));

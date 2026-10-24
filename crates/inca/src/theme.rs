@@ -49,8 +49,12 @@ pub fn apply(ctx: &egui::Context) {
     v.widgets.open.weak_bg_fill = HI;
     v.menu_corner_radius = CornerRadius::same(2);
     v.window_corner_radius = CornerRadius::same(3);
-    ctx.set_visuals(v);
-    ctx.global_style_mut(|s| {
+    // Inca is always dark: ignore the OS light/dark setting (#33), and give the light style the
+    // same look in case anything switches to it
+    ctx.set_theme(egui::ThemePreference::Dark);
+    ctx.set_visuals_of(egui::Theme::Dark, v.clone());
+    ctx.set_visuals_of(egui::Theme::Light, v);
+    ctx.all_styles_mut(|s| {
         s.spacing.item_spacing = egui::vec2(4.0, 3.0);
         s.spacing.button_padding = egui::vec2(6.0, 2.0);
         s.spacing.interact_size.y = 18.0;
@@ -95,4 +99,20 @@ pub fn section_header(ui: &mut egui::Ui, text: &str) {
         ui.set_width(ui.available_width());
         ui.label(egui::RichText::new(text).strong().color(Color32::from_rgb(0xdd, 0xdd, 0xdd)));
     });
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn dark_whatever_the_system_theme() {
+        let ctx = egui::Context::default();
+        super::apply(&ctx);
+        assert_eq!(ctx.options(|o| o.theme_preference), egui::ThemePreference::Dark);
+        for t in [egui::Theme::Dark, egui::Theme::Light] {
+            let st = ctx.style_of(t);
+            assert_eq!(st.visuals.panel_fill, super::BG);
+            assert_eq!(st.visuals.override_text_color, Some(super::TEXT));
+            assert_eq!(st.spacing.interact_size.y, 18.0);
+        }
+    }
 }
