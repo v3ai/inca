@@ -29,7 +29,7 @@ pub struct HgState {
 
 impl Default for HgState {
     fn default() -> Self {
-        HgState { connections: false, io: vec![], pan: vec2(30.0, 30.0), zoom: 1.0, show_cameras: false, drag: None, ce_left: None, ce_right: None, ce_attr: None }
+        HgState { connections: false, io: vec![], pan: vec2(70.0, 30.0), zoom: 1.0, show_cameras: false, drag: None, ce_left: None, ce_right: None, ce_attr: None }
     }
 }
 
@@ -162,6 +162,17 @@ fn layout_connections(app: &IncaApp, io: &[String]) -> (Vec<Box_>, Vec<(String, 
     (boxes, links)
 }
 
+/// Vector (triple) attributes: translate / rotate / scale / colours and the like (not their X/Y/Z parts).
+fn is_triple(attr: &str) -> bool {
+    matches!(attr, "translate" | "rotate" | "scale" | "shear" | "color" | "outColor" | "rotatePivot" | "scalePivot" | "jointOrient" | "position" | "normal" | "outColorRGB" | "incandescence" | "transparency" | "ambientColor" | "specularColor" | "baseColor" | "emissionColor" | "worldPosition" | "boundingBoxCenter")
+}
+
+fn seg_dist(p: Pos2, a: Pos2, b: Pos2) -> f32 {
+    let ab = b - a;
+    let t = ((p - a).dot(ab) / ab.length_sq().max(1e-6)).clamp(0.0, 1.0);
+    (a + ab * t).distance(p)
+}
+
 fn arrow(p: &egui::Painter, a: Pos2, b: Pos2, col: Color32) {
     let mx = (a.x + b.x) / 2.0;
     let pts: Vec<Pos2> = (0..=16).map(|i| {
@@ -192,7 +203,7 @@ pub fn window(app: &mut IncaApp, ctx: &egui::Context) {
             ui.separator();
             ui.checkbox(&mut app.hg.show_cameras, "Cameras");
             if ui.button("Frame All").clicked() {
-                app.hg.pan = vec2(30.0, 30.0);
+                app.hg.pan = vec2(70.0, 30.0);
                 app.hg.zoom = 1.0;
             }
         });
@@ -225,27 +236,63 @@ fn graph(app: &mut IncaApp, ui: &mut egui::Ui) {
                 arrow(&painter, pos2(ra.max.x, ra.center().y), pos2(rb.min.x - 1.0, rb.center().y), Color32::from_rgb(0xd0, 0x40, 0xd0));
             }
         }
-        // direct connections (Connection Editor)
+        // direct connections: one line per connection; several between the same two nodes are
+        // stacked in parallel; green for vector (triple) attributes, blue for single ones
+        let mut pairs: Vec<((usize, usize), Vec<&inca_core::scene::Conn>)> = vec![];
         for c in &app.s.conns {
             let find = |id: &str| boxes.iter().position(|b| b.key == id || b.key == format!("xf:{id}"));
             if let (Some(i), Some(j)) = (find(&c.src), find(&c.dst)) {
-                let (ra, rb) = (rect_of(&boxes[i]), rect_of(&boxes[j]));
-                let col = if c.src_attr.ends_with('X') || c.src_attr.ends_with('Y') || c.src_attr.ends_with('Z') { Color32::from_rgb(0x28, 0x48, 0xd8) } else { Color32::from_rgb(0x3c, 0xcf, 0x3c) };
-                if (ra.min.x - rb.min.x).abs() < NW * zoom {
-                    // same column: loop out to the left of both nodes
-                    let (a, b) = (pos2(ra.min.x, ra.center().y + 6.0), pos2(rb.min.x - 1.0, rb.center().y + 6.0));
-                    let lx = ra.min.x.min(rb.min.x) - 45.0 * zoom;
-                    let pts: Vec<Pos2> = (0..=16).map(|k| {
-                        let t = k as f32 / 16.0;
-                        let u = 1.0 - t;
-                        pos2(u * u * u * a.x + 3.0 * u * t * lx + t * t * t * b.x, u * u * u * a.y + 3.0 * u * u * t * a.y + 3.0 * u * t * t * b.y + t * t * t * b.y)
-                    }).collect();
-                    painter.add(egui::Shape::line(pts, Stroke::new(1.6, col)));
-                    painter.add(egui::Shape::convex_polygon(vec![b, b + vec2(-7.0, -4.0), b + vec2(-7.0, 4.0)], col, Stroke::NONE));
-                } else {
-                    arrow(&painter, pos2(ra.max.x, ra.center().y + 6.0), pos2(rb.min.x - 1.0, rb.center().y + 6.0), col);
+                if i == j {
+                    continue;
+                }
+                match pairs.iter_mut().find(|p| p.0 == (i, j)) {
+                    Some(p) => p.1.push(c),
+                    None => pairs.push(((i, j), vec![c])),
                 }
             }
+        }
+        let pointer = ui.ctx().input(|i| i.pointer.hover_pos());
+        let mut tip: Option<String> = None;
+        for ((i, j), list) in pairs {
+            let (ra, rb) = (rect_of(&boxes[i]), rect_of(&boxes[j]));
+            let n = list.len();
+            let gap = if n > 1 { (9.0f32).min((NH - 12.0) / (n - 1) as f32) * zoom } else { 0.0 };
+            let same = (ra.min.x - rb.min.x).abs() < NW * zoom;
+            for (k, c) in list.iter().enumerate() {
+                let dy = (k as f32 - (n - 1) as f32 / 2.0) * gap;
+                let col = if is_triple(&c.src_attr) { Color32::from_rgb(0x3c, 0xcf, 0x3c) } else { Color32::from_rgb(0x28, 0x48, 0xd8) };
+                let (a, b) = if same { (pos2(ra.min.x, ra.center().y + dy), pos2(rb.min.x - 1.0, rb.center().y + dy)) } else { (pos2(ra.max.x, ra.center().y + dy), pos2(rb.min.x - 1.0, rb.center().y + dy)) };
+                let pts: Vec<Pos2> = if same {
+                    // same column: loop out to the left of both nodes
+                    let lx = ra.min.x.min(rb.min.x) - 45.0 * zoom;
+                    (0..=16).map(|q| {
+                        let t = q as f32 / 16.0;
+                        let u = 1.0 - t;
+                        pos2(u * u * u * a.x + 3.0 * u * t * lx + t * t * t * b.x, u * u * u * a.y + 3.0 * u * u * t * a.y + 3.0 * u * t * t * b.y + t * t * t * b.y)
+                    }).collect()
+                } else {
+                    let mx = (a.x + b.x) / 2.0;
+                    (0..=16).map(|q| {
+                        let t = q as f32 / 16.0;
+                        let u = 1.0 - t;
+                        pos2(u * u * u * a.x + 3.0 * u * u * t * mx + 3.0 * u * t * t * mx + t * t * t * b.x, u * u * u * a.y + 3.0 * u * u * t * a.y + 3.0 * u * t * t * b.y + t * t * t * b.y)
+                    }).collect()
+                };
+                if let Some(q) = pointer {
+                    if pts.windows(2).any(|w| seg_dist(q, w[0], w[1]) < 4.0) {
+                        let name = |id: &str| app.s.ref_by_id(id).map(|r| app.s.ref_name(&r)).unwrap_or_default();
+                        tip = Some(format!("{}.{} → {}.{}", name(&c.src), c.src_attr, name(&c.dst), c.dst_attr));
+                    }
+                }
+                painter.add(egui::Shape::line(pts, Stroke::new(1.6, col)));
+                painter.add(egui::Shape::convex_polygon(vec![b, b + vec2(-7.0, -4.0), b + vec2(-7.0, 4.0)], col, Stroke::NONE));
+            }
+        }
+        if let (Some(t), Some(q)) = (tip, pointer) {
+            let g = painter.layout_no_wrap(t, egui::FontId::proportional(11.0), Color32::WHITE);
+            let r = Rect::from_min_size(q + vec2(12.0, 12.0), g.size() + vec2(8.0, 4.0));
+            painter.rect_filled(r, 3.0, Color32::from_black_alpha(200));
+            painter.galley(r.min + vec2(4.0, 2.0), g, Color32::WHITE);
         }
     } else {
         for b in &boxes {

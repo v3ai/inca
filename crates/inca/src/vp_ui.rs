@@ -28,11 +28,14 @@ pub struct VpState {
     pub mmb: bool,
     /// the handle under the cursor when the button went down
     pub press_handle: Option<GizmoMode>,
+    /// Three Point Arc editing: point being dragged (0-2, 3 = centre) and the last drag position
+    pub arc_drag: Option<usize>,
+    pub arc_anchor: Option<DVec3>,
 }
 
 impl Default for VpState {
     fn default() -> Self {
-        VpState { gizmos: (0..4).map(|_| Gizmo::default()).collect(), drag: None, marquee: None, stroke: vec![], nav: None, snap_step: 1.0, snap_angle: 15.0, tool_pts: vec![], active_handle: None, mmb: false, press_handle: None }
+        VpState { gizmos: (0..4).map(|_| Gizmo::default()).collect(), drag: None, marquee: None, stroke: vec![], nav: None, snap_step: 1.0, snap_angle: 15.0, tool_pts: vec![], active_handle: None, mmb: false, press_handle: None, arc_drag: None, arc_anchor: None }
     }
 }
 
@@ -920,6 +923,36 @@ fn gizmo(app: &mut IncaApp, ui: &mut egui::Ui, idx: usize, resp: &egui::Response
     let focused_before = g.is_focused();
     let result = g.update(interaction, &[tf]);
     let draw = g.draw();
+    // manipulator guide: a faint line along the axis being dragged (Preferences can hide it)
+    if app.prefs.manip_guides {
+        if let Some(d) = app.vp_state.drag.as_ref().filter(|d| d.vp == idx) {
+            let axis = match d.handle {
+                Some(GizmoMode::TranslateX | GizmoMode::ScaleX | GizmoMode::RotateX) => Some(DVec3::X),
+                Some(GizmoMode::TranslateY | GizmoMode::ScaleY | GizmoMode::RotateY) => Some(DVec3::Y),
+                Some(GizmoMode::TranslateZ | GizmoMode::ScaleZ | GizmoMode::RotateZ) => Some(DVec3::Z),
+                _ => None,
+            };
+            if let Some(ax) = axis {
+                let ax = DQuat::from(d.start.rotation) * ax;
+                let o = DVec3::from(d.start.translation);
+                let far = cv.coi.max(10.0) * 50.0;
+                if let (Some(a), Some(b)) = (cv.project(o - ax * far, app.vps[idx].rect).or(cv.project(o, app.vps[idx].rect)), cv.project(o + ax * far, app.vps[idx].rect).or(cv.project(o, app.vps[idx].rect))) {
+                    painter.line_segment([a, b], Stroke::new(1.0, Color32::from_rgba_unmultiplied(220, 220, 220, 90)));
+                }
+            }
+        }
+    }
+    // Edit Pivot: a blue ring around the pivot, kept while dragging; an inner ring while point snap is on
+    if pivot_mode {
+        if let Some(c) = cv.project(pivot, app.vps[idx].rect) {
+            let blue = Color32::from_rgb(95, 211, 255);
+            let r = 14.0 * app.manip_size;
+            painter.circle_stroke(c, r, Stroke::new(2.0, blue));
+            if app.snap_point || ui.input(|i| i.key_down(egui::Key::V)) {
+                painter.circle_stroke(c, r * 0.55, Stroke::new(2.0, blue));
+            }
+        }
+    }
     painter.add(egui::Mesh {
         indices: draw.indices,
         vertices: draw.vertices.into_iter().zip(draw.colors).map(|(p, [r, gg, b, a])| egui::epaint::Vertex { pos: p.into(), uv: Pos2::ZERO, color: egui::Rgba::from_rgba_premultiplied(r, gg, b, a).into() }).collect(),
@@ -1120,6 +1153,9 @@ fn creation_tool(app: &mut IncaApp, idx: usize, resp: &egui::Response, cv: &CamV
         }
         return;
     }
+    if app.tool == Tool::Arc && app.vp_state.tool_pts.len() == 3 && arc_edit(app, idx, resp, cv, painter) {
+        return;
+    }
     if app.tool == Tool::Joint {
         if resp.clicked_by(egui::PointerButton::Primary) {
             if let Some(p) = resp.interact_pointer_pos().and_then(|p| live(app, p)) {
@@ -1132,7 +1168,7 @@ fn creation_tool(app: &mut IncaApp, idx: usize, resp: &egui::Response, cv: &CamV
     if resp.clicked_by(egui::PointerButton::Primary) {
         if let Some(p) = resp.interact_pointer_pos().and_then(|p| live(app, p)) {
             app.vp_state.tool_pts.push(p);
-            if (app.tool == Tool::Arc && app.vp_state.tool_pts.len() == 3) || (app.tool == Tool::Distance && app.vp_state.tool_pts.len() == 2) {
+            if app.tool == Tool::Distance && app.vp_state.tool_pts.len() == 2 {
                 finish_creation(app);
             }
         }
@@ -1164,6 +1200,85 @@ fn creation_tool(app: &mut IncaApp, idx: usize, resp: &egui::Response, cv: &CamV
             painter.rect_filled(Rect::from_center_size(q, vec2(6.0, 6.0)), 0.0, Color32::from_rgb(92, 255, 92));
         }
     }
+}
+
+/// Three Point Circular Arc, once its three points are placed: drag a point or the centre, click the
+/// arc to flip it to the other side of the chord, live radius readout; Enter / RMB finishes,
+/// Backspace steps back, Esc cancels. Returns true when it handled the input.
+fn arc_edit(app: &mut IncaApp, idx: usize, resp: &egui::Response, cv: &CamView, painter: &egui::Painter) -> bool {
+    let rect = app.vps[idx].rect;
+    let snap = app.snap_grid.then_some(app.vp_state.snap_step);
+    let [a, m, b] = [app.vp_state.tool_pts[0], app.vp_state.tool_pts[1], app.vp_state.tool_pts[2]];
+    let yellow = Color32::from_rgb(255, 225, 74);
+    let line = inca_core::curves::arc_through_points(a, b, m, 0.04).unwrap_or(vec![a, m, b]);
+    let centre = circumcentre(a, m, b);
+    let sp: Vec<Pos2> = line.iter().filter_map(|p| cv.project(*p, rect)).collect();
+    painter.add(egui::Shape::line(sp.clone(), Stroke::new(2.0, yellow)));
+    for p in [a, m, b] {
+        if let Some(q) = cv.project(p, rect) {
+            painter.rect_filled(Rect::from_center_size(q, vec2(8.0, 8.0)), 0.0, Color32::from_rgb(92, 255, 92));
+        }
+    }
+    if let Some((c, r)) = centre {
+        if let Some(q) = cv.project(c, rect) {
+            painter.circle_stroke(q, 5.0, Stroke::new(1.5, yellow));
+            painter.text(q + vec2(8.0, -8.0), egui::Align2::LEFT_BOTTOM, format!("r = {}", inca_core::math::fmt_num(r)), egui::FontId::proportional(12.0), Color32::WHITE);
+        }
+    }
+    app.help = "Three Point Arc: drag a point or the centre, click the arc to flip it; Enter finishes, Backspace steps back, Esc cancels".into();
+    let press = resp.ctx.input(|i| i.pointer.press_origin());
+    if resp.drag_started_by(egui::PointerButton::Primary) {
+        if let Some(p) = press {
+            let near = |w: DVec3| cv.project(w, rect).is_some_and(|q| q.distance(p) < 10.0);
+            app.vp_state.arc_drag = [a, m, b].iter().position(|w| near(*w)).or_else(|| centre.filter(|(c, _)| near(*c)).map(|_| 3));
+            app.vp_state.arc_anchor = place_point(cv, rect, p, None);
+        }
+    }
+    if let (Some(k), Some(q)) = (app.vp_state.arc_drag, resp.interact_pointer_pos()) {
+        if let Some(w) = place_point(cv, rect, q, snap) {
+            if k < 3 {
+                app.vp_state.tool_pts[k] = w;
+            } else if let Some(anchor) = app.vp_state.arc_anchor {
+                // the centre moves the whole arc
+                let d = w - anchor;
+                for p in app.vp_state.tool_pts.iter_mut() {
+                    *p += d;
+                }
+                app.vp_state.arc_anchor = Some(w);
+            }
+        }
+        if resp.drag_stopped() {
+            app.vp_state.arc_drag = None;
+        }
+        return true;
+    }
+    if resp.clicked_by(egui::PointerButton::Primary) {
+        if let Some(p) = resp.interact_pointer_pos() {
+            if sp.windows(2).any(|w| viewport::seg_dist(p, w[0], w[1]) < 6.0) {
+                // flip: mirror the middle point across the chord
+                let u = (b - a).normalize_or_zero();
+                let foot = a + u * (m - a).dot(u);
+                app.vp_state.tool_pts[1] = foot * 2.0 - m;
+            }
+        }
+        return true;
+    }
+    if resp.clicked_by(egui::PointerButton::Secondary) {
+        finish_creation(app);
+    }
+    true
+}
+
+/// Centre and radius of the circle through three points.
+fn circumcentre(a: DVec3, b: DVec3, c: DVec3) -> Option<(DVec3, f64)> {
+    let (ab, ac) = (b - a, c - a);
+    let n = ab.cross(ac);
+    let d = 2.0 * n.length_squared();
+    if d < 1e-12 {
+        return None;
+    }
+    let o = a + (n.cross(ab) * ac.length_squared() + ac.cross(n) * ab.length_squared()) / d;
+    Some((o, (o - a).length()))
 }
 
 /// Ramer–Douglas–Peucker: drop points closer than `tol` to the simplified polyline.

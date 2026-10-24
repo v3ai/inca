@@ -1873,6 +1873,19 @@ impl Scene {
     }
 
     /// Template (unselectable, grey) through the node, its ancestors or its layer.
+    /// Templated (object or template display layer, not reference layers): drawn as gray wireframe.
+    pub fn is_templated_display(&self, id: &str) -> bool {
+        let mut c = Some(id.to_string());
+        while let Some(i) = c {
+            let Some(n) = self.nodes.get(&i) else { return false };
+            if n.template || n.layer.as_ref().is_some_and(|l| self.layers.iter().any(|x| &x.id == l && x.mode == "template")) {
+                return true;
+            }
+            c = n.parent.clone();
+        }
+        false
+    }
+
     pub fn is_template(&self, id: &str) -> bool {
         let mut c = Some(id.to_string());
         while let Some(i) = c {

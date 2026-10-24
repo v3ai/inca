@@ -17,6 +17,8 @@ pub const C_LEAD: [f32; 4] = [0.36, 0.96, 0.64, 1.0];
 pub const C_SEL: [f32; 4] = [1.0, 1.0, 1.0, 1.0];
 pub const C_HILITE: [f32; 4] = [0.53, 0.78, 1.0, 1.0];
 pub const C_TEMPLATE: [f32; 4] = [0.55, 0.55, 0.55, 1.0];
+/// a selected template (Maya's light pink, #ff9999)
+pub const C_TEMPLATE_SEL: [f32; 4] = [1.0, 0.6, 0.6, 1.0];
 pub const C_ICON: [f32; 4] = [0.063, 0.063, 0.063, 1.0];
 pub const C_CURVE: [f32; 4] = [0.05, 0.05, 0.4, 1.0];
 pub const C_FACE_SEL: [f32; 3] = [1.0, 0.54, 0.12];
@@ -795,9 +797,9 @@ pub fn build_draws(s: &Scene, vp: &Viewport, cv: &CamView, g: &mut Gpu, smooth_c
         let wm = s.world_matrix(&id).as_mat4();
         let selected = vp.show_sel_highlight && s.sel.iter().any(|x| x == &id || s.is_ancestor(x, &id));
         let is_lead = vp.show_sel_highlight && lead.as_ref().is_some_and(|l| l == &id || s.is_ancestor(l, &id));
-        let template = s.is_template(&id);
+        let template = s.is_templated_display(&id);
         let is_affected = !selected && affected.contains(&id);
-        let sel_col = if template { C_TEMPLATE } else if is_lead { C_LEAD } else if selected { C_SEL } else if is_affected { C_AFFECTED } else { C_WIRE };
+        let sel_col = if template && selected { C_TEMPLATE_SEL } else if template { C_TEMPLATE } else if is_lead { C_LEAD } else if selected { C_SEL } else if is_affected { C_AFFECTED } else { C_WIRE };
         match &n.shape {
             Shape::Mesh(m) => {
                 let key = mesh_key(s, &id);
@@ -809,13 +811,11 @@ pub fn build_draws(s: &Scene, vp: &Viewport, cv: &CamView, g: &mut Gpu, smooth_c
                 }
                 let pbr = s.mats.get(&m.material).map(|x| x.pbr()).unwrap_or_default();
                 let in_comp = hilite.contains(&id) && !vp.beauty;
-                if vp.shade != ShadeMode::Wire {
+                // templates draw as wireframe only, whatever the shading mode
+                if vp.shade != ShadeMode::Wire && !template {
                     let mut u = DrawUniform::new(wm).spec(pbr.specular, pbr.roughness);
                     if pbr.unlit {
                         u = u.unlit();
-                    }
-                    if template {
-                        u = u.tint([0.5, 0.5, 0.5], 0.6);
                     }
                     if vp.xray || pbr.opacity < 0.99 {
                         let a = if vp.xray { 0.45 } else { pbr.opacity.max(0.1) };
@@ -824,7 +824,7 @@ pub fn build_draws(s: &Scene, vp: &Viewport, cv: &CamView, g: &mut Gpu, smooth_c
                         draws.push(DrawCmd { pass: Pass::Mesh, geo: Geo::MeshTris(id.clone()), u });
                     }
                 }
-                let show_wire = !vp.beauty && (vp.shade == ShadeMode::Wire || vp.wire_on_shaded || selected || in_comp || is_affected);
+                let show_wire = !vp.beauty && (vp.shade == ShadeMode::Wire || vp.wire_on_shaded || selected || in_comp || is_affected || template);
                 if show_wire {
                     let c = if in_comp {
                         C_HILITE
